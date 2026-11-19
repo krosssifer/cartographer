@@ -25,8 +25,10 @@ const LIGHT_KINDS = new Set(['brazier', 'brazierStand', 'candleStand', 'candleHo
 const HAZARD_THEMES = new Set(['sanctum', 'burial', 'ossuary', 'storage']);
 const TRAP_KINDS = new Set(['pressureTile', 'spikeGlyph', 'runeTrap', 'fallSeal']);
 function doorNear(map: MapData, room: { x: number; y: number; w: number; h: number }) {
-  for (let x = room.x - 1; x <= room.x + room.w; x++) for (const y of [room.y - 1, room.y + room.h]) if (map.cells[y]?.[x]?.terrain === 'door') return true;
-  for (let y = room.y - 1; y <= room.y + room.h; y++) for (const x of [room.x - 1, room.x + room.w]) if (map.cells[y]?.[x]?.terrain === 'door') return true;
+  // У зала могут быть ниши-альковы, поэтому дверь ищем и на клетку дальше
+  // исходного прямоугольника.
+  for (let x = room.x - 2; x <= room.x + room.w + 1; x++) for (const y of [room.y - 2, room.y - 1, room.y + room.h, room.y + room.h + 1]) if (map.cells[y]?.[x]?.terrain === 'door') return true;
+  for (let y = room.y - 2; y <= room.y + room.h + 1; y++) for (const x of [room.x - 2, room.x - 1, room.x + room.w, room.x + room.w + 1]) if (map.cells[y]?.[x]?.terrain === 'door') return true;
   return false;
 }
 const themeAt = (map: MapData, x: number, y: number) => map.cryptRooms?.find((room) => contains(room, x, y))?.theme;

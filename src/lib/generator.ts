@@ -1,7 +1,7 @@
 import { Perlin } from './noise';
 import { cryptBlueprint, decorateCrypt } from './cryptLayout';
 import { generateSettlement } from './settlement';
-import { mulberry32, randInt, pick, type Rng } from './random';
+import { mulberry32, randInt, pick, hash2, type Rng } from './random';
 import type {
   Biome,
   Cell,
@@ -463,6 +463,41 @@ function generateDungeon(s: GenSettings): MapData {
     connect(entrance, wing); linked.push(wing);
   }
   if (rooms.length > 5) connect(rooms[1], rooms[rooms.length - 2]);
+
+  // Ломаем прямоугольную геометрию залов: вырезаем 1–2 ниши-алькова в стенах.
+  // Это не меняет число залов и дверей, но убирает одинаковые квадратные
+  // коробки и даёт стенам изломы, как на рисованных картах.
+  const corridorCell = Array.from({ length: h }, () => new Array<boolean>(w).fill(false));
+  for (const p of corridor) corridorCell[p.y][p.x] = true;
+  const shape = (x: number, y: number, salt: number) => hash2(x, y, s.seed + salt);
+  const canAlcove = (x: number, y: number, ox: number, oy: number) => {
+    if (!inBounds(x, y, w, h) || carved[y][x] || corridorCell[y][x]) return false;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (dx === ox && dy === oy) continue;
+      const nx = x + dx, ny = y + dy;
+      if (inBounds(nx, ny, w, h) && (carved[ny][nx] || corridorCell[ny][nx])) return false;
+    }
+    return true;
+  };
+  for (const r of rooms) {
+    if (r.w < 6 || r.h < 6) continue;
+    for (let k = 0; k < 2; k++) {
+      if (shape(r.x, r.y, 1201 + k * 8) <= .38 + k * .20) continue;
+      const side = Math.floor(shape(r.x, r.y, 1202 + k * 8) * 4);
+      const ax = r.x + 1 + Math.floor(shape(r.x, r.y, 1203 + k * 8) * (r.w - 2));
+      const ay = r.y + 1 + Math.floor(shape(r.x, r.y, 1204 + k * 8) * (r.h - 2));
+      const spots: [number, number, number, number][] = [
+        [ax, r.y - 1, 0, 1], [ax, r.y + r.h, 0, -1],
+        [r.x - 1, ay, 1, 0], [r.x + r.w, ay, -1, 0],
+      ];
+      const [cx, cy, ox, oy] = spots[side];
+      if (canAlcove(cx, cy, ox, oy)) {
+        carved[cy][cx] = true;
+        // Альков — часть пола, но не прямоугольника зала: дверной проход
+        // может встать в него, поэтому roomCell не отмечаем.
+      }
+    }
+  }
 
   // Стены: слой клеток вплотную к полу. Внутренний слой двойной стены убираем,
   // чтобы между комнатами оставалась одна перегородка, а не две в ряд.
