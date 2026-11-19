@@ -22,7 +22,7 @@ export interface Project {
 type NewEditorFields = 'roofMaterial' | 'roofShape' | 'civicKind' | 'stampRotation' | 'buildingSize' | 'civicSize' | 'chestRotation' | 'furnitureKind' | 'furnitureErase'
   | 'furnitureFinish' | 'furnitureSprite' | 'cryptKind' | 'cryptErase' | 'cryptConceal' | 'chestKind' | 'objectSizes' | 'sizeLock' | 'sizeUnit';
 type NewRenderFields = 'showChests' | 'showRoofs' | 'showCivic' | 'showCrypt' | 'showSecrets' | 'wallThickness';
-type NewGenFields = 'density' | 'settlement' | 'publicSpaces' | 'cryptDetail' | 'cryptTraps' | 'cryptChasms' | 'cryptArchetype';
+type NewGenFields = 'density' | 'settlement' | 'publicSpaces' | 'marketStyle' | 'marketRichness' | 'cryptDetail' | 'cryptTraps' | 'cryptChasms' | 'cryptArchetype';
 type ImportProject = Omit<Project, 'gen' | 'map' | 'render' | 'editor'> & {
   gen: Omit<GenSettings, NewGenFields> & Partial<Pick<GenSettings, NewGenFields>>;
   map: (Omit<MapData, 'chests'> & { chests?: MapData['chests'] }) | null;
@@ -50,6 +50,8 @@ export function validateProject(v: unknown): v is ImportProject {
   if (g.settlement !== undefined && !['village', 'town'].includes(String(g.settlement))) return false;
   if (![g.ruined, g.river, g.road].every(bool)) return false;
   if (g.publicSpaces !== undefined && !bool(g.publicSpaces)) return false;
+  if (g.marketStyle !== undefined && !['auto', 'rows', 'ring', 'fair'].includes(String(g.marketStyle))) return false;
+  if (g.marketRichness !== undefined && !finite(g.marketRichness, 0, 1)) return false;
   if (g.cryptDetail !== undefined && !finite(g.cryptDetail, 0, 1)) return false;
   if (g.cryptArchetype !== undefined && !['tomb', 'catacombs', 'temple', 'archive', 'prison'].includes(String(g.cryptArchetype))) return false;
   if (![g.cryptTraps, g.cryptChasms].every((v) => v === undefined || bool(v))) return false;
@@ -144,6 +146,8 @@ export function parseProject(value: unknown): Project | null {
       settlement: value.gen.settlement ?? (value.gen.biome === 'town' ? 'town' : 'village'),
       density: value.gen.density ?? 0.42,
       publicSpaces: value.gen.publicSpaces ?? true,
+      marketStyle: value.gen.marketStyle ?? 'auto',
+      marketRichness: value.gen.marketRichness ?? 0.62,
     },
     map: value.map ? { ...value.map, chests: value.map.chests ?? [] } : null,
     render: { showRoofs: true, showCivic: true, showChests: true, showCrypt: true, showSecrets: true, wallThickness: DEFAULT_RENDER.wallThickness, ...value.render },

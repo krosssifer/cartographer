@@ -3,7 +3,19 @@ export type CryptArchetype = 'tomb' | 'catacombs' | 'temple' | 'archive' | 'pris
 export type SettlementStyle = 'village' | 'town';
 export type RoofMaterial = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export type RoofShape = 'gable' | 'hip' | 'cross';
-export type CivicKind = 'market' | 'square' | 'well' | 'fountain' | 'cart' | 'garden';
+export type CivicKind = 'market' | 'square' | 'well' | 'fountain' | 'cart' | 'garden'
+  // рыночная площадь (спрайт-лист)
+  | 'marketTentStripe' | 'marketTentBrown' | 'marketTentAwning' | 'marketTentRound'
+  | 'marketTentCanopy' | 'marketTentPatch' | 'marketTentTarp' | 'marketTentBurlap'
+  | 'marketStallProduce' | 'marketStallFruit' | 'marketStallBread' | 'marketStallGrain'
+  | 'marketStallMeat' | 'marketStallPottery' | 'marketStallFabric' | 'marketStallPotion'
+  | 'marketStallTools' | 'marketStallFish'
+  | 'marketWagon' | 'marketWagonCovered' | 'marketWheelbarrow' | 'marketWheelbarrowStone'
+  | 'marketCrates' | 'marketBarrels' | 'marketSacks' | 'marketRope' | 'marketChest'
+  | 'marketChestOpen' | 'marketBaskets' | 'marketBarrelPair' | 'marketNoticeBoard'
+  | 'marketWell' | 'marketHay' | 'marketBarrelLying'
+  | 'marketBench' | 'marketTable' | 'marketTableLong' | 'marketFence' | 'marketHayLarge' | 'marketTableSet';
+export type MarketStyle = 'auto' | 'rows' | 'ring' | 'fair';
 export type CryptKind =
   | 'chasm' | 'pit' | 'grate' | 'bridge' | 'spikeGlyph' | 'pressureTile' | 'runeTrap' | 'fallSeal'
   | 'skeleton' | 'bones' | 'urns' | 'coffin' | 'openCoffin' | 'altar' | 'lectern' | 'runeCircle' | 'steps' | 'pillar' | 'statue' | 'brazier'
@@ -204,6 +216,8 @@ export interface GenSettings {
   settlement: SettlementStyle;
   density: number;
   publicSpaces: boolean;
+  marketStyle: MarketStyle;
+  marketRichness: number;
   cryptDetail: number;
   cryptTraps: boolean;
   cryptChasms: boolean;

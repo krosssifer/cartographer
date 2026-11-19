@@ -39,6 +39,8 @@ export const DEFAULT_GEN: GenSettings = {
   settlement: 'village',
   density: 0.42,
   publicSpaces: true,
+  marketStyle: 'auto',
+  marketRichness: 0.62,
   cryptDetail: .67,
   cryptTraps: true,
   cryptChasms: true,

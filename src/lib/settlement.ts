@@ -7,6 +7,11 @@ const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
 const between = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const wet = (t: Terrain) => t === 'water' || t === 'deepWater' || t === 'bridge';
 
+const TENTS: CivicKind[] = ['marketTentStripe', 'marketTentRound', 'marketTentAwning', 'marketTentCanopy', 'marketTentPatch', 'marketTentTarp', 'marketTentBurlap', 'marketTentBrown'];
+const STALLS: CivicKind[] = ['marketStallProduce', 'marketStallBread', 'marketStallFruit', 'marketStallFish', 'marketStallMeat', 'marketStallPottery', 'marketStallFabric', 'marketStallGrain', 'marketStallPotion', 'marketStallTools'];
+const GOODS: CivicKind[] = ['marketCrates', 'marketBarrels', 'marketSacks', 'marketBaskets', 'marketBarrelPair', 'marketHay', 'marketRope', 'marketChest', 'marketBarrelLying'];
+const SEATS: CivicKind[] = ['marketBench', 'marketTable', 'marketTableSet', 'marketFence'];
+
 interface Plan {
   cells: Cell[][];
   plots: Building[];
@@ -19,7 +24,7 @@ let cached: { key: string; value: Plan } | undefined;
 
 function buildPlan(s: GenSettings, style: SettlementStyle): Plan {
   const { width: w, height: h, seed } = s;
-  const key = `${style}:${seed}:${w}:${h}:${s.road}:${s.river}:${s.publicSpaces}`;
+  const key = `${style}:${seed}:${w}:${h}:${s.road}:${s.river}:${s.publicSpaces}:${s.marketStyle}:${s.marketRichness}`;
   if (cached?.key === key) return cached.value;
   const town = style === 'town', compact = Math.min(w, h) < 19;
   const rng = mulberry32(seed + (town ? 9415 : 4032));
@@ -122,11 +127,19 @@ function buildPlan(s: GenSettings, style: SettlementStyle): Plan {
       lane([{ x: w * .17, y: h * .56 }, { x: w * .25, y: h * .72 }, { x: w * .37, y: h * .78 }, { x: w * .56, y: h * .76 }], .67, 'road');
       if (w >= 40) lane([{ x: w * .35, y: h * .21 }, { x: w * .51, y: h * .25 }, { x: east - 4, y: h * .31 }], .64, 'road');
     }
+    // Кольцевая улица вокруг рыночной площади: к рынку подходят со всех сторон,
+    // а дома не прижимаются к самой площади.
+    if (s.publicSpaces && !compact) {
+      lane([
+        { x: px - 1, y: py - 1 }, { x: px + pw, y: py - 1 }, { x: px + pw, y: py + ph },
+        { x: px - 1, y: py + ph }, { x: px - 1, y: py - 1 },
+      ], .55, 'road');
+    }
     lane([tavernExit, { x: tavernExit.x, y: Math.min(h - 1, tavernExit.y + 1) }, { x: centre.x, y: centre.y }], .69, main);
   }
 
   function add(kind: CivicKind, x: number, y: number, w1 = CIVIC_KIT[kind].w, h1 = CIVIC_KIT[kind].h, variant = 0) {
-    const item: CivicObject = { x, y, w: w1, h: h1, kind, variant, rotation: 0, source: 'layout' };
+    const item: CivicObject = { x, y, w: w1, h: h1, kind, variant: variant % 2, rotation: 0, source: 'layout' };
     for (let yy = y; yy < y + h1; yy++) for (let xx = x; xx < x + w1; xx++) {
       if (!inside(xx, yy) || wet(cells[yy][xx].terrain)) return false;
     }
@@ -143,18 +156,94 @@ function buildPlan(s: GenSettings, style: SettlementStyle): Plan {
 
   if (s.publicSpaces) {
     add('square', px, py, pw, ph, town ? 0 : 1);
-    if (town && !compact) {
-      add('fountain', centre.x - 1, centre.y - 1);
-      add('market', px + 1, py + 1, 2, 2, 0);
-      add('market', px + pw - 3, py + 1, 2, 2, 1);
-      add('market', px + 1, py + ph - 3, 2, 2, 1);
-      add('market', px + pw - 3, py + ph - 3, 2, 2, 0);
-      add('cart', px + pw - 2, py + ph + 1, 2, 1);
-      add('well', px - 4, Math.max(1, py + ph - 2));
+    const rich = between(s.marketRichness ?? .62, 0, 1);
+    const requested = s.marketStyle ?? 'auto';
+    const layout = requested === 'auto'
+      ? (pw >= 10 && ph >= 8 && hash2(px, py, seed + 991) > .55 ? 'fair' : pw >= 8 && ph >= 6 ? 'ring' : 'rows')
+      : requested;
+    const cx = px + Math.floor(pw / 2), cy = py + Math.floor(ph / 2);
+    const compactMarket = pw < 6 || ph < 5;
+    const feature: CivicKind = 'marketWell';
+    add(feature, cx - 1, cy - 1, 2, 2, 0);
+    const blocksEntrance = (x: number, y: number, w: number, h: number) => {
+      const mx = px + Math.floor(pw / 2), my = py + Math.floor(ph / 2);
+      const zones = [
+        { x: mx, y: py + 1, w: 1, h: 2 }, { x: mx, y: py + ph - 3, w: 1, h: 2 },
+        { x: px + 1, y: my, w: 2, h: 1 }, { x: px + pw - 3, y: my, w: 2, h: 1 },
+      ];
+      return zones.some((zone) => x < zone.x + zone.w && x + w > zone.x && y < zone.y + zone.h && y + h > zone.y);
+    };
+    if (compactMarket) {
+      add('market', px + 1, py + (ph > 4 ? 1 : 0), 2, 2, 0);
     } else {
-      add('well', px + pw - 1, py + ph - 1);
-      add('market', px + 1, py + (compact ? 0 : 1));
-      if (!compact) add('cart', px + pw, py + ph - 1, 2, 1);
+      let count = 0;
+      const limit = Math.max(2, Math.round(3 + rich * (layout === 'fair' ? 9 : 7)));
+      const place = (kind: CivicKind, x: number, y: number, w = 2, h = 2) => {
+        if (count >= limit || x < px + 1 || y < py + 1 || x + w > px + pw - 1 || y + h > py + ph - 1) return false;
+        if (blocksEntrance(x, y, w, h)) return false;
+        if (!add(kind, x, y, w, h, Math.floor(hash2(x, y, seed + count * 31) * 8))) return false;
+        count++;
+        return true;
+      };
+      if (layout === 'rows') {
+        if (pw >= ph) {
+          for (const y of [py + 1, py + ph - 3]) for (let x = px + 1; x + 1 < px + pw - 1; x += 3) {
+            const set = y === py + 1 ? STALLS : TENTS;
+            place(set[(x + y) % set.length], x, y);
+          }
+        } else {
+          for (const x of [px + 1, px + pw - 3]) for (let y = py + 1; y + 1 < py + ph - 1; y += 3) {
+            const set = x === px + 1 ? STALLS : TENTS;
+            place(set[(x + y) % set.length], x, y);
+          }
+        }
+      } else if (layout === 'ring') {
+        const xs = [px + 1, px + Math.round(pw / 3), px + Math.round(pw * 2 / 3), px + pw - 3];
+        const ys = [py + 1, py + Math.round(ph / 3), py + Math.round(ph * 2 / 3), py + ph - 3];
+        xs.forEach((x, i) => {
+          const top = hash2(x, py, seed + 5701 + i) > .5 ? TENTS : STALLS;
+          const bottom = hash2(x, py + ph, seed + 5702 + i) > .5 ? STALLS : TENTS;
+          place(top[(x + i) % top.length], x, py + 1);
+          place(bottom[(x + i) % bottom.length], x, py + ph - 3);
+        });
+        ys.forEach((y, i) => {
+          const left = hash2(px, y, seed + 5703 + i) > .5 ? TENTS : STALLS;
+          const right = hash2(px + pw, y, seed + 5704 + i) > .5 ? STALLS : TENTS;
+          place(left[(y + i) % left.length], px + 1, y);
+          place(right[(y + i) % right.length], px + pw - 3, y);
+        });
+      } else {
+        for (let y = py + 1; y + 1 < py + ph - 1; y += 2) for (let x = px + 1; x + 1 < px + pw - 1; x += 2) {
+          if (hash2(x, y, seed + 5501) > .24 + rich * .56) continue;
+          const pool = hash2(x, y, seed + 5502) > .52 ? TENTS : STALLS;
+          place(pool[(x * 3 + y) % pool.length], x, y);
+        }
+      }
+      // Телеги, товары и лавки по краям — не перекрывают центральные проходы.
+      const goods = Math.round(rich * 6);
+      for (let i = 0; i < goods; i++) {
+        const x = px + 1 + Math.floor(hash2(i, 1, seed + 6101) * Math.max(1, pw - 3));
+        const y = py + 1 + Math.floor(hash2(i, 2, seed + 6102) * Math.max(1, ph - 3));
+        const w = 1 + (i % 2);
+        if (blocksEntrance(x, y, w, 1)) continue;
+        add(GOODS[(i + Math.floor(hash2(i, 3, seed + 6103) * GOODS.length)) % GOODS.length], x, y, w, 1, i);
+      }
+      if (rich > .35) {
+        const seat = SEATS[Math.floor(hash2(px, py, seed + 6201) * SEATS.length)];
+        const sx = px + 1, sy = Math.max(py + 2, cy - 1);
+        if (!blocksEntrance(sx, sy, 2, 1)) add(seat, sx, sy, 2, 1, 0);
+        if (pw >= 9 && !blocksEntrance(px + pw - 4, py + ph - 3, 3, 2)) add('marketWagon', px + pw - 4, py + ph - 3, 3, 2, 0);
+      }
+      // Мелкий товар раскладываем по свободным клеткам площади, чтобы рынок
+      // не выглядел пустым при средней и высокой насыщенности.
+      const small: CivicKind[] = ['marketRope', 'marketChest', 'marketChestOpen', 'marketBarrelLying'];
+      let clutter = Math.round(rich * 5);
+      for (let y = py + 1; y < py + ph - 1 && clutter > 0; y++) for (let x = px + 1; x < px + pw - 1 && clutter > 0; x++) {
+        if (hash2(x, y, seed + 6301) > rich * .45) continue;
+        if (blocksEntrance(x, y, 1, 1)) continue;
+        const kind = small[(x * 7 + y * 3) % small.length];
+        if (add(kind, x, y, 1, 1, x + y)) clutter--;
+      }
     }
     if (!compact) for (const [x, y] of [[Math.round(w * .13), Math.round(h * .13)], [Math.round(w * .69), Math.round(h * .82)], [Math.round(w * .26), Math.round(h * .76)]]) {
       if (!streets[id(x, y)] && add('garden', x, y, 3, 2)) {

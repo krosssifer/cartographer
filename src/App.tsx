@@ -182,9 +182,10 @@ export default function App() {
 
   function applyLayout(layout: LayoutSettings) {
     if (lockedLayers.length) return;
-    const next = { ...gen, biome: layout.style, settlement: layout.style, density: layout.density, publicSpaces: layout.publicSpaces };
+    const next = { ...gen, biome: layout.style, settlement: layout.style, density: layout.density, publicSpaces: layout.publicSpaces, marketStyle: layout.marketStyle, marketRichness: layout.marketRichness };
     const merged = edit && gen.biome === layout.style ? replanSettlement(map, generated, generateMap(next)) : null;
-    if (merged || next.biome !== gen.biome || next.density !== gen.density || next.publicSpaces !== gen.publicSpaces) keepSnapshot({ gen: next, edit: merged });
+    if (merged || next.biome !== gen.biome || next.density !== gen.density || next.publicSpaces !== gen.publicSpaces
+      || next.marketStyle !== gen.marketStyle || next.marketRichness !== gen.marketRichness) keepSnapshot({ gen: next, edit: merged });
     setSettlementTab('settlement'); setInspector('settlement'); setFocusedRoom(null);
     setSelection(null); setCursor(null); setMobileSidebar(false);
     setToast(merged && next.density > 0 && !merged.buildings?.some((b) => b.kind === 'tavern') ? 'Таверна не помещается среди ручных построек. Освободите участок.' : 'Планировка применена');

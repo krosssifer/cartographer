@@ -1,12 +1,12 @@
 import { useMemo, useState, type CSSProperties } from 'react';
 import { artUrl } from '../lib/assets';
 import { generateSettlement } from '../lib/settlement';
-import { BUILDING_SIZES, CIVIC_KINDS, CIVIC_KIT, CIVIC_SIZES, isSettlement, ROOF_KIT, ROOF_SHAPES } from '../lib/settlementKit';
-import type { EditorSettings, EditorTool, GenSettings, MapData, RoofShape, SettlementStyle } from '../lib/types';
+import { BUILDING_SIZES, CIVIC_KINDS, CIVIC_KIT, CIVIC_SIZES, MARKET_STYLES, isSettlement, ROOF_KIT, ROOF_SHAPES } from '../lib/settlementKit';
+import type { EditorSettings, EditorTool, GenSettings, MapData, MarketStyle, RoofShape, SettlementStyle } from '../lib/types';
 import Icon from './Icon';
 import { Toggle } from './controls';
 
-export type LayoutSettings = { style: SettlementStyle; density: number; publicSpaces: boolean };
+export type LayoutSettings = { style: SettlementStyle; density: number; publicSpaces: boolean; marketStyle: MarketStyle; marketRichness: number };
 
 export function SettlementChoices({ style, onStyle }: { style: SettlementStyle; onStyle: (style: SettlementStyle) => void }) {
   return <div className="settlement-types" role="group" aria-label="Тип поселения">
@@ -27,9 +27,10 @@ export function DensitySlider({ density, onDensity }: { density: number; onDensi
 const houseCount = (n: number) => `${n} ${n % 100 >= 11 && n % 100 <= 14 ? 'домов' : n % 10 === 1 ? 'дом' : n % 10 >= 2 && n % 10 <= 4 ? 'дома' : 'домов'}`;
 
 function PlanPanel({ gen, map, onApply, locked }: { gen: GenSettings; map: MapData; onApply: (value: LayoutSettings) => void; locked: boolean }) {
-  const [draft, setDraft] = useState<LayoutSettings>(() => ({ style: isSettlement(gen.biome) ? gen.biome : gen.settlement, density: gen.density, publicSpaces: gen.publicSpaces }));
-  const changed = draft.style !== map.biome || draft.density !== gen.density || draft.publicSpaces !== gen.publicSpaces;
-  const estimate = useMemo(() => changed ? (generateSettlement({ ...gen, biome: draft.style, density: draft.density, publicSpaces: draft.publicSpaces }).buildings?.length ?? 0) : (map.buildings?.length ?? 0),
+  const [draft, setDraft] = useState<LayoutSettings>(() => ({ style: isSettlement(gen.biome) ? gen.biome : gen.settlement, density: gen.density, publicSpaces: gen.publicSpaces, marketStyle: gen.marketStyle, marketRichness: gen.marketRichness }));
+  const changed = draft.style !== map.biome || draft.density !== gen.density || draft.publicSpaces !== gen.publicSpaces
+    || draft.marketStyle !== gen.marketStyle || draft.marketRichness !== gen.marketRichness;
+  const estimate = useMemo(() => changed ? (generateSettlement({ ...gen, biome: draft.style, density: draft.density, publicSpaces: draft.publicSpaces, marketStyle: draft.marketStyle, marketRichness: draft.marketRichness }).buildings?.length ?? 0) : (map.buildings?.length ?? 0),
     [gen, draft, changed, map.buildings]);
   const patch = (value: Partial<LayoutSettings>) => setDraft((old) => ({ ...old, ...value }));
   return <section className="sidebar-section layout-section" aria-label="Планировка поселения">
@@ -37,6 +38,18 @@ function PlanPanel({ gen, map, onApply, locked }: { gen: GenSettings; map: MapDa
     <SettlementChoices style={draft.style} onStyle={(style) => patch({ style })} />
     <DensitySlider density={draft.density} onDensity={(density) => patch({ density })} />
     <Toggle label="Площади и городские детали" checked={draft.publicSpaces} onChange={(publicSpaces) => patch({ publicSpaces })} />
+    {draft.publicSpaces && <div className="market-settings">
+      <label className="field-label">Планировка рынка
+        <select aria-label="Планировка рынка" value={draft.marketStyle} onChange={(e) => patch({ marketStyle: e.target.value as MarketStyle })}>
+          {MARKET_STYLES.map(({ id, label }) => <option value={id} key={id}>{label}</option>)}
+        </select>
+      </label>
+      <label className="density-control">
+        <span className="density-label">Насыщенность рынка <output>{Math.round(draft.marketRichness * 100)}<small>%</small></output></span>
+        <input type="range" aria-label="Насыщенность рынка" min="0" max="100" step="1" value={Math.round(draft.marketRichness * 100)}
+          onChange={(e) => patch({ marketRichness: Number(e.currentTarget.value) / 100 })} style={{ '--density': `${Math.round(draft.marketRichness * 100)}%` } as CSSProperties} />
+      </label>
+    </div>}
     <button type="button" className="action-btn plan-apply" disabled={locked} onClick={() => onApply(draft)}><Icon name="sparkles" size={15} /> Применить планировку</button>
     {locked && <p className="tool-hint">Разблокируйте слои карты, чтобы изменить планировку.</p>}
     {draft.style !== map.biome && !locked && <p className="tool-hint">Смена типа создаст новую карту. Действие можно отменить.</p>}
@@ -56,7 +69,7 @@ interface Props {
 
 export default function SettlementPanel({ gen, map, settings: s, layoutLocked, onApply, onSettings, onTool, onRotate }: Props) {
   return <div className="settlement-panel">
-    <PlanPanel key={`${gen.seed}:${gen.biome}:${gen.density}:${gen.publicSpaces}:${gen.width}:${gen.height}`} gen={gen} map={map} onApply={onApply} locked={layoutLocked} />
+    <PlanPanel key={`${gen.seed}:${gen.biome}:${gen.density}:${gen.publicSpaces}:${gen.marketStyle}:${gen.marketRichness}:${gen.width}:${gen.height}`} gen={gen} map={map} onApply={onApply} locked={layoutLocked} />
     <section className="sidebar-section roof-section" aria-label="Кровля и постройки">
       <div className="section-heading"><h2><Icon name="roof" size={17} /> Кровля</h2><button type="button" className="quiet-btn build-tool" title="Поставить дом (N)" aria-pressed={s.tool === 'building'} onClick={() => onTool(s.tool === 'building' ? 'roof' : 'building')}><Icon name="plus" size={14} /> Дом</button></div>
       <div className="roof-swatches" role="group" aria-label="Материал крыши">
