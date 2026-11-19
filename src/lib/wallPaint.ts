@@ -24,12 +24,14 @@ export function drawWalls(
   cs: number,
   _seed: number,
   shading: boolean,
+  wallThickness: number,
 ): boolean {
   const art = getAssets().art;
   const wall = art['wall-straight'];
   if (!wall) return false;
 
-  const offset = cs * 0.39;
+  const band = cs * Math.max(0.2, Math.min(1.7, wallThickness));
+  const offset = band / 2;
   const segments: [number, number, number, number][] = [];
   for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
     if (!floorLike(map, x, y)) continue;
@@ -42,7 +44,6 @@ export function drawWalls(
   }
   if (!segments.length) return true;
 
-  const band = cs * 0.78;
   const path = () => {
     ctx.beginPath();
     for (const [x0, y0, x1, y1] of segments) {

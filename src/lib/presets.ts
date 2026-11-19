@@ -56,6 +56,7 @@ export const DEFAULT_RENDER: RenderSettings = {
   gridColor: '#e5d9b9',
   shading: true,
   texture: true,
+  wallThickness: 0.78,
   showTrees: true,
   showRocks: true,
   showStructures: true,

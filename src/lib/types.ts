@@ -255,6 +255,8 @@ export interface RenderSettings {
   gridColor: string;
   shading: boolean;
   texture: boolean;
+  /** Толщина стен в клетках; применяется к подземельям. */
+  wallThickness: number;
   showTrees: boolean;
   showRocks: boolean;
   showStructures: boolean;

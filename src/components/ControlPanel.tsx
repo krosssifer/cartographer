@@ -90,6 +90,7 @@ export default function ControlPanel({ gen, render, onGen, onRender, onRandomSee
     <details className="sidebar-section generation-fields">
       <summary className="section-heading"><h2>Сетка и вид</h2><Icon name="chevron" size={15} className="section-symbol" /></summary>
       <Slider label="Разрешение клетки (px)" value={render.cellSize} min={16} max={72} step={2} onChange={(cellSize) => onRender({ cellSize })} />
+      {isDungeon && <Slider label="Толщина стен" value={render.wallThickness} min={0.25} max={1.6} step={0.02} format={(v) => v.toFixed(2) + ' кл.'} onChange={(wallThickness) => onRender({ wallThickness })} />}
       <Toggle label="Сетка" checked={render.showGrid} onChange={(showGrid) => onRender({ showGrid })} />
       {render.showGrid && <>
         <label className="field-label">Тип сетки<select aria-label="Тип сетки" value={render.gridType} onChange={(e) => onRender({ gridType: e.target.value === 'hex' ? 'hex' : 'square' })}><option value="square">Квадратная</option><option value="hex">Гексагональная</option></select></label>

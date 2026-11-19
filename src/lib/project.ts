@@ -6,7 +6,7 @@ import { CIVIC_KINDS, DEFAULT_EDITOR, ROOF_KIT, ROOF_SHAPES } from './settlement
 import { FURNITURE_FINISH_KEYS, FURNITURE_KINDS } from './furnitureKit';
 import { CRYPT, CRYPT_KINDS, CRYPT_THEMES } from './cryptKit';
 import { MAX_SPRITES, MAX_SPRITE_DATA, SPRITE_DATA_PATTERN } from './furnitureImport';
-import { DEFAULT_GEN } from './presets';
+import { DEFAULT_GEN, DEFAULT_RENDER } from './presets';
 import { CHEST_KINDS } from './chests';
 import { validSize } from './objectGeometry';
 import type { ObjectDimensions } from './types';
@@ -21,7 +21,7 @@ export interface Project {
 
 type NewEditorFields = 'roofMaterial' | 'roofShape' | 'civicKind' | 'stampRotation' | 'buildingSize' | 'civicSize' | 'chestRotation' | 'furnitureKind' | 'furnitureErase'
   | 'furnitureFinish' | 'furnitureSprite' | 'cryptKind' | 'cryptErase' | 'cryptConceal' | 'chestKind' | 'objectSizes' | 'sizeLock' | 'sizeUnit';
-type NewRenderFields = 'showChests' | 'showRoofs' | 'showCivic' | 'showCrypt' | 'showSecrets';
+type NewRenderFields = 'showChests' | 'showRoofs' | 'showCivic' | 'showCrypt' | 'showSecrets' | 'wallThickness';
 type NewGenFields = 'density' | 'settlement' | 'publicSpaces' | 'cryptDetail' | 'cryptTraps' | 'cryptChasms' | 'cryptArchetype';
 type ImportProject = Omit<Project, 'gen' | 'map' | 'render' | 'editor'> & {
   gen: Omit<GenSettings, NewGenFields> & Partial<Pick<GenSettings, NewGenFields>>;
@@ -57,6 +57,7 @@ export function validateProject(v: unknown): v is ImportProject {
   if (!['square', 'hex'].includes(String(r.gridType))) return false;
   if (![r.showGrid, r.shading, r.texture, r.showTrees, r.showRocks, r.showStructures, r.vignette].every(bool)) return false;
   if (![r.showChests, r.showCivic, r.showRoofs, r.showCrypt, r.showSecrets].every((value) => value === undefined || bool(value))) return false;
+  if (r.wallThickness !== undefined && !finite(r.wallThickness, 0.25, 1.6)) return false;
   if (v.map !== null) {
     const m = v.map;
     if (!record(m) || m.width !== g.width || m.height !== g.height || m.biome !== g.biome) return false;
@@ -145,7 +146,7 @@ export function parseProject(value: unknown): Project | null {
       publicSpaces: value.gen.publicSpaces ?? true,
     },
     map: value.map ? { ...value.map, chests: value.map.chests ?? [] } : null,
-    render: { showRoofs: true, showCivic: true, showChests: true, showCrypt: true, showSecrets: true, ...value.render },
+    render: { showRoofs: true, showCivic: true, showChests: true, showCrypt: true, showSecrets: true, wallThickness: DEFAULT_RENDER.wallThickness, ...value.render },
     editor: value.editor ? { ...DEFAULT_EDITOR, ...value.editor, tool: value.editor.tool === 'paste' ? 'brush' : value.editor.tool } : undefined,
   };
 }

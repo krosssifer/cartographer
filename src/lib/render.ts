@@ -36,7 +36,7 @@ export function renderMap(canvas: HTMLCanvasElement, map: MapData, rs: RenderSet
   if (rs.showCrypt) { crypt.floorProps(); crypt.lights(); }
 
   if (rs.showStructures) {
-    const spriteWalls = drawWalls(ctx, map, cs, seed, rs.shading);
+    const spriteWalls = drawWalls(ctx, map, cs, seed, rs.shading, rs.wallThickness);
     if (!spriteWalls && rs.shading) eachStructure(map, (terrain, x, y) => {
       if (terrain === 'wall') {
         ctx.save();
