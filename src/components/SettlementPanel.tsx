@@ -1,7 +1,7 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import { artUrl } from '../lib/assets';
 import { generateSettlement } from '../lib/settlement';
-import { BUILDING_SIZES, CIVIC_KINDS, CIVIC_KIT, CIVIC_SIZES, MARKET_STYLES, isSettlement, ROOF_KIT, ROOF_SHAPES } from '../lib/settlementKit';
+import { BUILDING_SIZES, CIVIC_GROUPS, CIVIC_KIT, CIVIC_SIZES, MARKET_STYLES, isSettlement, ROOF_KIT, ROOF_SHAPES } from '../lib/settlementKit';
 import type { EditorSettings, EditorTool, GenSettings, MapData, MarketStyle, RoofShape, SettlementStyle } from '../lib/types';
 import Icon from './Icon';
 import { Toggle } from './controls';
@@ -68,6 +68,27 @@ interface Props {
 }
 
 export default function SettlementPanel({ gen, map, settings: s, layoutLocked, onApply, onSettings, onTool, onRotate }: Props) {
+  // Сетка городских объектов большая (рыночные спрайты + старые объекты).
+  // Кэшируем её разметку: иначе каждый рендер карты создаёт десятки JSX-узлов
+  // и перерисовывает панель заметно дольше самой карты.
+  const settingsRef = useRef(onSettings);
+  settingsRef.current = onSettings;
+  const toolRef = useRef(onTool);
+  toolRef.current = onTool;
+  const [civicGroup, setCivicGroup] = useState<'city' | 'market'>('city');
+  const civicGrid = useMemo(() => {
+    const kinds = CIVIC_GROUPS.find((group) => group.id === civicGroup)?.kinds ?? CIVIC_GROUPS[0].kinds;
+    return kinds.map((kind) => {
+      const prop = CIVIC_KIT[kind];
+      return <button key={kind} type="button" data-civic={kind} title={prop.label} aria-pressed={s.tool === 'civic' && s.civicKind === kind}
+        onClick={() => {
+          settingsRef.current({ civicKind: kind, civicSize: kind === s.civicKind ? s.civicSize : 0 });
+          toolRef.current('civic');
+        }}>
+        <img src={artUrl(prop.art)} alt="" loading="lazy" decoding="async" /><span>{prop.label}</span>
+      </button>;
+    });
+  }, [civicGroup, s.tool, s.civicKind, s.civicSize]);
   return <div className="settlement-panel">
     <PlanPanel key={`${gen.seed}:${gen.biome}:${gen.density}:${gen.publicSpaces}:${gen.marketStyle}:${gen.marketRichness}:${gen.width}:${gen.height}`} gen={gen} map={map} onApply={onApply} locked={layoutLocked} />
     <section className="sidebar-section roof-section" aria-label="Кровля и постройки">
@@ -90,15 +111,10 @@ export default function SettlementPanel({ gen, map, settings: s, layoutLocked, o
     </section>
     <section className="sidebar-section civic-section" aria-label="Городские объекты">
       <div className="section-heading"><h2><Icon name="market" size={17} /> Городские объекты</h2>{s.tool === 'civic' && <button type="button" className="quiet-btn" title="Повернуть объект (Q)" onClick={onRotate}><Icon name="rotate" size={14} /> {s.stampRotation}°</button>}</div>
-      <div className="civic-grid">
-        {CIVIC_KINDS.map((kind) => {
-          const prop = CIVIC_KIT[kind];
-          return <button key={kind} type="button" data-civic={kind} title={prop.label} aria-pressed={s.tool === 'civic' && s.civicKind === kind}
-            onClick={() => { onSettings({ civicKind: kind, civicSize: kind === s.civicKind ? s.civicSize : 0 }); onTool('civic'); }}>
-            <img src={artUrl(prop.art)} alt="" /><span>{prop.label}</span>
-          </button>;
-        })}
+      <div className="settlement-types civic-tabs" role="group" aria-label="Категория городских объектов">
+        {CIVIC_GROUPS.map((group) => <button key={group.id} type="button" aria-pressed={civicGroup === group.id} onClick={() => setCivicGroup(group.id)}>{group.label}</button>)}
       </div>
+      <div className="civic-grid">{civicGrid}</div>
       {s.tool === 'civic' && (s.civicKind === 'market' || s.civicKind === 'square') && <label className="stamp-options civic-size">Размер
         <select aria-label={s.civicKind === 'square' ? 'Размер площади' : 'Размер рынка'} value={s.civicSize} onChange={(e) => onSettings({ civicSize: Number(e.target.value) })}>
           {CIVIC_SIZES[s.civicKind].map(({ label }, index) => <option key={label} value={index}>{label}</option>)}

@@ -10,7 +10,7 @@ import Icon from './components/Icon';
 import { generateMap } from './lib/generator';
 import { renderMap } from './lib/render';
 import { TERRAIN_COLORS, TERRAIN_LABELS } from './lib/palette';
-import { loadAssets } from './lib/assets';
+import { loadAssets, loadMarketAssets } from './lib/assets';
 import { CHEST_ROTATIONS, copyArea, eraseArea } from './lib/edits';
 import { BIOME_LABELS, DEFAULT_RENDER, STARTER_CRYPT } from './lib/presets';
 import { downloadJson, parseProject, readSession, saveSession } from './lib/project';
@@ -70,6 +70,7 @@ export default function App() {
   const [cursor, setCursor] = useState<Point | null>(null);
   const [assetsReady, setAssetsReady] = useState(false);
   const [spritesReady, setSpritesReady] = useState(!initial?.map?.furnitureSprites?.length);
+  const [marketReady, setMarketReady] = useState(!isSettlement(gen.biome));
   const [spacePan, setSpacePan] = useState(false);
   const [toast, setToast] = useState('');
   const [mobileSidebar, setMobileSidebar] = useState(false);
@@ -115,9 +116,19 @@ export default function App() {
     return () => { stopped = true; };
   }, [initial]);
 
+  // Рыночные спрайты нужны только поселениям: не держим их в памяти и не
+  // декодируем при старте карт леса/склепа.
   useEffect(() => {
-    if (assetsReady && spritesReady && mode === 'generate' && canvasRef.current) renderMap(canvasRef.current, map, render, gen.seed);
-  }, [map, render, mode, gen.seed, assetsReady, spritesReady]);
+    if (!isSettlement(gen.biome)) { setMarketReady(true); return; }
+    let stopped = false;
+    setMarketReady(false);
+    loadMarketAssets().then(() => { if (!stopped) setMarketReady(true); });
+    return () => { stopped = true; };
+  }, [gen.biome]);
+
+  useEffect(() => {
+    if (assetsReady && spritesReady && marketReady && mode === 'generate' && canvasRef.current) renderMap(canvasRef.current, map, render, gen.seed);
+  }, [map, render, mode, gen.seed, assetsReady, spritesReady, marketReady]);
 
   useEffect(() => {
     if (!viewportRef.current) return;
@@ -448,7 +459,7 @@ export default function App() {
   const placingChest = mode === 'edit' && editor.tool === 'chest';
   const placingFurniture = mode === 'edit' && editor.tool === 'furniture';
   const placingCrypt = mode === 'edit' && editor.tool === 'crypt';
-  const ready = assetsReady && spritesReady;
+  const ready = assetsReady && spritesReady && marketReady;
   const cryptMap = gen.biome === 'dungeon';
 
   return <div className="studio-shell">

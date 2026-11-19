@@ -1,4 +1,4 @@
-﻿"""РќР°СЂРµР·РєР° Р»РёСЃС‚Р° СЂС‹РЅРѕС‡РЅС‹С… РѕР±СЉРµРєС‚РѕРІ (СЃС†РµРЅР°СЂРёР№ В«РіРѕСЂРѕРґ/РґРµСЂРµРІРЅСЏВ»).
+"""РќР°СЂРµР·РєР° Р»РёСЃС‚Р° СЂС‹РЅРѕС‡РЅС‹С… РѕР±СЉРµРєС‚РѕРІ (СЃС†РµРЅР°СЂРёР№ В«РіРѕСЂРѕРґ/РґРµСЂРµРІРЅСЏВ»).
 
 РСЃС‚РѕС‡РЅРёРє: assets/source/sprite-sheet-market.jpg (Р±РµР»С‹Р№ С„РѕРЅ).
 Р РµР·СѓР»СЊС‚Р°С‚: src/assets/cartography/market-<name>.webp СЃ Р°Р»СЊС„Р°-РєР°РЅР°Р»РѕРј.
@@ -76,8 +76,13 @@ def main() -> None:
         sprite = rgb.crop(box)
         mask = alpha.crop(box).filter(ImageFilter.MinFilter(3))
         sprite.putalpha(mask)
+        # Спрайты в листе нарисованы с большим запасом под печать; на карте
+        # объект занимает 1–3 клетки, поэтому хранить их в полном разрешении
+        # дорого: это заметно замедляет загрузку и декодирование.
+        if max(sprite.size) > 320:
+            sprite.thumbnail((320, 320), Image.Resampling.LANCZOS)
         target = OUT / f'market{name}.webp'
-        sprite.save(target, 'WEBP', lossless=True, quality=100, method=6)
+        sprite.save(target, 'WEBP', lossless=False, quality=85, method=6)
         total += target.stat().st_size
         print(f'{name:20} {sprite.width}x{sprite.height} {target.stat().st_size // 1024} KB')
     print(f'total: {total / 1024 / 1024:.2f} MB, sprites: {len(SPRITES)}')

@@ -47,7 +47,10 @@ interface MapAssets {
 
 const assets: MapAssets = { art: {}, materials: {}, ready: false };
 let loading: Promise<MapAssets> | undefined;
+let marketLoading: Promise<void> | undefined;
 export const getAssets = () => assets;
+
+const isMarketAsset = (path: string) => /\/market[A-Z][^/]*\.webp$/.test(path);
 
 async function loadImage(src: string) {
   const img = new Image();
@@ -56,10 +59,23 @@ async function loadImage(src: string) {
   return img;
 }
 
+/** Фоново догружает 40 рыночных спрайтов: они нужны только поселениям. */
+export function loadMarketAssets(): Promise<void> {
+  if (marketLoading) return marketLoading;
+  marketLoading = (async () => {
+    const entries = Object.entries(files).filter(([path]) => isMarketAsset(path));
+    await Promise.allSettled(entries.map(async ([path, src]) => {
+      const name = path.slice(path.lastIndexOf('/') + 1, -5);
+      assets.art[name] = await loadImage(src);
+    }));
+  })();
+  return marketLoading;
+}
+
 export function loadAssets(): Promise<MapAssets> {
   if (loading) return loading;
   loading = (async () => {
-    await Promise.allSettled(Object.entries(files).map(async ([path, src]) => {
+    await Promise.allSettled(Object.entries(files).filter(([path]) => !isMarketAsset(path)).map(async ([path, src]) => {
       const name = path.slice(path.lastIndexOf('/') + 1, -5);
       assets.art[name] = await loadImage(src);
     }));

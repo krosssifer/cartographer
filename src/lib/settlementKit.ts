@@ -71,6 +71,10 @@ export const CIVIC_KIT = {
 } satisfies Record<CivicKind, { label: string; art: string; icon: string; w: number; h: number }>;
 
 export const CIVIC_KINDS = Object.keys(CIVIC_KIT) as CivicKind[];
+export const CIVIC_GROUPS = [
+  { id: 'city', label: 'Город', kinds: CIVIC_KINDS.filter((kind) => !kind.startsWith('market') || kind === 'market') },
+  { id: 'market', label: 'Рынок', kinds: CIVIC_KINDS.filter((kind) => kind.startsWith('market') && kind !== 'market') },
+] as const;
 export const CIVIC_SIZES = {
   market: [{ w: 2, h: 2, label: 'Один прилавок' }, { w: 4, h: 2, label: 'Торговый ряд' }, { w: 4, h: 4, label: 'Ярмарка' }],
   square: [{ w: 5, h: 4, label: '5 × 4 клетки' }, { w: 7, h: 5, label: '7 × 5 клеток' }, { w: 9, h: 7, label: '9 × 7 клеток' }],
