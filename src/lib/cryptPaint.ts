@@ -99,6 +99,10 @@ export function cryptPainter(ctx: CanvasRenderingContext2D, map: MapData, settin
       if (kind === 'mushroomsGlow') glow(w / 2, h / 2, .95, '62,190,170', .22);
       if (kind === 'crystals') glow(w / 2, h / 2, .9, '120,190,220', .20);
       if (kind === 'puddleAcid') glow(w / 2, h / 2, .8, '80,180,90', .15);
+      if (kind === 'runeBlue' || kind === 'runeCircleBlue') glow(w / 2, h / 2, Math.max(w, h) * .55, '90,190,230', .22);
+      if (kind === 'runeCirclePurple') glow(w / 2, h / 2, Math.max(w, h) * .55, '170,110,220', .22);
+      if (kind === 'greenRuneStone') glow(w / 2, h / 2, .8, '90,220,120', .18);
+      if (kind === 'orbRed') glow(w / 2, h / 2, .9, '220,70,70', .18);
       if (!spec.flat && !hazard(kind)) glow(w * .53, h * .61, Math.max(w, h) * .60, '16,13,13', .54, .31);
     }
     const rotate = rotation % 180 !== 0;

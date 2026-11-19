@@ -29,7 +29,15 @@ export type CryptKind =
   | 'boulder' | 'rockPile' | 'scree' | 'rockSpikes' | 'rockSpire' | 'pebbles' | 'rockOutcrop' | 'stoneWell'
   | 'stalagmites' | 'stalactites' | 'puddleBlue' | 'puddleMud' | 'puddleAcid'
   | 'mossGrass' | 'mushroomsGlow' | 'mossPatch' | 'bushPatch' | 'ivyWall' | 'roots' | 'lichen'
-  | 'dirtPatch' | 'cracks' | 'nestEggs' | 'skeletonBones' | 'logs' | 'crystals';
+  | 'dirtPatch' | 'cracks' | 'nestEggs' | 'skeletonBones' | 'logs' | 'crystals'
+  // ловушки и механизмы (второй спрайт-лист)
+  | 'pitSquare' | 'pitRound' | 'pitSpikes' | 'spikeField' | 'spikeFieldBloody' | 'spikeRack'
+  | 'spikedWheel' | 'sawBlade' | 'axeBlade' | 'sawBar' | 'portcullis' | 'portcullisWood'
+  | 'wreckingBall' | 'dartHoleWall' | 'bladeSlot' | 'pressurePlate' | 'pressurePlateRound'
+  | 'pressurePlateRusty' | 'buttonPanel' | 'gear' | 'gearCog' | 'chainPulley' | 'pulleyBlock'
+  | 'lever' | 'leverBlade' | 'doorWood' | 'doorMetal' | 'doorRound' | 'doorBarred' | 'gateBars'
+  | 'hangingCage' | 'pedestalStatue' | 'orbRed' | 'bust' | 'runeBlue' | 'runeCircleBlue' | 'runeCirclePurple'
+  | 'greenRuneStone' | 'flail' | 'crackedPlate';
 export type CryptTheme = 'entry' | 'burial' | 'sanctum' | 'ossuary' | 'archive' | 'reliquary' | 'storage' | 'watch';
 export type CryptPlacement = 'wall' | 'wallFace' | 'center' | 'corner' | 'any';
 
