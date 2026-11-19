@@ -32,6 +32,31 @@ export function drawWalls(
 
   const band = cs * Math.max(0.2, Math.min(1.7, wallThickness));
   const offset = band / 2;
+
+  // Клетки стены заливаем фоном-штриховкой, как пустоту за картой: при
+  // тонкой ленте под ней не должен проступать пол и не должно быть чёрной рамки.
+  ctx.save();
+  ctx.fillStyle = '#211e18';
+  for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
+    if (map.cells[y]?.[x]?.terrain === 'wall') ctx.fillRect(x * cs, y * cs, cs + 0.5, cs + 0.5);
+  }
+  const hatching = art['hatching'];
+  if (hatching) {
+    const pattern = ctx.createPattern(hatching, 'repeat');
+    if (pattern) {
+      const sx = cs / (hatching.naturalWidth / 8.1);
+      const sy = cs / (hatching.naturalHeight / 8.1);
+      pattern.setTransform(new DOMMatrix([sx, 0, 0, sy, 0, 0]));
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = pattern;
+      for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
+        if (map.cells[y]?.[x]?.terrain === 'wall') ctx.fillRect(x * cs, y * cs, cs + 0.5, cs + 0.5);
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+  ctx.restore();
+
   const segments: [number, number, number, number][] = [];
   for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
     if (!floorLike(map, x, y)) continue;
