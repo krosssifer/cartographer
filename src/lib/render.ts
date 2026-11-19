@@ -6,6 +6,7 @@ import { paintTerrain } from './terrainPaint';
 import { chestArt, chestDimensions } from './chests';
 import { doorAxis, doorStyle, drawDoor } from './doors';
 import { treeDimensions, rockDimensions } from './objectSizing';
+import { drawWalls } from './wallPaint';
 import type { Chest, MapData, RenderSettings, Rock, Terrain, Tree } from './types';
 
 export { TERRAIN_COLORS, TERRAIN_LABELS } from './palette';
@@ -35,7 +36,8 @@ export function renderMap(canvas: HTMLCanvasElement, map: MapData, rs: RenderSet
   if (rs.showCrypt) { crypt.floorProps(); crypt.lights(); }
 
   if (rs.showStructures) {
-    if (rs.shading) eachStructure(map, (terrain, x, y) => {
+    const spriteWalls = drawWalls(ctx, map, cs, seed, rs.shading);
+    if (!spriteWalls && rs.shading) eachStructure(map, (terrain, x, y) => {
       if (terrain === 'wall') {
         ctx.save();
         ctx.translate((x + 0.08) * cs, (y + 0.16) * cs);
@@ -49,7 +51,10 @@ export function renderMap(canvas: HTMLCanvasElement, map: MapData, rs: RenderSet
       }
     });
     eachStructure(map, (terrain, x, y) => {
-      if (terrain === 'wall') drawWall(ctx, map, x, y, cs, seed);
+      if (terrain === 'wall') {
+        if (!spriteWalls) drawWall(ctx, map, x, y, cs, seed);
+        return;
+      }
       if (terrain === 'bridge') drawWoodwork(ctx, map, terrain, x, y, cs, seed, rs.texture);
       if (terrain === 'door') {
         ctx.save(); ctx.translate((x + .5) * cs, (y + .5) * cs); ctx.scale(cs, cs);
@@ -99,7 +104,8 @@ export function renderMap(canvas: HTMLCanvasElement, map: MapData, rs: RenderSet
     if (dungeon) {
       ctx.beginPath();
       for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
-        if (map.cells[y][x].terrain !== 'void') ctx.rect(x * cs, y * cs, cs, cs);
+        const terrain = map.cells[y][x].terrain;
+        if (terrain !== 'void' && terrain !== 'wall') ctx.rect(x * cs, y * cs, cs, cs);
       }
       ctx.clip();
     }

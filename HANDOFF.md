@@ -127,6 +127,7 @@ src/
     settlement.ts, settlementEdits.ts, settlementKit.ts, settlementPaint.ts  поселения
     interiors.ts, interiorPaint.ts, furnitureKit.ts, furnitureImport.ts       интерьеры
     render.ts, terrainPaint.ts, palette.ts, doors.ts, chests.ts               рендер
+    wallPaint.ts               спрайтовый рендер стен: полосы, стыки, углы
     edits.ts                   иммутабельные операции редактора, prune
     project.ts                 схема v1, валидация, localStorage, JSON
     assets.ts, fonts.ts        загрузка встроенных ассетов
@@ -185,7 +186,7 @@ GenSettings ──generateMap()──► MapData ──renderMap(canvas)──�
    - базовый набор (`BASE`) + свет (`LIGHT`), сцены (`SCENES`, 2 на тему), настенные украшения (`WALL_ORNAMENTS`);
    - бюджет мебели `round(площадь × (0.028 + 0.155 × detail))`, слот-ориентированный RNG;
    - ловушки только в коридорах, с приоритетом 2–3 клеток перед дверью.
-6. **Рендер** — `renderMap` рисует рельеф, стены, двери, дома, объекты, свет, сетку.
+6. **Рендер** — `renderMap` рисует рельеф, стены, двери, дома, объекты, свет, сетку. Стены — `wallPaint.ts`: спрайтовые полосы вдоль кладки, короткие вставки, угловые блоки и столбы на скошенных углах; сетка не пересекает стены.
 
 ### Архетипы
 
@@ -226,13 +227,14 @@ GenSettings ──generateMap()──► MapData ──renderMap(canvas)──�
 - README и `docs/crypt/` обновлены.
 - Из спрайт-листа добавлены 26 природных объектов (валуны, осыпи, сталагмиты, лужи, колодец, мох, кустарник, плющ, корни, лишайник, трещины, гнёзда, кости, брёвна, кристаллы); белый фон удалён, WebP прозрачные, нарезка — `scripts/extract-sprite-sheet.py`.
 - Из второго листа добавлены 40 ловушек и механизмов (ямы, шипы, пилы, топоры, решётки, плиты, шестерни, рычаги, двери, клетки, статуи, руны, сферы); нарезка — `scripts/extract-trap-sheet.py`, для шестерён/пил/рун белый удаляется и внутри контуров.
+- Стены переведены на спрайты из третьего листа: длинные секции, короткие вставки, плющ, угловые блоки и столбы; скошенные углы комнат закрываются угловыми блоками, сетка больше не рисуется поверх стен. Нарезка — `scripts/extract-wall-sheet.py`, рендер — `src/lib/wallPaint.ts`.
 
 ### P2.1 — архетипы
 - Пять планировок, тематические порядки и главные залы, селект «Тип склепа» в панели генерации.
 - Валидация и миграция старых проектов (по умолчанию `tomb`).
 - Тесты и документация.
 
-Ключевые файлы изменений: `src/lib/cryptLayout.ts`, `src/lib/generator.ts`, `src/lib/cryptKit.ts`, `src/lib/types.ts`, `src/lib/presets.ts`, `src/lib/project.ts`, `src/lib/edits.ts`, `src/components/ControlPanel.tsx`, `src/components/CryptPanel.tsx`, `scripts/crypt-test.ts`, `vite.config.ts`, `README.md`, `docs/crypt/*`.
+Ключевые файлы изменений: `src/lib/cryptLayout.ts`, `src/lib/generator.ts`, `src/lib/cryptKit.ts`, `src/lib/types.ts`, `src/lib/presets.ts`, `src/lib/project.ts`, `src/lib/edits.ts`, `src/lib/render.ts`, `src/lib/wallPaint.ts`, `src/components/ControlPanel.tsx`, `src/components/CryptPanel.tsx`, `scripts/crypt-test.ts`, `vite.config.ts`, `README.md`, `docs/crypt/*`.
 
 ---
 
@@ -241,7 +243,7 @@ GenSettings ──generateMap()──► MapData ──renderMap(canvas)──�
 | Проверка | Как | Результат на момент handoff |
 |---|---|---|
 | Типы | `node node_modules\typescript\bin\tsc --noEmit` | 0 ошибок |
-| Крипт-тест (все архетипы) | `npx tsx scripts/crypt-test.ts` (нужен tsx) | проходит: 125 авторазмещённых вида, 5 архетипов × 6 размеров × 4 seed |
+| Крипт-тест (все архетипы) | `npx tsx scripts/crypt-test.ts` (нужен tsx) | проходит: 168 авторазмещённых видов, 5 архетипов × 6 размеров × 4 seed |
 | Планировки поселений | `npx tsx scripts/layout-test.ts` | проходит |
 | Сборка | `npm.cmd run build` с TEMP override | 5,34 МБ, 127 модулей |
 | Браузер | Playwright + dev-сервер | приложение открывается, консольных ошибок нет |
@@ -292,7 +294,9 @@ GenSettings ──generateMap()──► MapData ──renderMap(canvas)──�
 - Репозиторий: <https://github.com/krosssifer/cartographer>
 - Приложение: <http://127.0.0.1:5173/>
 - Анализ и дорожная карта: `docs/ANALYSIS-AND-PLAN.md`
-- Схемы и скриншоты: `docs/crypt/` (`archetypes.png`, `app-archetype-ui.png`, `after-p1-seed-1337.png` и др.)
+- Схемы и скриншоты: `docs/crypt/` (`archetypes.png`, `app-archetype-ui.png`, `after-p1-seed-1337.png`, `sprites-walls.png`, `app-walls.png` и др.)
+- Спрайтовый рендер стен: `src/lib/wallPaint.ts`
+- Нарезка листа стен: `scripts/extract-wall-sheet.py`
 - Пресеты и архетипы: `src/lib/presets.ts`
 - Планировка и декор: `src/lib/cryptLayout.ts`
 - Модель: `src/lib/types.ts`
