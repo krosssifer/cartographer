@@ -7,7 +7,7 @@ export const TERRAIN_COLORS: Record<Terrain, RGB> = {
   grass: [131, 137, 77], darkGrass: [88, 103, 60], dirt: [135, 108, 86], mud: [83, 79, 56],
   rock: [126, 124, 115], snow: [215, 224, 229], ice: [163, 190, 203],
   road: [164, 135, 97], bridge: [135, 99, 60], floor: [128, 122, 107],
-  wall: [94, 92, 81], door: [130, 91, 56], caveFloor: [112, 108, 96],
+  wall: [28, 25, 24], door: [130, 91, 56], caveFloor: [112, 108, 96],
   caveWall: [50, 49, 45], plaza: [177, 163, 140], buildingFloor: [145, 120, 88],
   buildingWall: [168, 157, 139], roof: [155, 109, 72], void: [28, 25, 24],
 };

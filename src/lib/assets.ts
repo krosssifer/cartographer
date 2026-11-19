@@ -29,7 +29,7 @@ export const ROOFS = ['thatch', 'shingles', 'terracotta', 'slate'] as const;
 
 export const TILE_ART: Partial<Record<Terrain, Material>> = {
   grass: 'grass', darkGrass: 'grass', dirt: 'earth', road: 'earth', sand: 'bank', mud: 'peat',
-  rock: 'bedrock', caveFloor: 'caveSoil', caveWall: 'bedrock', floor: 'flagstone', wall: 'flagstone', void: 'hatching',
+  rock: 'bedrock', caveFloor: 'caveSoil', caveWall: 'bedrock', floor: 'flagstone', wall: 'hatching', void: 'hatching',
   plaza: 'cobbles', buildingFloor: 'flagstone', buildingWall: 'bedrock', roof: 'thatch',
   water: 'water', deepWater: 'water', ice: 'snow', snow: 'snow',
 };
