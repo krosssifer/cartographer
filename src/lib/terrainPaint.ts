@@ -87,7 +87,10 @@ export function paintTerrain(map: MapData, settings: RenderSettings, seed: numbe
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     const at = y * width + x;
     const { terrain, height: elevation } = map.cells[y][x];
-    tiles[at] = index[!settings.showStructures && (terrain === 'wall' || terrain === 'door') ? 'floor' : terrain];
+    const shown = !settings.showStructures && (terrain === 'wall' || terrain === 'door')
+      ? 'floor'
+      : terrain === 'wall' ? 'void' : terrain;
+    tiles[at] = index[shown];
     if (settings.shading && !rigid[tiles[at]]) {
       const nw = map.cells[Math.max(0, y - 1)][Math.max(0, x - 1)].height;
       const se = map.cells[Math.min(height - 1, y + 1)][Math.min(width - 1, x + 1)].height;

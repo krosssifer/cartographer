@@ -33,28 +33,6 @@ export function drawWalls(
   const band = cs * Math.max(0.2, Math.min(1.7, wallThickness));
   const offset = band / 2;
 
-  // Клетки стен должны выглядеть как общий фон. Копируем в каждую стену
-  // ближайшую уже нарисованную клетку пустоты — тогда цвет и штриховка
-  // совпадают с окружением и под тонкой лентой не видно светлых пятен.
-  for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
-    if (map.cells[y]?.[x]?.terrain !== 'wall') continue;
-    let copied = false;
-    for (let r = 1; r <= 6 && !copied; r++) {
-      for (let dy = -r; dy <= r && !copied; dy++) for (let dx = -r; dx <= r; dx++) {
-        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-        const nx = x + dx, ny = y + dy;
-        if (map.cells[ny]?.[nx]?.terrain !== 'void') continue;
-        ctx.drawImage(ctx.canvas, nx * cs, ny * cs, cs, cs, x * cs, y * cs, cs + 0.5, cs + 0.5);
-        copied = true;
-        break;
-      }
-    }
-    if (!copied) {
-      ctx.fillStyle = '#211e18';
-      ctx.fillRect(x * cs, y * cs, cs + 0.5, cs + 0.5);
-    }
-  }
-
   const segments: [number, number, number, number][] = [];
   for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
     if (!floorLike(map, x, y)) continue;
