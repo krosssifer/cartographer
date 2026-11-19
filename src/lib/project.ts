@@ -57,7 +57,7 @@ export function validateProject(v: unknown): v is ImportProject {
   if (!['square', 'hex'].includes(String(r.gridType))) return false;
   if (![r.showGrid, r.shading, r.texture, r.showTrees, r.showRocks, r.showStructures, r.vignette].every(bool)) return false;
   if (![r.showChests, r.showCivic, r.showRoofs, r.showCrypt, r.showSecrets].every((value) => value === undefined || bool(value))) return false;
-  if (r.wallThickness !== undefined && !finite(r.wallThickness, 0.25, 1.6)) return false;
+  if (r.wallThickness !== undefined && !finite(r.wallThickness, 0.15, 1.2)) return false;
   if (v.map !== null) {
     const m = v.map;
     if (!record(m) || m.width !== g.width || m.height !== g.height || m.biome !== g.biome) return false;

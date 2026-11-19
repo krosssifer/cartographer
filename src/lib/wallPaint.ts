@@ -30,7 +30,7 @@ export function drawWalls(
   const wall = art['wall-straight'];
   if (!wall) return false;
 
-  const band = cs * Math.max(0.2, Math.min(1.7, wallThickness));
+  const band = cs * Math.max(0.12, Math.min(1.3, wallThickness));
   const offset = band / 2;
 
   const segments: [number, number, number, number][] = [];
@@ -80,12 +80,12 @@ export function drawWalls(
   }
 
   // Светлая кромка сверху: читается как верх кладки.
-  ctx.strokeStyle = 'rgba(184,176,146,.22)';
-  ctx.lineWidth = Math.max(1, cs * 0.04);
-  ctx.translate(0, -cs * 0.13);
+  ctx.strokeStyle = 'rgba(184,176,146,.26)';
+  ctx.lineWidth = Math.max(1, band * 0.12);
+  ctx.translate(0, -band * 0.30);
   path();
   ctx.stroke();
-  ctx.translate(0, cs * 0.13);
+  ctx.translate(0, band * 0.30);
   ctx.restore();
   return true;
 }
