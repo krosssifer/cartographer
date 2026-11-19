@@ -33,3 +33,4 @@ pnpm-debug.log*
 # temporary files (editors/agents write through sidecar temp dirs)
 *.tmp
 *.tmpdir/
+.tmp-build/

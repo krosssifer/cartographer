@@ -154,3 +154,7 @@ Ctrl+Z — отмена, Ctrl+Shift+Z / Ctrl+Y — повтор, Ctrl+C / Ctrl+X
 Запустите `npx tsc --noEmit` и `npm run build`. Для браузерной проверки установите `npm install --no-save playwright`, затем `npx playwright install chromium`. При запущенном `npm run dev` выполните `node scripts/browser-test.cjs`, `node scripts/settlement-test.cjs`, `node scripts/interior-test.cjs`, `node scripts/crypt-browser-test.cjs` и `node scripts/object-size-browser.cjs`. Для проверки автономной сборки можно передать `TEST_URL="file://$(pwd)/dist/index.html"`.
 
 Геометрия, детерминизм и совместимость проектов проверяются командами `npx tsx scripts/layout-test.ts`, `npx tsx scripts/crypt-test.ts`, `npx tsx scripts/object-size-test.ts` и `npx tsx scripts/settlement-move-test.ts`.
+
+## Передача проекта
+
+Состояние проекта, быстрый запуск, архитектура, ловушки среды и следующие шаги описаны в [HANDOFF.md](HANDOFF.md).
