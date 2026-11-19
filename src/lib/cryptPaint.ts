@@ -96,6 +96,9 @@ export function cryptPainter(ctx: CanvasRenderingContext2D, map: MapData, settin
     if (settings.shading) {
       if (kind === 'brazier' || kind === 'candles' || kind === 'altar') glow(w / 2, h / 2, kind === 'brazier' ? 1.8 : 1.15, '238,151,64', .30);
       if (kind === 'runeCircle') glow(w / 2, h / 2, 1.7, '46,166,153', .28);
+      if (kind === 'mushroomsGlow') glow(w / 2, h / 2, .95, '62,190,170', .22);
+      if (kind === 'crystals') glow(w / 2, h / 2, .9, '120,190,220', .20);
+      if (kind === 'puddleAcid') glow(w / 2, h / 2, .8, '80,180,90', .15);
       if (!spec.flat && !hazard(kind)) glow(w * .53, h * .61, Math.max(w, h) * .60, '16,13,13', .54, .31);
     }
     const rotate = rotation % 180 !== 0;

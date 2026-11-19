@@ -122,7 +122,7 @@ src/
     types.ts                   модель данных
     generator.ts               биомы, пещеры, подземелья, вода, двери
     cryptLayout.ts             архетипы, планировка, декор, размещение
-    cryptKit.ts                каталог 158 объектов склепа и их правила
+    cryptKit.ts                каталог 184 объектов склепа и их правила
     cryptPaint.ts, cryptArt.ts, cryptVectors.ts   отрисовка склепа
     settlement.ts, settlementEdits.ts, settlementKit.ts, settlementPaint.ts  поселения
     interiors.ts, interiorPaint.ts, furnitureKit.ts, furnitureImport.ts       интерьеры
@@ -224,6 +224,7 @@ GenSettings ──generateMap()──► MapData ──renderMap(canvas)──�
 - Второй источник света в больших залах; ловушки перед дверьми.
 - Лужи по низким местам, вода проходима.
 - README и `docs/crypt/` обновлены.
+- Из спрайт-листа добавлены 26 природных объектов (валуны, осыпи, сталагмиты, лужи, колодец, мох, кустарник, плющ, корни, лишайник, трещины, гнёзда, кости, брёвна, кристаллы); белый фон удалён, WebP прозрачные, нарезка — `scripts/extract-sprite-sheet.py`.
 
 ### P2.1 — архетипы
 - Пять планировок, тематические порядки и главные залы, селект «Тип склепа» в панели генерации.

@@ -299,6 +299,7 @@ const SETS: Record<CryptTheme, Slot[]> = {
     { kind: 'candleHolder', weight: 3 }, { kind: 'toolRack', weight: 2 }, { kind: 'cage', weight: 1 }, { kind: 'pillory', weight: 1 },
     { kind: 'manacles', weight: 2 }, { kind: 'chains', weight: 2 }, { kind: 'bench', weight: 2 }, { kind: 'rubble', weight: 2 },
     { kind: 'web', weight: 2 }, { kind: 'brazier', weight: 2 }, { kind: 'signalHorn', weight: 1 }, { kind: 'oilLamp', weight: 2 },
+    { kind: 'pebbles', weight: 2 }, { kind: 'mossGrass', weight: 1 }, { kind: 'puddleMud', weight: 1 }, { kind: 'lichen', weight: 1 }, { kind: 'roots', weight: 1 },
   ],
   burial: [
     { kind: 'coffin', weight: 4 }, { kind: 'openCoffin', weight: 2 }, { kind: 'graveStone', weight: 3 }, { kind: 'nameTomb', weight: 2 },
@@ -306,6 +307,7 @@ const SETS: Record<CryptTheme, Slot[]> = {
     { kind: 'skeleton', weight: 3 }, { kind: 'bones', weight: 3 }, { kind: 'graveCandle', weight: 3 }, { kind: 'wreath', weight: 2 },
     { kind: 'cryptPodium', weight: 1 }, { kind: 'burialNiche', weight: 2 }, { kind: 'catacombArch', weight: 1 }, { kind: 'ossuaryShelf', weight: 1 },
     { kind: 'sarcophagusLid', weight: 1 }, { kind: 'coffinLid', weight: 1 }, { kind: 'graveDirt', weight: 2 }, { kind: 'candleWheel', weight: 1 },
+    { kind: 'dirtPatch', weight: 2 }, { kind: 'skeletonBones', weight: 2 }, { kind: 'roots', weight: 1 }, { kind: 'nestEggs', weight: 1 }, { kind: 'cracks', weight: 1 },
   ],
   sanctum: [
     { kind: 'altar', weight: 3 }, { kind: 'idol', weight: 2 }, { kind: 'obelisk', weight: 2 }, { kind: 'runeCircle', weight: 2 },
@@ -313,6 +315,7 @@ const SETS: Record<CryptTheme, Slot[]> = {
     { kind: 'rug', weight: 2 }, { kind: 'shrine', weight: 1 }, { kind: 'offeringBowl', weight: 2 }, { kind: 'crystalCluster', weight: 1 },
     { kind: 'glowingMushroom', weight: 1 }, { kind: 'statue', weight: 2 }, { kind: 'ancientSigil', weight: 1 }, { kind: 'boneCharm', weight: 1 },
     { kind: 'lectern', weight: 2 }, { kind: 'candleHolder', weight: 2 }, { kind: 'templeMask', weight: 1 }, { kind: 'stoneEye', weight: 1 },
+    { kind: 'crystals', weight: 2 }, { kind: 'mushroomsGlow', weight: 2 }, { kind: 'mossPatch', weight: 1 }, { kind: 'puddleBlue', weight: 1 }, { kind: 'lichen', weight: 1 }, { kind: 'stalagmites', weight: 1 },
   ],
   ossuary: [
     { kind: 'bonePile', weight: 4 }, { kind: 'skeletonPile', weight: 3 }, { kind: 'skull', weight: 3 }, { kind: 'ribcage', weight: 3 },
@@ -320,6 +323,7 @@ const SETS: Record<CryptTheme, Slot[]> = {
     { kind: 'ossuaryShelf', weight: 2 }, { kind: 'catacombArch', weight: 1 }, { kind: 'urns', weight: 2 }, { kind: 'openCoffin', weight: 1 },
     { kind: 'corpse', weight: 1 }, { kind: 'wrappedBody', weight: 1 }, { kind: 'rubble', weight: 2 },
     { kind: 'web', weight: 2 }, { kind: 'boneSnare', weight: 1 }, { kind: 'graveCandle', weight: 1 }, { kind: 'wreath', weight: 1 },
+    { kind: 'skeletonBones', weight: 3 }, { kind: 'nestEggs', weight: 2 }, { kind: 'dirtPatch', weight: 2 }, { kind: 'roots', weight: 1 }, { kind: 'cracks', weight: 1 },
   ],
   archive: [
     { kind: 'bookcase', weight: 4 }, { kind: 'scrollRack', weight: 3 }, { kind: 'writingDesk', weight: 3 }, { kind: 'ledger', weight: 2 },
@@ -327,6 +331,7 @@ const SETS: Record<CryptTheme, Slot[]> = {
     { kind: 'orrery', weight: 1 }, { kind: 'globe', weight: 1 }, { kind: 'inkwell', weight: 2 }, { kind: 'waxSeal', weight: 2 },
     { kind: 'shelf', weight: 3 }, { kind: 'candleStand', weight: 2 }, { kind: 'toolbox', weight: 1 }, { kind: 'bench', weight: 2 },
     { kind: 'mask', weight: 1 }, { kind: 'mirror', weight: 1 }, { kind: 'beamSupport', weight: 1 }, { kind: 'oilLamp', weight: 2 },
+    { kind: 'ivyWall', weight: 2 }, { kind: 'lichen', weight: 2 }, { kind: 'mossPatch', weight: 1 }, { kind: 'bushPatch', weight: 1 },
   ],
   reliquary: [
     { kind: 'chest', weight: 4 }, { kind: 'relicCase', weight: 3 }, { kind: 'pedestal', weight: 3 }, { kind: 'altar', weight: 2 },
@@ -334,6 +339,7 @@ const SETS: Record<CryptTheme, Slot[]> = {
     { kind: 'runeCircle', weight: 2 }, { kind: 'ancientSigil', weight: 1 }, { kind: 'crystalCluster', weight: 2 }, { kind: 'statue', weight: 2 },
     { kind: 'tapestry', weight: 1 }, { kind: 'banner', weight: 1 }, { kind: 'mask', weight: 1 }, { kind: 'rug', weight: 2 },
     { kind: 'sacrificialKnife', weight: 1 }, { kind: 'chest', weight: 1 }, { kind: 'incense', weight: 1 }, { kind: 'brassScale', weight: 1 },
+    { kind: 'crystals', weight: 3 }, { kind: 'lichen', weight: 1 }, { kind: 'mossGrass', weight: 1 },
   ],
   storage: [
     { kind: 'crates', weight: 4 }, { kind: 'crateStack', weight: 3 }, { kind: 'crateOpen', weight: 2 }, { kind: 'barrels', weight: 3 },
@@ -343,6 +349,7 @@ const SETS: Record<CryptTheme, Slot[]> = {
     { kind: 'coalHeap', weight: 1 }, { kind: 'sawhorse', weight: 1 }, { kind: 'net', weight: 1 }, { kind: 'ropeCoil', weight: 2 },
     { kind: 'workbench', weight: 2 }, { kind: 'vise', weight: 1 }, { kind: 'anvil', weight: 1 }, { kind: 'dryingRack', weight: 1 },
     { kind: 'candleHolder', weight: 1 }, { kind: 'oldCradle', weight: 1 }, { kind: 'mineCart', weight: 1 }, { kind: 'fishNet', weight: 1 },
+    { kind: 'logs', weight: 2 }, { kind: 'pebbles', weight: 1 }, { kind: 'scree', weight: 1 }, { kind: 'puddleMud', weight: 1 }, { kind: 'boulder', weight: 1 },
   ],
   watch: [
     { kind: 'brazier', weight: 4 }, { kind: 'brazierStand', weight: 3 }, { kind: 'bench', weight: 3 }, { kind: 'toolRack', weight: 3 },
@@ -351,6 +358,7 @@ const SETS: Record<CryptTheme, Slot[]> = {
     { kind: 'signalHorn', weight: 2 }, { kind: 'net', weight: 1 }, { kind: 'ropeCoil', weight: 2 }, { kind: 'oilLamp', weight: 2 },
     { kind: 'candleHolder', weight: 2 }, { kind: 'skull', weight: 1 }, { kind: 'bones', weight: 1 }, { kind: 'crateOpen', weight: 2 },
     { kind: 'mineCart', weight: 1 }, { kind: 'mineRails', weight: 1 }, { kind: 'rubblePile', weight: 1 }, { kind: 'brazierStand', weight: 2 },
+    { kind: 'stalagmites', weight: 1 }, { kind: 'rockSpikes', weight: 1 }, { kind: 'boulder', weight: 1 }, { kind: 'rockPile', weight: 1 }, { kind: 'stalactites', weight: 1 },
   ],
 };
 
@@ -361,34 +369,42 @@ const SCENES: Record<CryptTheme, CryptScene[]> = {
   entry: [
     { anchor: 'steps', parts: [{ kind: 'brazierStand', dx: -2, dy: 0 }, { kind: 'brazierStand', dx: 2, dy: 0 }, { kind: 'mournerStatue', dx: -1, dy: -2 }, { kind: 'mournerStatue', dx: 1, dy: -2 }] },
     { anchor: 'bench', parts: [{ kind: 'toolRack', dx: -2, dy: 0 }, { kind: 'manacles', dx: 0, dy: 1 }, { kind: 'cage', dx: 2, dy: 0 }] },
+    { anchor: 'mossGrass', parts: [{ kind: 'pebbles', dx: 2, dy: 0 }, { kind: 'puddleMud', dx: 0, dy: 2 }, { kind: 'lichen', dx: -2, dy: 0 }] },
   ],
   burial: [
     { anchor: 'coffin', parts: [{ kind: 'graveCandle', dx: -1, dy: 0 }, { kind: 'wreath', dx: 2, dy: 0 }, { kind: 'nameTomb', dx: 0, dy: 2 }] },
     { anchor: 'tomb', parts: [{ kind: 'openCoffin', dx: 0, dy: 2 }, { kind: 'sarcophagusLid', dx: -2, dy: 0 }] },
+    { anchor: 'skeletonBones', parts: [{ kind: 'dirtPatch', dx: 0, dy: 1 }, { kind: 'roots', dx: 2, dy: 0 }, { kind: 'nestEggs', dx: -1, dy: 0 }] },
   ],
   sanctum: [
     { anchor: 'altar', parts: [{ kind: 'candleStand', dx: -2, dy: 0 }, { kind: 'candleStand', dx: 2, dy: 0 }, { kind: 'runeCircle', dx: 0, dy: 2 }, { kind: 'rug', dx: 0, dy: 3 }] },
     { anchor: 'altar', parts: [{ kind: 'brazier', dx: -2, dy: 0 }, { kind: 'brazier', dx: 2, dy: 0 }, { kind: 'idol', dx: 0, dy: -2 }] },
+    { anchor: 'crystals', parts: [{ kind: 'mushroomsGlow', dx: 2, dy: 0 }, { kind: 'mossPatch', dx: 0, dy: 1 }, { kind: 'puddleBlue', dx: -2, dy: 0 }] },
   ],
   ossuary: [
     { anchor: 'ossuaryShelf', parts: [{ kind: 'bonePile', dx: 1, dy: 0 }, { kind: 'skull', dx: -1, dy: 0 }, { kind: 'skeletonPile', dx: 0, dy: 1 }] },
     { anchor: 'bonePile', parts: [{ kind: 'ribcage', dx: 1, dy: 0 }, { kind: 'pelvis', dx: -1, dy: 0 }, { kind: 'wreath', dx: 0, dy: 1 }] },
+    { anchor: 'skeletonBones', parts: [{ kind: 'nestEggs', dx: 2, dy: 0 }, { kind: 'roots', dx: -1, dy: 0 }, { kind: 'dirtPatch', dx: 0, dy: 1 }] },
   ],
   archive: [
     { anchor: 'writingDesk', parts: [{ kind: 'bookcase', dx: 2, dy: 0 }, { kind: 'lectern', dx: -2, dy: 0 }, { kind: 'ledger', dx: 0, dy: 1 }] },
     { anchor: 'bookcase', parts: [{ kind: 'scrollRack', dx: 1, dy: 0 }, { kind: 'inkwell', dx: 2, dy: 0 }, { kind: 'shelf', dx: -1, dy: 0 }] },
+    { anchor: 'lichen', parts: [{ kind: 'bushPatch', dx: 2, dy: 0 }, { kind: 'mossPatch', dx: -2, dy: 0 }, { kind: 'roots', dx: 0, dy: 1 }] },
   ],
   reliquary: [
     { anchor: 'chest', parts: [{ kind: 'pedestal', dx: -2, dy: 0 }, { kind: 'pedestal', dx: 2, dy: 0 }, { kind: 'candleWheel', dx: 0, dy: 2 }, { kind: 'reliquaryUrn', dx: 0, dy: -1 }] },
     { anchor: 'chest', parts: [{ kind: 'relicCase', dx: 2, dy: 0 }, { kind: 'candleStand', dx: -2, dy: 0 }, { kind: 'brassScale', dx: 0, dy: 1 }] },
+    { anchor: 'crystals', parts: [{ kind: 'lichen', dx: 2, dy: 0 }, { kind: 'mossGrass', dx: -2, dy: 0 }] },
   ],
   storage: [
     { anchor: 'crates', parts: [{ kind: 'barrelStack', dx: 2, dy: 0 }, { kind: 'sackPile', dx: 0, dy: 1 }, { kind: 'bucket', dx: -1, dy: 0 }] },
     { anchor: 'workbench', parts: [{ kind: 'toolbox', dx: 2, dy: 0 }, { kind: 'vise', dx: -1, dy: 0 }, { kind: 'crateOpen', dx: 0, dy: 1 }] },
+    { anchor: 'logs', parts: [{ kind: 'pebbles', dx: 2, dy: 0 }, { kind: 'scree', dx: 0, dy: 1 }, { kind: 'boulder', dx: -2, dy: 0 }] },
   ],
   watch: [
     { anchor: 'brazier', parts: [{ kind: 'bench', dx: 2, dy: 0 }, { kind: 'toolRack', dx: -2, dy: 0 }, { kind: 'manacles', dx: 0, dy: 1 }] },
     { anchor: 'bench', parts: [{ kind: 'signalHorn', dx: 2, dy: 0 }, { kind: 'cage', dx: -2, dy: 0 }, { kind: 'stocks', dx: 0, dy: 1 }] },
+    { anchor: 'boulder', parts: [{ kind: 'rockSpikes', dx: 2, dy: 0 }, { kind: 'stalagmites', dx: -2, dy: 0 }, { kind: 'pebbles', dx: 0, dy: 1 }] },
   ],
 };
 /** По одному настенному украшению на зал: знамёна, маски, гобелены, зеркала. */

@@ -24,7 +24,12 @@ export type CryptKind =
   | 'crateStack' | 'barrelStack' | 'sackPile' | 'bucket' | 'toolRack' | 'anvil' | 'forge' | 'bellows' | 'cauldron' | 'workbench'
   | 'vise' | 'mineCart' | 'ladder' | 'scaffold' | 'rope' | 'pulley' | 'winch' | 'counterweight' | 'shelf' | 'scrollRack'
   | 'hayPile' | 'cage' | 'cageDoor' | 'pillory' | 'stocks' | 'manacles' | 'tortureRack' | 'gibbet' | 'brazierStand' | 'candleHolder'
-  | 'sawhorse' | 'barrelTap' | 'coalHeap' | 'toolbox' | 'net' | 'bucketStand' | 'crateOpen' | 'beamSupport' | 'dryingRack' | 'ropeCoil' | 'signalHorn' | 'oilLamp' | 'oldCradle' | 'fishNet';
+  | 'sawhorse' | 'barrelTap' | 'coalHeap' | 'toolbox' | 'net' | 'bucketStand' | 'crateOpen' | 'beamSupport' | 'dryingRack' | 'ropeCoil' | 'signalHorn' | 'oilLamp' | 'oldCradle' | 'fishNet'
+  // природа и утварь (спрайт-лист)
+  | 'boulder' | 'rockPile' | 'scree' | 'rockSpikes' | 'rockSpire' | 'pebbles' | 'rockOutcrop' | 'stoneWell'
+  | 'stalagmites' | 'stalactites' | 'puddleBlue' | 'puddleMud' | 'puddleAcid'
+  | 'mossGrass' | 'mushroomsGlow' | 'mossPatch' | 'bushPatch' | 'ivyWall' | 'roots' | 'lichen'
+  | 'dirtPatch' | 'cracks' | 'nestEggs' | 'skeletonBones' | 'logs' | 'crystals';
 export type CryptTheme = 'entry' | 'burial' | 'sanctum' | 'ossuary' | 'archive' | 'reliquary' | 'storage' | 'watch';
 export type CryptPlacement = 'wall' | 'wallFace' | 'center' | 'corner' | 'any';
 
