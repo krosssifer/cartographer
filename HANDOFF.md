@@ -8,17 +8,17 @@
 ## 0. Коротко
 
 - **Что это:** одностраничный генератор и редактор тактических карт D&D на React 19 + TypeScript + Canvas 2D. Сервера нет, всё работает в браузере.
-- **Где:** `C:\Users\User\Documents\deepseek-harness\default-workspace`.
+- **Где:** локальный клон репозитория (путь на каждой машине свой).
 - **GitHub:** <https://github.com/krosssifer/cartographer> — **приватный** репозиторий, ветка `main`.
 - **История git:** начинается с коммита `418c1ad` («Картограф: генератор и редактор тактических карт D&D»). Вся работа до этого коммита — один начальный снимок; предыдущих коммитов нет.
-- **Сейчас приложение запущено:** <http://127.0.0.1:5173/> (dev-сервер Vite, фоновый процесс этой сессии).
+- **Запуск:** после `npm.cmd ci` и `npm.cmd run dev -- --host 127.0.0.1 --port 5173` приложение доступно на <http://127.0.0.1:5173/>.
 - **Статус:** P0, P1 и P2.1 по генерации склепа сделаны и проверены; P2.2/P2.3 (непрямоугольные залы, граф связей и секретные двери, лестницы/этажи) — следующие.
 
 ---
 
 ## 1. Быстрый старт
 
-Зависимости уже установлены в этой рабочей области, но `node_modules` **не** в git. На чистом клоне:
+Зависимости ставятся после клонирования: `node_modules` **не** в git. Команды ниже — для Windows/PowerShell; на macOS/Linux используйте `npm` вместо `npm.cmd`.
 
 ```powershell
 npm.cmd ci
@@ -31,7 +31,7 @@ npm.cmd run dev -- --host 127.0.0.1 --port 5173 --strictPort
 node node_modules\typescript\bin\tsc --noEmit
 ```
 
-Production-сборка (важно: на этой машине нужен TEMP внутри проекта, см. §3):
+Production-сборка (на Windows иногда нужен TEMP внутри проекта — см. §3):
 
 ```powershell
 $tmp = Join-Path (Get-Location) '.tmp-build'
@@ -54,45 +54,48 @@ npm.cmd run build
 
 ## 2. GitHub и git
 
-Установлены в этой рабочей области:
+Проект лежит в приватном репозитории `krosssifer/cartographer`. Нужны `git` и GitHub CLI (`gh`) в `PATH`; конкретные пути зависят от машины и способа установки, поэтому здесь их нет.
 
-- Git: `C:\Program Files\Git\cmd\git.exe`
-- GitHub CLI: `C:\Users\User\AppData\Local\Microsoft\WinGet\Packages\GitHub.cli_Microsoft.Winget.Source_8wekyb3d8bbwe\bin\gh.exe`
-- Авторизация: `krosssifer`, токен в keyring gh; git настроен через gh credential helper.
-- Локальная идентичность: `krosssifer <153861836+krosssifer@users.noreply.github.com>`.
-
-Если `git`/`gh` не находятся в PATH (старая оболочка), используйте полные пути выше либо добавьте:
+Если инструментов нет:
 
 ```powershell
-$env:Path = 'C:\Program Files\Git\cmd;C:\Users\User\AppData\Local\Microsoft\WinGet\Packages\GitHub.cli_Microsoft.Winget.Source_8wekyb3d8bbwe\bin;' + $env:Path
+winget install --id Git.Git -e
+winget install --id GitHub.cli -e
+gh auth login --hostname github.com --git-protocol https --web
+gh auth setup-git
 ```
+
+- В этой копии авторизация выполнена как `krosssifer`; на новой машине войдите под своим аккаунтом.
+- Идентичность коммитов в этой копии: `krosssifer <153861836+krosssifer@users.noreply.github.com>`. На новой машине задайте свою:
+  `git config user.name "..."` и `git config user.email "..."`.
+- `gh auth setup-git` требует, чтобы `git` был в `PATH`; после установки откройте новый терминал.
+- Если `git` или `gh` не находятся, добавьте каталог установки в `PATH` (пути индивидуальны) — не используйте пути с другой машины.
 
 Типичный цикл:
 
 ```powershell
-$git = 'C:\Program Files\Git\cmd\git.exe'
-& $git status --short
-& $git add -A
-& $git commit -m "сообщение"
-& $git push
+git status --short
+git add -A
+git commit -m "сообщение"
+git push
 ```
 
 Проверка удалённого репозитория:
 
 ```powershell
-& $gh repo view krosssifer/cartographer --json name,visibility,url,defaultBranchRef
+gh repo view krosssifer/cartographer --json name,visibility,url,defaultBranchRef
 ```
 
 **Чего нет:** лицензии (`LICENSE`), CI, ESLint/Prettier, `vitest`, `playwright`, `tsx` в зависимостях. Перед публикацией репозитория нужно решить вопрос лицензии и прав на WebP-ассеты.
 
 ---
 
-## 3. Ловушки среды (проверено на этой машине)
+## 3. Ловушки среды (Windows/PowerShell; проверено на рабочей машине)
 
 | Симптом | Причина | Решение |
 |---|---|---|
 | `npm` не запускается, «выполнение сценариев отключено» | PowerShell 5.1 блокирует `npm.ps1` | использовать `npm.cmd` |
-| `spawn EPERM` при `vite`/`npm run dev` | esbuild поднимает дочерний процесс через pipe-каналы; sandbox их блокирует | запускать с полным доступом (в этой сессии — `danger-full-access`) |
+| `spawn EPERM` при `vite`/`npm run dev` | esbuild поднимает дочерний процесс через pipe-каналы; sandbox их блокирует | запускать с полным доступом (`danger-full-access` или эквивалент) |
 | `EBUSY: ... .tmpdir\...` и падение Vite | редакторы/агенты пишут файлы через sidecar-каталоги `*.tmpdir`, chokidar пытается их наблюдать | уже исправлено в `vite.config.ts`: `server.watch.ignored` для `**/*.tmpdir/**`, `**/*.tmp`, `node_modules`, `.git`. Не удалять |
 | `build` падает: `Access is denied` при удалении `%TEMP%\esbuild-*` | esbuild не может удалить свой временный файл в системном TEMP | перед сборкой задать `TEMP`/`TMP` внутри проекта: см. §1 |
 | `pwsh` не найден | в системе Windows PowerShell 5.1, не PowerShell 7 | использовать `powershell.exe`; для `.ps1` — `powershell.exe -NoProfile -ExecutionPolicy Bypass -File script.ps1` |
