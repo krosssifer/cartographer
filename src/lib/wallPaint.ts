@@ -11,11 +11,12 @@ const wallEdge = (map: MapData, x: number, y: number) => {
 };
 
 /**
- * РЎС‚РµРЅРЅРѕР№ СЂРµРЅРґРµСЂ В«РїРѕР»РѕСЃР°РјРё РїРѕ РєРѕРЅС‚СѓСЂСѓВ».
+ * Стены «лентой по контуру».
  *
- * Р’РјРµСЃС‚Рѕ СЂР°СЃРєР»Р°РґРєРё РєРІР°РґСЂР°С‚РЅС‹С… СЃРїСЂР°Р№С‚РѕРІ РїРѕ РєР»РµС‚РєР°Рј РѕР±С…РѕРґРёРј РіСЂР°РЅРёС†Сѓ РїРѕР»Р° Рё
- * СЂРёСЃСѓРµРј С‚РѕР»СЃС‚СѓСЋ РєР°РјРµРЅРЅСѓСЋ Р»РµРЅС‚Сѓ СЃ РєСЂСѓРіР»С‹РјРё СЃС‚С‹РєР°РјРё. РЈРіР»С‹ РєРѕРјРЅР°С‚ РїРѕР»СѓС‡Р°СЋС‚СЃСЏ
- * СЃРєСЂСѓРіР»С‘РЅРЅС‹РјРё, Р° РЅРµ РєРІР°РґСЂР°С‚РЅС‹РјРё; С‰РµР»РµР№ РјРµР¶РґСѓ РєР»РµС‚РєР°РјРё РЅРµС‚ РїРѕ РїРѕСЃС‚СЂРѕРµРЅРёСЋ.
+ * Вместо раскладки квадратных спрайтов по клеткам обходим границу пола и
+ * рисуем каменную ленту с круглыми стыками. Углы комнат получаются
+ * скруглёнными, а не квадратными; щелей между клетками нет по построению.
+ * Толщина ленты меньше клетки — внутренняя кромка прижата к полу.
  */
 export function drawWalls(
   ctx: CanvasRenderingContext2D,
@@ -28,7 +29,7 @@ export function drawWalls(
   const wall = art['wall-straight'];
   if (!wall) return false;
 
-  const offset = cs * 0.5;
+  const offset = cs * 0.39;
   const segments: [number, number, number, number][] = [];
   for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
     if (!floorLike(map, x, y)) continue;
@@ -41,7 +42,7 @@ export function drawWalls(
   }
   if (!segments.length) return true;
 
-  const band = cs * 1.05;
+  const band = cs * 0.78;
   const path = () => {
     ctx.beginPath();
     for (const [x0, y0, x1, y1] of segments) {
@@ -54,12 +55,12 @@ export function drawWalls(
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  // РўС‘РјРЅРѕРµ РѕСЃРЅРѕРІР°РЅРёРµ: РѕРЅРѕ Р¶Рµ РєРѕРЅС‚СѓСЂ Рё В«СЂР°СЃС‚РІРѕСЂВ» РјРµР¶РґСѓ РєР°РјРЅСЏРјРё.
+  // Тёмное основание: контур и «раствор» между камнями.
   if (shading) {
     ctx.shadowColor = 'rgba(16,13,9,.55)';
-    ctx.shadowBlur = cs * 0.22;
-    ctx.shadowOffsetX = cs * 0.08;
-    ctx.shadowOffsetY = cs * 0.14;
+    ctx.shadowBlur = cs * 0.18;
+    ctx.shadowOffsetX = cs * 0.06;
+    ctx.shadowOffsetY = cs * 0.11;
   }
   ctx.strokeStyle = '#37352b';
   ctx.lineWidth = band;
@@ -76,14 +77,13 @@ export function drawWalls(
     ctx.stroke();
   }
 
-  // РЎРІРµС‚Р»Р°СЏ РєСЂРѕРјРєР° СЃРІРµСЂС…Сѓ: С‡РёС‚Р°РµС‚СЃСЏ РєР°Рє РІРµСЂС… РєР»Р°РґРєРё.
+  // Светлая кромка сверху: читается как верх кладки.
   ctx.strokeStyle = 'rgba(184,176,146,.22)';
-  ctx.lineWidth = Math.max(1, cs * 0.05);
-  ctx.translate(0, -cs * 0.18);
+  ctx.lineWidth = Math.max(1, cs * 0.04);
+  ctx.translate(0, -cs * 0.13);
   path();
   ctx.stroke();
-  ctx.translate(0, cs * 0.18);
+  ctx.translate(0, cs * 0.13);
   ctx.restore();
   return true;
 }
-
