@@ -1,0 +1,110 @@
+import type { Biome, CryptArchetype, GenSettings, RenderSettings } from '../lib/types';
+import { BIOME_LABELS, CRYPT_ARCHETYPE_IDS, CRYPT_ARCHETYPE_LABELS, PRESETS } from '../lib/presets';
+import { Slider, Toggle, pct } from './controls';
+import { DensitySlider, SettlementChoices } from './SettlementPanel';
+import { CryptOptions } from './CryptPanel';
+import Icon from './Icon';
+
+const CRYPT_ARCHETYPE_HINTS: Record<CryptArchetype, string> = {
+  tomb: 'Центральный зал и залы вокруг',
+  catacombs: 'Много небольших погребальных камер',
+  temple: 'Большой храм с приделами',
+  archive: 'Длинные залы-хранилища в два ряда',
+  prison: 'Казематы и пост стражи',
+};
+
+interface Props {
+  gen: GenSettings;
+  render: RenderSettings;
+  onGen: (patch: Partial<GenSettings>) => void;
+  onRender: (patch: Partial<RenderSettings>) => void;
+  onRandomSeed: () => void;
+  history: number[];
+}
+
+export default function ControlPanel({ gen, render, onGen, onRender, onRandomSeed, history }: Props) {
+  const isCave = gen.biome === 'cave', isDungeon = gen.biome === 'dungeon';
+  const isSettlement = gen.biome === 'village' || gen.biome === 'town';
+  const isOverland = !isCave && !isDungeon && !isSettlement;
+  return <>
+    <div className="sidebar-section generation-fields">
+      <div className="section-heading"><h2>Генерация</h2><Icon name="sparkles" size={17} className="section-symbol" /></div>
+      <label className="field-label">Биом<select aria-label="Биом" value={gen.biome} onChange={(e) => onGen({ biome: e.target.value as Biome })}>
+        {Object.entries(BIOME_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </select></label>
+      <label className="field-label">Пресет<select aria-label="Пресет" value="" onChange={(e) => {
+        if (e.target.value !== '') onGen({ ...PRESETS[Number(e.target.value)].gen, seed: Math.floor(Math.random() * 99999) });
+      }}><option value="" disabled>Выбрать сценарий</option>
+        {PRESETS.map((preset, i) => <option key={preset.name} value={i}>{preset.name}</option>)}
+      </select></label>
+      <div className="field-label"><label htmlFor="map-seed">Seed</label><div className="seed-field"><input id="map-seed" type="number" min={0} max={4294967295} value={gen.seed}
+        onChange={(e) => onGen({ seed: Math.min(4294967295, Math.max(0, Math.trunc(Number(e.target.value) || 0))) })} />
+        <button type="button" className="square-btn" onClick={onRandomSeed} aria-label="Случайный seed" title="Случайный seed"><Icon name="dice" size={18} /></button>
+      </div></div>
+      {history.length > 0 && <select aria-label="Недавние seed" value="" onChange={(e) => onGen({ seed: Number(e.target.value) })}>
+        <option value="" disabled>Недавние seed</option>{history.map((seed) => <option key={seed} value={seed}>{seed}</option>)}
+      </select>}
+      <Slider label="Ширина (клеток)" value={gen.width} min={10} max={100} onChange={(width) => onGen({ width })} />
+      <Slider label="Высота (клеток)" value={gen.height} min={10} max={80} onChange={(height) => onGen({ height })} />
+      <p className="size-note">До 100 × 80 клеток · большие карты автоматически оптимизируют детализацию</p>
+      <button type="button" className="action-btn primary-btn generate-btn" onClick={onRandomSeed}><Icon name="dice" size={17} /> Сгенерировать</button>
+    </div>
+    {isDungeon && <details open className="sidebar-section generation-fields">
+      <summary className="section-heading"><h2>Наполнение склепа</h2><Icon name="crypt" size={17} /></summary>
+      <CryptOptions settings={gen} onChange={onGen} />
+    </details>}
+    {isSettlement && <div className="sidebar-section generation-fields">
+      <div className="section-heading"><h2>Планировка</h2><Icon name="structure" size={17} className="section-symbol" /></div>
+      <SettlementChoices style={gen.biome === 'town' ? 'town' : 'village'} onStyle={(style) => onGen({ biome: style, settlement: style })} />
+      <DensitySlider density={gen.density} onDensity={(density) => onGen({ density })} />
+      <Toggle label="Площади и городские детали" checked={gen.publicSpaces} onChange={(publicSpaces) => onGen({ publicSpaces })} />
+      <Toggle label="Река" checked={gen.river} onChange={(river) => onGen({ river })} />
+      <Toggle label="Сеть улиц" checked={gen.road} onChange={(road) => onGen({ road })} />
+    </div>}
+    {!isSettlement && <details className="sidebar-section generation-fields" open>
+      <summary className="section-heading"><h2>Ландшафт</h2><Icon name="chevron" size={15} className="section-symbol" /></summary>
+      {!isDungeon && <Slider label={isCave ? 'Сглаживание стен' : 'Изрезанность рельефа'} value={gen.roughness} min={0} max={1} step={0.05} format={pct} onChange={(roughness) => onGen({ roughness })} />}
+      <Slider label={isDungeon ? 'Затопленность' : 'Уровень воды'} value={gen.waterLevel} min={0} max={0.7} step={0.01} format={pct} onChange={(waterLevel) => onGen({ waterLevel })} />
+      {isCave && <Slider label="Открытость пещеры" value={gen.caveOpenness} min={0} max={1} step={0.05} format={pct} onChange={(caveOpenness) => onGen({ caveOpenness })} />}
+      {isDungeon && <>
+        <Slider label="Количество комнат" value={gen.rooms} min={2} max={14} onChange={(rooms) => onGen({ rooms })} />
+        <label className="field-label">Тип склепа<select aria-label="Тип склепа" value={gen.cryptArchetype} onChange={(e) => onGen({ cryptArchetype: e.target.value as CryptArchetype })}>
+          {CRYPT_ARCHETYPE_IDS.map((id) => <option key={id} value={id}>{CRYPT_ARCHETYPE_LABELS[id]}</option>)}
+        </select></label>
+        <p className="tool-hint">{CRYPT_ARCHETYPE_HINTS[gen.cryptArchetype]}</p>
+      </>}
+      {isOverland && <>
+        <Toggle label="Река" checked={gen.river} onChange={(river) => onGen({ river })} />
+        <Toggle label="Дорога с мостами" checked={gen.road} onChange={(road) => onGen({ road })} />
+      </>}
+    </details>}
+    <details className="sidebar-section generation-fields">
+      <summary className="section-heading"><h2>Объекты</h2><Icon name="chevron" size={15} className="section-symbol" /></summary>
+      <Slider label={isDungeon || isCave ? 'Грибы' : 'Растительность'} value={gen.vegetation} min={0} max={1} step={0.05} format={pct} onChange={(vegetation) => onGen({ vegetation })} />
+      <Slider label={isDungeon ? 'Обломки' : 'Камни и валуны'} value={gen.rocks} min={0} max={1} step={0.05} format={pct} onChange={(rocks) => onGen({ rocks })} />
+      {isOverland && <>
+        <Slider label="Постройки" value={gen.structures} min={0} max={6} onChange={(structures) => onGen({ structures })} />
+        <Toggle label="Руины вместо целых зданий" checked={gen.ruined} onChange={(ruined) => onGen({ ruined })} />
+      </>}
+    </details>
+    <details className="sidebar-section generation-fields">
+      <summary className="section-heading"><h2>Сетка и вид</h2><Icon name="chevron" size={15} className="section-symbol" /></summary>
+      <Slider label="Разрешение клетки (px)" value={render.cellSize} min={16} max={72} step={2} onChange={(cellSize) => onRender({ cellSize })} />
+      <Toggle label="Сетка" checked={render.showGrid} onChange={(showGrid) => onRender({ showGrid })} />
+      {render.showGrid && <>
+        <label className="field-label">Тип сетки<select aria-label="Тип сетки" value={render.gridType} onChange={(e) => onRender({ gridType: e.target.value === 'hex' ? 'hex' : 'square' })}><option value="square">Квадратная</option><option value="hex">Гексагональная</option></select></label>
+        <Slider label="Непрозрачность сетки" value={render.gridOpacity} min={0.05} max={1} step={0.05} format={pct} onChange={(gridOpacity) => onRender({ gridOpacity })} />
+        <label className="color-picker">Цвет сетки<input type="color" value={render.gridColor} onChange={(e) => onRender({ gridColor: e.target.value })} /></label>
+      </>}
+      <Toggle label="Живописные текстуры" checked={render.texture} onChange={(texture) => onRender({ texture })} />
+      <Toggle label="Затенение рельефа" checked={render.shading} onChange={(shading) => onRender({ shading })} />
+      <Toggle label="Виньетка" checked={render.vignette} onChange={(vignette) => onRender({ vignette })} />
+      <Toggle label="Растительность" checked={render.showTrees} onChange={(showTrees) => onRender({ showTrees })} />
+      <Toggle label="Камни" checked={render.showRocks} onChange={(showRocks) => onRender({ showRocks })} />
+      <Toggle label="Постройки" checked={render.showStructures} onChange={(showStructures) => onRender({ showStructures })} />
+      {isDungeon && <Toggle label="Метки ловушек" checked={render.showSecrets} onChange={(showSecrets) => onRender({ showSecrets })} />}
+      {isSettlement && <Toggle label="Городские объекты" checked={render.showCivic} onChange={(showCivic) => onRender({ showCivic })} />}
+      <Toggle label="Сундуки" checked={render.showChests} onChange={(showChests) => onRender({ showChests })} />
+    </details>
+  </>;
+}
