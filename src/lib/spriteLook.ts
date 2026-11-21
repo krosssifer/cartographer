@@ -1,5 +1,6 @@
 import { artPick } from './assets';
 import { hash2 } from './random';
+import { tinted } from './tintCache';
 
 /**
  * «Внешность» отдельного объекта на карте: какой вариант картинки взять, на
@@ -69,8 +70,8 @@ export function drawLooked(
   ctx.translate(x, y);
   if (angle) ctx.rotate(angle);
   if (look.flipX || look.flipY) ctx.scale(look.flipX ? -1 : 1, look.flipY ? -1 : 1);
-  if (filter && 'filter' in ctx) ctx.filter = filter;
-  ctx.drawImage(img, -width / 2, -h / 2, width, h);
+  // Тонировка берётся из кэша: ctx.filter на каждом drawImage стоил полноэкранного saveLayer.
+  ctx.drawImage(tinted(img, filter), -width / 2, -h / 2, width, h);
   ctx.restore();
   return true;
 }

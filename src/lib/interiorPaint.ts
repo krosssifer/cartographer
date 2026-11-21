@@ -5,6 +5,7 @@ import { doorStyle, drawDoor, type DoorStyle } from './doors';
 import { facingOf, interiorOf, type Partition, type Room } from './interiors';
 import { hash2 } from './random';
 import { spriteLook } from './spriteLook';
+import { tinted } from './tintCache';
 import type { Building, FurnitureSprite, Furnishing, Point } from './types';
 
 type Material = (name: string, scale: number, rotate?: boolean) => CanvasPattern | null;
@@ -63,11 +64,12 @@ function object(ctx: CanvasRenderingContext2D, item: Furnishing, shade: boolean,
   }
   if (art) {
     const finish = FURNITURE_FINISHES[item.finish ?? 'oak'].filter;
-    ctx.filter = custom ? finish : [finish, look.filter].filter(Boolean).join(' ');
+    // Отделка и оттенок применяются один раз в кэше спрайтов, а не через ctx.filter на каждый предмет.
+    const sprite = tinted(art, custom ? finish : [finish, look.filter].filter(Boolean).join(' '));
     if (!custom && look.flipX) ctx.scale(-1, 1);
     const w = custom ? Math.min(spec.w, spec.h * custom.ratio) : spec.w;
     const h = custom ? Math.min(spec.h, spec.w / custom.ratio) : spec.h;
-    ctx.drawImage(art, -w / 2, -h / 2, w, h);
+    ctx.drawImage(sprite, -w / 2, -h / 2, w, h);
   }
   else { ctx.fillStyle = spec.flat ? '#a3684a' : '#7d5639'; ctx.fillRect(-spec.w / 2, -spec.h / 2, spec.w, spec.h); }
   ctx.restore();
@@ -100,6 +102,11 @@ function wall(ctx: CanvasRenderingContext2D, { from, to, doorway }: Partition, w
     drawDoor(ctx, door, outside ? .92 : .80, !outside);
     ctx.restore();
   }
+}
+
+/** Один предмет мебели в координатах дома (клетки): используется «призраком» при перетаскивании. */
+export function drawFurnishing(ctx: CanvasRenderingContext2D, item: Furnishing, shading: boolean, furnitureSprites: FurnitureSprite[] = []) {
+  object(ctx, item, shading && !FURNITURE[item.kind].flat, Object.fromEntries(furnitureSprites.map((sprite) => [sprite.id, sprite])));
 }
 
 export function drawInterior(ctx: CanvasRenderingContext2D, b: Building, seed: number, material: Material, shading: boolean, gallery: Record<string, FurnitureSprite>) {

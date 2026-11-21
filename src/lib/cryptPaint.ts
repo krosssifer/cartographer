@@ -2,6 +2,7 @@ import { artPick, getAssets } from './assets';
 import { CRYPT, coversHazard, cryptArt, hazard, isSecret } from './cryptKit';
 import { hash2 } from './random';
 import { spriteLook } from './spriteLook';
+import { tinted } from './tintCache';
 import type { CryptObject, MapData, RenderSettings } from './types';
 
 export function cryptPainter(ctx: CanvasRenderingContext2D, map: MapData, settings: RenderSettings, seed: number) {
@@ -116,14 +117,18 @@ export function cryptPainter(ctx: CanvasRenderingContext2D, map: MapData, settin
     const fitW = wide * (cover ? 1.21 : spec.secret ? .78 : kind === 'pit' ? 1.01 : .90);
     const fitH = tall * (cover ? .97 : spec.secret ? .78 : kind === 'pit' ? 1.01 : .90);
     if (img) {
+      let filter = '';
       if (kind === 'runeCircle') ctx.globalAlpha = .69;
       else if (spec.secret) ctx.globalAlpha = .86;
-      else if (kind === 'rug') { ctx.globalAlpha = .83; ctx.filter = 'saturate(.72) brightness(.83)'; }
-      else if (look.filter) ctx.filter = look.filter;
+      else if (kind === 'rug') { ctx.globalAlpha = .83; filter = 'saturate(.72) brightness(.83)'; }
+      else if (look.filter) filter = look.filter;
+      // Тонированный спрайт из кэша вместо ctx.filter: иначе каждый предмет
+      // стоил полноэкранного фильтра и 150 предметов растеризовались секунды.
+      const sprite = tinted(img, filter);
       if (!cover && !spec.secret && !['steps', 'web'].includes(kind)) {
         const k = Math.min(fitW / img.naturalWidth, fitH / img.naturalHeight);
-        ctx.drawImage(img, -img.naturalWidth * k / 2, -img.naturalHeight * k / 2, img.naturalWidth * k, img.naturalHeight * k);
-      } else ctx.drawImage(img, -fitW / 2, -fitH / 2, fitW, fitH);
+        ctx.drawImage(sprite, -img.naturalWidth * k / 2, -img.naturalHeight * k / 2, img.naturalWidth * k, img.naturalHeight * k);
+      } else ctx.drawImage(sprite, -fitW / 2, -fitH / 2, fitW, fitH);
     } else {
       ctx.fillStyle = '#665f50'; ctx.fillRect(-fitW / 2, -fitH / 2, fitW, fitH);
     }

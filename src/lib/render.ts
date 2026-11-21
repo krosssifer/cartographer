@@ -10,6 +10,9 @@ import { chestArt, chestDimensions } from './chests';
 import { doorAxis, doorStyle, drawDoor } from './doors';
 import { treeDimensions, rockDimensions } from './objectSizing';
 import { drawWalls } from './wallPaint';
+import { drawFurnishing } from './interiorPaint';
+import { interiorOf } from './interiors';
+import { furnitureBounds } from './furnitureKit';
 import type { Chest, MapData, ObjectTarget, RenderSettings, Rock, Terrain, Tree } from './types';
 
 export { TERRAIN_COLORS, TERRAIN_LABELS } from './palette';
@@ -31,13 +34,22 @@ function contour(ctx: CanvasRenderingContext2D, points: readonly (readonly [numb
  * разрешение с запасом, но ограничиваем общий размер буфера, чтобы большие
  * карты (100×80) не съедали сотни мегабайт.
  */
-export function renderPixelRatio(map: MapData, rs: RenderSettings, budget = 16_000_000) {
+export function renderPixelRatio(map: MapData, rs: RenderSettings, budget = PIXEL_BUDGET) {
   const pixels = map.width * rs.cellSize * map.height * rs.cellSize;
   if (!pixels) return 1;
   if (pixels >= budget) return 1;
-  const ratio = Math.min(2.5, Math.sqrt(budget / pixels));
+  const ratio = Math.min(MAX_PIXEL_RATIO, Math.sqrt(budget / pixels));
   return Math.max(1, Math.floor(ratio * 2) / 2);
 }
+
+/**
+ * Бюджет буфера редактора. Раньше было 16 Мпкс и ×2.5: карта 44×30 рисовалась
+ * в холст 4400×3000 (13 Мпкс) при экранных 900×600. Стоимость каждой полной
+ * перерисовки пропорциональна площади, поэтому держим ~6 Мпкс и ×2 — этого
+ * хватает для зума 150–200 % на Retina. Экспорт PNG задаёт cellSize отдельно.
+ */
+const PIXEL_BUDGET = 6_000_000;
+const MAX_PIXEL_RATIO = 2;
 
 /** Настройки рендера в повышенной плотности (cellSize умножается на ratio). */
 export const highResSettings = (map: MapData, rs: RenderSettings, ratio = renderPixelRatio(map, rs)): RenderSettings =>
@@ -427,6 +439,14 @@ export function excludeObject(map: MapData, target: ObjectTarget): MapData {
       return { ...map, crypt: (map.crypt ?? []).filter((_, index) => index !== target.index) };
     case 'civic':
       return { ...map, civic: (map.civic ?? []).filter((_, index) => index !== target.index) };
+    case 'building':
+      return { ...map, buildings: (map.buildings ?? []).filter((_, index) => index !== target.index) };
+    case 'furniture': {
+      const house = map.buildings?.[target.building];
+      if (!house) return map;
+      const items = interiorOf(house).furnishings.filter((_, index) => index !== target.index);
+      return { ...map, buildings: map.buildings!.map((b, index) => index === target.building ? { ...b, source: 'manual' as const, furniture: items } : b) };
+    }
     default:
       return map;
   }
@@ -479,20 +499,37 @@ export function objectGhostBounds(
       h = dims.h * cs;
     }
   } else if (target.type === 'crypt') {
+    // Рамка по реальному размеру предмета (раньше было фиксированные 3×3 клетки,
+    // и длинные предметы вроде ряда саркофагов обрезались при перетаскивании).
     const item = map.crypt?.[target.index];
     if (item) {
-      x = item.x * cs - cs;
-      y = item.y * cs - cs;
-      w = cs * 3;
-      h = cs * 3;
+      const side = Math.max(item.w, item.h) * cs;
+      const cx = (item.x + item.w / 2) * cs, cy = (item.y + item.h / 2) * cs;
+      x = cx - side / 2 - cs * 0.3;
+      y = cy - side / 2 - cs * 0.3;
+      w = side + cs * 0.6;
+      h = side + cs * 0.6;
     }
   } else if (target.type === 'civic') {
     const item = map.civic?.[target.index];
     if (item) {
-      x = item.x * cs;
-      y = item.y * cs;
-      w = item.w * cs;
-      h = item.h * cs;
+      const side = Math.max(item.w, item.h) * cs;
+      const cx = (item.x + item.w / 2) * cs, cy = (item.y + item.h / 2) * cs;
+      x = cx - side / 2; y = cy - side / 2; w = side; h = side;
+    }
+  } else if (target.type === 'building') {
+    const item = map.buildings?.[target.index];
+    if (item) {
+      x = item.x * cs; y = item.y * cs; w = item.w * cs; h = item.h * cs;
+    }
+  } else if (target.type === 'furniture') {
+    const house = map.buildings?.[target.building];
+    const item = house && interiorOf(house).furnishings[target.index];
+    if (house && item) {
+      const box = furnitureBounds(item);
+      const side = Math.max(box.w, box.h) * cs;
+      const cx = (house.x + item.x) * cs, cy = (house.y + item.y) * cs;
+      x = cx - side / 2; y = cy - side / 2; w = side; h = side;
     }
   }
   const pad = cs * 1.1;
@@ -535,20 +572,117 @@ export function drawObjectGhost(
     if (chest) drawChest(ctx, chest, cs, rs.shading);
   } else if (target.type === 'crypt') {
     const item = map.crypt?.[target.index];
-    if (item) {
-      const crypt = cryptPainter(ctx, map, rs, seed);
-      crypt.depth();
-      crypt.prop(item);
-    }
+    // Только сам предмет: подложка depth() закрашивала клетки пола внутри рамки
+    // призрака и «ездила» вместе с объектом тёмным квадратом.
+    if (item) cryptPainter(ctx, map, rs, seed).prop(item);
   } else if (target.type === 'civic') {
     const item = map.civic?.[target.index];
-    if (item) {
-      const city = settlementPainter(ctx, rs, seed, map.furnitureSprites);
-      city.civic(item);
+    if (item) settlementPainter(ctx, rs, seed, map.furnitureSprites).civic(item);
+  } else if (target.type === 'building') {
+    const item = map.buildings?.[target.index];
+    if (item) settlementPainter(ctx, rs, seed, map.furnitureSprites).building(item);
+  } else if (target.type === 'furniture') {
+    const house = map.buildings?.[target.building];
+    const item = house && interiorOf(house).furnishings[target.index];
+    if (house && item) {
+      ctx.save();
+      ctx.translate(house.x * cs, house.y * cs);
+      ctx.scale(cs, cs);
+      drawFurnishing(ctx, item, rs.shading, map.furnitureSprites);
+      ctx.restore();
     }
   }
   ctx.restore();
 }
+
+interface StaticLayer { key: string; plan: unknown; rooms: unknown; canvas: HTMLCanvasElement }
+let groundCache: StaticLayer | null = null;
+let structureCache: StaticLayer | null = null;
+
+function layerCanvas(W: number, H: number) {
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+  }
+  return { canvas, ctx };
+}
+
+/** Крупнее этого слои не кэшируем (экспорт PNG в 2× и т. п.): рисуем прямо в целевой контекст. */
+const CACHE_LIMIT = 14_000_000;
+
+function paintGround(ctx: CanvasRenderingContext2D, map: MapData, rs: RenderSettings, seed: number, W: number, H: number) {
+  const cs = rs.cellSize;
+  ctx.drawImage(terrainLayer(map, rs, seed, W, H), 0, 0, W, H);
+  if (map.plan?.river?.length) drawRiverRibbon(ctx, map, cs);
+  if (map.plan?.roads?.length) drawRoadRibbons(ctx, map, cs);
+  if (map.plan?.roads?.length) drawBridgeDecks(ctx, map, cs);
+  cryptPainter(ctx, map, rs, seed).depth();
+}
+
+/** Террейн + реки/дороги/мосты + подложка склепа. Перерисовывается только при изменении клеток или плана. */
+function drawGround(ctx: CanvasRenderingContext2D, map: MapData, rs: RenderSettings, seed: number, W: number, H: number, cellKey: string) {
+  if (W * H > CACHE_LIMIT) { paintGround(ctx, map, rs, seed, W, H); return; }
+  if (!groundCache || groundCache.key !== cellKey || groundCache.plan !== map.plan || groundCache.rooms !== map.cryptRooms) {
+    const layer = layerCanvas(W, H);
+    if (!layer.ctx) { paintGround(ctx, map, rs, seed, W, H); return; }
+    paintGround(layer.ctx, map, rs, seed, W, H);
+    groundCache = { key: cellKey, plan: map.plan, rooms: map.cryptRooms, canvas: layer.canvas };
+  }
+  ctx.drawImage(groundCache.canvas, 0, 0);
+}
+
+/** Стены, двери, клеточные мосты — прозрачный слой поверх земли. */
+function paintStructures(ctx: CanvasRenderingContext2D, map: MapData, rs: RenderSettings, seed: number) {
+  const cs = rs.cellSize;
+  const spriteWalls = drawWalls(ctx, map, cs, seed, rs.shading, rs.wallThickness);
+  if (!spriteWalls && rs.shading) {
+    eachStructure(map, (terrainKind, x, y) => {
+      if (terrainKind !== "wall") return;
+      ctx.save();
+      ctx.translate((x + 0.08) * cs, (y + 0.16) * cs);
+      ctx.scale(cs, cs);
+      const parts = wallParts(map, x, y);
+      ctx.fillStyle = "rgba(28,23,17,.39)";
+      ctx.beginPath();
+      for (const [px, py, w, h] of parts) ctx.rect(px, py, w + 0.03, h + 0.035);
+      ctx.fill();
+      ctx.restore();
+    });
+  }
+  const plannedDecks = (map.plan?.bridges?.length ?? 0) > 0;
+  eachStructure(map, (terrainKind, x, y) => {
+    if (terrainKind === "wall") {
+      if (!spriteWalls) drawWall(ctx, map, x, y, cs, seed);
+      return;
+    }
+    if (terrainKind === "bridge" && !plannedDecks) drawWoodwork(ctx, map, "bridge", x, y, cs, seed, rs.texture);
+    if (terrainKind === "door") {
+      ctx.save();
+      ctx.translate((x + 0.5) * cs, (y + 0.5) * cs);
+      ctx.scale(cs, cs);
+      if (doorAxis(map, x, y) === "vertical") ctx.rotate(Math.PI / 2);
+      drawDoor(ctx, doorStyle(map.biome, x, y, seed), 0.96, map.biome === "dungeon" && hash2(x, y, seed + 19) > 0.62);
+      ctx.restore();
+    }
+  });
+}
+
+function drawStructures(ctx: CanvasRenderingContext2D, map: MapData, rs: RenderSettings, seed: number, W: number, H: number, cellKey: string) {
+  if (W * H > CACHE_LIMIT) { paintStructures(ctx, map, rs, seed); return; }
+  const key = `${cellKey}|${rs.wallThickness}`;
+  if (!structureCache || structureCache.key !== key || structureCache.plan !== map.plan) {
+    const layer = layerCanvas(W, H);
+    if (!layer.ctx) { paintStructures(ctx, map, rs, seed); return; }
+    paintStructures(layer.ctx, map, rs, seed);
+    structureCache = { key, plan: map.plan, rooms: null, canvas: layer.canvas };
+  }
+  ctx.drawImage(structureCache.canvas, 0, 0);
+}
+
 
 export function renderMap(canvas: HTMLCanvasElement, map: MapData, rs: RenderSettings, seed: number) {
   const cs = rs.cellSize;
@@ -561,56 +695,23 @@ export function renderMap(canvas: HTMLCanvasElement, map: MapData, rs: RenderSet
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
 
-  // Террейн берём из кэша (перерисовывается только при изменении клеток) и
-  // масштабируем на холст — растр может быть другого размера из-за LOD.
-  const layer = terrainLayer(map, rs, seed, W, H);
-  ctx.drawImage(layer, 0, 0, W, H);
+  // Хэш клеток считаем один раз: он ключ для всех статичных слоёв ниже.
+  const cellKey = terrainLayerKey(map, rs, seed, W, H);
 
-  // Река, дороги и настилы мостов: поверх террейна, под постройками и объектами.
-  if (map.plan?.river?.length) drawRiverRibbon(ctx, map, cs);
-  if (map.plan?.roads?.length) drawRoadRibbons(ctx, map, cs);
-  if (map.plan?.roads?.length) drawBridgeDecks(ctx, map, cs);
+  // «Земля»: террейн, ленты рек и дорог (с blur-фильтрами), настилы мостов и
+  // подложка склепа. Всё это зависит только от клеток и плана, поэтому живёт в
+  // кэше и при перемещении объектов просто копируется одним drawImage.
+  drawGround(ctx, map, rs, seed, W, H, cellKey);
 
   const crypt = cryptPainter(ctx, map, rs, seed);
-  crypt.depth();
   if (rs.showCrypt) {
     crypt.floorProps();
     crypt.lights();
   }
 
-  if (rs.showStructures) {
-    const spriteWalls = drawWalls(ctx, map, cs, seed, rs.shading, rs.wallThickness);
-    if (!spriteWalls && rs.shading) {
-      eachStructure(map, (terrainKind, x, y) => {
-        if (terrainKind !== "wall") return;
-        ctx.save();
-        ctx.translate((x + 0.08) * cs, (y + 0.16) * cs);
-        ctx.scale(cs, cs);
-        const parts = wallParts(map, x, y);
-        ctx.fillStyle = "rgba(28,23,17,.39)";
-        ctx.beginPath();
-        for (const [px, py, w, h] of parts) ctx.rect(px, py, w + 0.03, h + 0.035);
-        ctx.fill();
-        ctx.restore();
-      });
-    }
-    const plannedDecks = (map.plan?.bridges?.length ?? 0) > 0;
-    eachStructure(map, (terrainKind, x, y) => {
-      if (terrainKind === "wall") {
-        if (!spriteWalls) drawWall(ctx, map, x, y, cs, seed);
-        return;
-      }
-      if (terrainKind === "bridge" && !plannedDecks) drawWoodwork(ctx, map, "bridge", x, y, cs, seed, rs.texture);
-      if (terrainKind === "door") {
-        ctx.save();
-        ctx.translate((x + 0.5) * cs, (y + 0.5) * cs);
-        ctx.scale(cs, cs);
-        if (doorAxis(map, x, y) === "vertical") ctx.rotate(Math.PI / 2);
-        drawDoor(ctx, doorStyle(map.biome, x, y, seed), 0.96, map.biome === "dungeon" && hash2(x, y, seed + 19) > 0.62);
-        ctx.restore();
-      }
-    });
-  }
+  // Стены, двери и клеточные мосты — тоже статичный слой: обводка с shadowBlur
+  // стоила ~0,5 с на каждую перерисовку.
+  if (rs.showStructures) drawStructures(ctx, map, rs, seed, W, H, cellKey);
 
   const city = settlementPainter(ctx, rs, seed, map.furnitureSprites);
   if (rs.showCivic) for (const item of map.civic ?? []) if (item.kind === "square") city.civic(item);

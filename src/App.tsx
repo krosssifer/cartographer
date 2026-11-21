@@ -141,12 +141,27 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // JSON.stringify всей карты (8000 клеток + встроенные спрайты) и localStorage.setItem —
+    // синхронные и заметные. Пишем не раньше чем через секунду тишины и в простое
+    // главного потока, чтобы автосохранение не попадало в середину серии правок.
+    let idle: number | null = null;
+    let written = false;
     const write = () => {
+      if (written) return;
+      written = true;
       try { saveSession({ version: 1, gen, render, map: edit, editor }); } catch { /* JSON download stays available. */ }
     };
-    const timer = setTimeout(write, 300);
+    const schedule = () => {
+      if ('requestIdleCallback' in window) idle = window.requestIdleCallback(write, { timeout: 2000 });
+      else write();
+    };
+    const timer = setTimeout(schedule, 1000);
     window.addEventListener('pagehide', write);
-    return () => { clearTimeout(timer); window.removeEventListener('pagehide', write); };
+    return () => {
+      clearTimeout(timer);
+      if (idle !== null && 'cancelIdleCallback' in window) window.cancelIdleCallback(idle);
+      window.removeEventListener('pagehide', write);
+    };
   }, [gen, render, editor, edit]);
 
   useEffect(() => {
