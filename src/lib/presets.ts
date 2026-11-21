@@ -67,6 +67,8 @@ export const DEFAULT_RENDER: RenderSettings = {
   showCivic: true,
   showCrypt: true,
   showSecrets: true,
+  showDebug: false,
+  showDecor: true,
   vignette: true,
 };
 

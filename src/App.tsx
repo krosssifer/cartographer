@@ -8,7 +8,7 @@ import CryptPanel, { type CryptSettings } from './components/CryptPanel';
 import ObjectSizePanel from './components/ObjectSizePanel';
 import Icon from './components/Icon';
 import { generateMap } from './lib/generator';
-import { renderMap } from './lib/render';
+import { highResSettings, renderMap, renderPixelRatio } from './lib/render';
 import { TERRAIN_COLORS, TERRAIN_LABELS } from './lib/palette';
 import { loadAssets, loadMarketAssets } from './lib/assets';
 import { CHEST_ROTATIONS, copyArea, eraseArea } from './lib/edits';
@@ -22,6 +22,7 @@ import { redecorateCrypt } from './lib/cryptLayout';
 import { loadFurnitureSprites, importFurnitureSprite, MAX_SPRITES } from './lib/furnitureImport';
 import { objectKey, stampDimensions } from './lib/objectGeometry';
 import { objectInfo, removeObject, resizeObject, rotateObject, stampDefaults } from './lib/objectSizing';
+import { extractDoors, extractWalls } from './lib/bridge';
 import type { Biome, Building, ChestKind, CryptRoom, EditorSettings, EditorTool, FurnitureKind, GenSettings, LayerId, MapData, ObjectDimensions, ObjectTarget, Point, RenderSettings, Selection } from './lib/types';
 import { cn } from './utils/cn';
 
@@ -127,7 +128,7 @@ export default function App() {
   }, [gen.biome]);
 
   useEffect(() => {
-    if (assetsReady && spritesReady && marketReady && mode === 'generate' && canvasRef.current) renderMap(canvasRef.current, map, render, gen.seed);
+    if (assetsReady && spritesReady && marketReady && mode === 'generate' && canvasRef.current) renderMap(canvasRef.current, map, highResSettings(map, render), gen.seed);
   }, [map, render, mode, gen.seed, assetsReady, spritesReady, marketReady]);
 
   useEffect(() => {
@@ -371,7 +372,7 @@ export default function App() {
     try {
       await Promise.all([loadAssets(), loadFurnitureSprites(map.furnitureSprites ?? [])]);
       const canvas = document.createElement('canvas');
-      renderMap(canvas, map, render, gen.seed);
+      renderMap(canvas, map, { ...highResSettings(map, render), cellSize: render.cellSize * 2 }, gen.seed);
       canvas.toBlob((blob) => {
         if (!blob) { setToast('Не удалось создать PNG'); return; }
         const url = URL.createObjectURL(blob);
@@ -383,6 +384,36 @@ export default function App() {
         setToast('Карта экспортирована в PNG');
       }, 'image/png');
     } catch { setToast('Не удалось создать PNG'); }
+  }
+
+  async function sendToTable() {
+    try {
+      await Promise.all([loadAssets(), loadFurnitureSprites(map.furnitureSprites ?? [])]);
+      const canvas = document.createElement('canvas');
+      // В стол уходит «игровой» вид: без сетки (сетку рисует сам стол),
+      // без скрытых меток ведущего и без крыш (интерьеры должны быть проходимы).
+      renderMap(canvas, map, { ...highResSettings(map, render), cellSize: render.cellSize * 2, showGrid: false, showSecrets: false, showRoofs: false }, gen.seed);
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!blob) { setToast('Не удалось создать PNG'); return; }
+      const walls = extractWalls(map, render.cellSize);
+      const doors = extractDoors(map, render.cellSize);
+      const form = new FormData();
+      form.append('file', blob, `map-${gen.biome}-${gen.seed}.png`);
+      form.append('data', JSON.stringify({
+        name: `${gen.biome}-${gen.seed}`,
+        width: map.width * render.cellSize,
+        height: map.height * render.cellSize,
+        grid: { size: render.cellSize, feet_per_cell: 5 },
+        // Стартовая зона карты: стол покажет её ГМу и поставит туда партию.
+        spawn: map.plan?.spawn ?? null,
+        walls,
+        doors,
+      }));
+      const res = await fetch('/api/import_map', { method: 'POST', body: form });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) { setToast(result.error || `Ошибка отправки (${res.status})`); return; }
+      setToast(`Сцена «${result.scene}» создана: ${result.walls} стен, ${result.doors} дверей`);
+    } catch { setToast('Не удалось отправить карту в стол'); }
   }
 
   async function importFile(file: File) {
@@ -471,9 +502,11 @@ export default function App() {
           <button type="button" className={cn(mode === 'edit' && 'is-active')} aria-pressed={mode === 'edit'} onClick={() => switchMode('edit')}><Icon name="brush" size={16} /> Редактор</button>
         </nav>
         <div className="file-actions">
+          <button type="button" className="action-btn secondary-btn" title="Вернуться к игровому столу" aria-label="К столу" onClick={() => { window.location.href = '/'; }}><Icon name="arrowLeft" size={17} /><span>К столу</span></button>
           <button type="button" className="action-btn secondary-btn" title="Открыть проект" aria-label="Открыть проект" onClick={() => fileRef.current?.click()}><Icon name="folder" size={17} /><span>Открыть</span></button>
           <button type="button" className="action-btn secondary-btn" title="Сохранить проект" aria-label="Сохранить проект" onClick={save}><Icon name="save" size={17} /><span>Сохранить</span></button>
           <button type="button" className="action-btn primary-btn" title="Экспорт PNG" onClick={() => void exportPng()}><Icon name="download" size={17} /><span>Экспорт PNG</span></button>
+          <button type="button" className="action-btn primary-btn" title="Отправить карту в игровой стол" onClick={() => void sendToTable()}><Icon name="upload" size={17} /><span>Отправить в стол</span></button>
         </div>
       </div>
     </header>
@@ -513,7 +546,7 @@ export default function App() {
                 assetsReady={ready} scale={scale} selection={selection} highlight={selectedObject ? objectInfo(renderMapData, selectedObject)?.bounds : inspector === 'interior' ? chosenHouse : inspector === 'crypt' ? chosenRoom : undefined} selectedTarget={selectedObject} clipboard={clipboard} locked={lockedLayers.includes(activeLayer)} lockedLayers={lockedLayers} spacePan={spacePan} layer={activeLayer}
                 onObject={pickObject}
                 onSelect={setSelection} onCommit={commit} onPick={(terrain) => { changeEditor({ terrain }); onTool('brush'); }} onCursor={setCursor} onBuilding={(house) => setFocusedHouse({ x: house.x, y: house.y })} onRoom={(room) => setFocusedRoom({ x: room.x, y: room.y })}
-              /> : <div className="canvas-stage" style={{ width: width * scale, height: height * scale }}><canvas ref={canvasRef} width={width} height={height} aria-label={`Тактическая карта: ${BIOME_LABELS[gen.biome]}`} /></div>}
+              /> : <div className="canvas-stage" style={{ width: width * scale, height: height * scale }}><canvas ref={canvasRef} width={Math.round(width * renderPixelRatio(map, render))} height={Math.round(height * renderPixelRatio(map, render))} aria-label={`Тактическая карта: ${BIOME_LABELS[gen.biome]}`} /></div>}
             </div>
 
             <div className="canvas-status">
@@ -543,7 +576,7 @@ export default function App() {
         </section>
 
         <aside className={cn('studio-sidebar', !mobileSidebar && 'mobile-hidden')} aria-label={mode === 'edit' ? 'Инструменты редактора' : 'Настройки генерации'}>
-          {mode === 'generate' ? <ControlPanel gen={gen} render={render} onGen={onGen} onRender={changeRender} onRandomSeed={randomSeed} history={seedHistory} /> : <>
+          {mode === 'generate' ? <ControlPanel gen={gen} map={map} render={render} onGen={onGen} onRender={changeRender} onRandomSeed={randomSeed} history={seedHistory} /> : <>
             <div className="inspector-nav" role="group" aria-label="Панель редактора">
               <button type="button" aria-pressed={inspector === settlementTab} onClick={() => setInspector(settlementTab)}><Icon name={settlementTab === 'crypt' ? 'crypt' : 'structure'} size={16} /> {settlementTab === 'crypt' ? 'Склеп' : 'Поселение'}</button>
               <button type="button" aria-pressed={inspector === 'interior'} onClick={() => { setInspector('interior'); changeRender({ showRoofs: false, showStructures: true }); }}><Icon name="interior" size={16} /> Интерьеры</button>

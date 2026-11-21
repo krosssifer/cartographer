@@ -1,9 +1,10 @@
-import { getAssets } from './assets';
+import { artPick } from './assets';
 import { FURNITURE, FURNITURE_FINISHES, furnitureArt } from './furnitureKit';
 import { spriteImage } from './furnitureImport';
 import { doorStyle, drawDoor, type DoorStyle } from './doors';
 import { facingOf, interiorOf, type Partition, type Room } from './interiors';
 import { hash2 } from './random';
+import { spriteLook } from './spriteLook';
 import type { Building, FurnitureSprite, Furnishing, Point } from './types';
 
 type Material = (name: string, scale: number, rotate?: boolean) => CanvasPattern | null;
@@ -44,7 +45,9 @@ function roomFloor(ctx: CanvasRenderingContext2D, room: Room, seed: number, text
 
 function object(ctx: CanvasRenderingContext2D, item: Furnishing, shade: boolean, gallery: Record<string, FurnitureSprite>) {
   const { kind, x, y, rotation } = item;
-  const spec = { ...FURNITURE[kind], ...item.size }, custom = item.sprite && gallery[item.sprite], art = (custom ? spriteImage(custom) : undefined) ?? getAssets().art[furnitureArt(kind)];
+  const spec = { ...FURNITURE[kind], ...item.size }, custom = item.sprite && gallery[item.sprite];
+  const look = spriteLook(x + 11.4, y + 6.8, 61, !custom);
+  const art = (custom ? spriteImage(custom) : undefined) ?? artPick(furnitureArt(kind), look.variant);
   ctx.save(); ctx.translate(x, y);
   if (shade && (kind === 'hearth' || kind === 'lantern')) {
     const glow = ctx.createRadialGradient(0, 0, .12, 0, 0, kind === 'hearth' ? 1.04 : .63);
@@ -59,7 +62,9 @@ function object(ctx: CanvasRenderingContext2D, item: Furnishing, shade: boolean,
     ctx.fillStyle = fade; ctx.fillRect(-1, -1, 2, 2); ctx.restore();
   }
   if (art) {
-    ctx.filter = FURNITURE_FINISHES[item.finish ?? 'oak'].filter;
+    const finish = FURNITURE_FINISHES[item.finish ?? 'oak'].filter;
+    ctx.filter = custom ? finish : [finish, look.filter].filter(Boolean).join(' ');
+    if (!custom && look.flipX) ctx.scale(-1, 1);
     const w = custom ? Math.min(spec.w, spec.h * custom.ratio) : spec.w;
     const h = custom ? Math.min(spec.h, spec.w / custom.ratio) : spec.h;
     ctx.drawImage(art, -w / 2, -h / 2, w, h);

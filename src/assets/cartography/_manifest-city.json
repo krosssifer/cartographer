@@ -1,0 +1,102 @@
+{
+  "source": "C:\\AbsoluteDND\\v2.2.1\\sprites\\city.jpg",
+  "mode": "auto",
+  "sprites": [
+    {
+      "name": "marketWagon-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketWagon-2.webp",
+      "width": 509,
+      "height": 278
+    },
+    {
+      "name": "marketWagonCovered-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketWagonCovered-2.webp",
+      "width": 488,
+      "height": 295
+    },
+    {
+      "name": "marketWheelbarrow-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketWheelbarrow-2.webp",
+      "width": 417,
+      "height": 213
+    },
+    {
+      "name": "marketWheelbarrowStone-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketWheelbarrowStone-2.webp",
+      "width": 455,
+      "height": 238
+    },
+    {
+      "name": "marketCrates-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketCrates-2.webp",
+      "width": 468,
+      "height": 394
+    },
+    {
+      "name": "marketBarrels-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketBarrels-2.webp",
+      "width": 294,
+      "height": 345
+    },
+    {
+      "name": "marketBarrelPair-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketBarrelPair-2.webp",
+      "width": 452,
+      "height": 331
+    },
+    {
+      "name": "marketBarrelLying-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketBarrelLying-2.webp",
+      "width": 363,
+      "height": 335
+    },
+    {
+      "name": "marketSacks-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketSacks-2.webp",
+      "width": 429,
+      "height": 391
+    },
+    {
+      "name": "marketBaskets-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketBaskets-2.webp",
+      "width": 402,
+      "height": 378
+    },
+    {
+      "name": "marketRope-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketRope-2.webp",
+      "width": 358,
+      "height": 366
+    },
+    {
+      "name": "marketFence-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketFence-2.webp",
+      "width": 484,
+      "height": 189
+    },
+    {
+      "name": "marketNoticeBoard-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketNoticeBoard-2.webp",
+      "width": 456,
+      "height": 379
+    },
+    {
+      "name": "marketWell-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketWell-2.webp",
+      "width": 466,
+      "height": 404
+    },
+    {
+      "name": "marketHayLarge-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketHayLarge-2.webp",
+      "width": 432,
+      "height": 330
+    },
+    {
+      "name": "marketBench-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketBench-2.webp",
+      "width": 463,
+      "height": 300
+    }
+  ]
+}

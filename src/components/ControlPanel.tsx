@@ -1,4 +1,4 @@
-import type { Biome, CryptArchetype, GenSettings, RenderSettings } from '../lib/types';
+import type { MapData, Biome, CryptArchetype, GenSettings, RenderSettings } from '../lib/types';
 import { BIOME_LABELS, CRYPT_ARCHETYPE_IDS, CRYPT_ARCHETYPE_LABELS, PRESETS } from '../lib/presets';
 import { Slider, Toggle, pct } from './controls';
 import { DensitySlider, SettlementChoices } from './SettlementPanel';
@@ -15,6 +15,7 @@ const CRYPT_ARCHETYPE_HINTS: Record<CryptArchetype, string> = {
 
 interface Props {
   gen: GenSettings;
+  map: MapData;
   render: RenderSettings;
   onGen: (patch: Partial<GenSettings>) => void;
   onRender: (patch: Partial<RenderSettings>) => void;
@@ -22,10 +23,22 @@ interface Props {
   history: number[];
 }
 
-export default function ControlPanel({ gen, render, onGen, onRender, onRandomSeed, history }: Props) {
+export default function ControlPanel({ gen, map, render, onGen, onRender, onRandomSeed, history }: Props) {
   const isCave = gen.biome === 'cave', isDungeon = gen.biome === 'dungeon';
   const isSettlement = gen.biome === 'village' || gen.biome === 'town';
   const isOverland = !isCave && !isDungeon && !isSettlement;
+  const plan = map.plan;
+  const problems = plan?.report?.problems ?? [];
+  const warnings = plan?.report?.warnings ?? [];
+  const actions = plan?.actions ?? [];
+  const plural = (n: number, one: string, few: string, many: string): string => {
+    const mod100 = n % 100;
+    const mod10 = n % 10;
+    if (mod100 >= 11 && mod100 <= 14) return many;
+    if (mod10 === 1) return one;
+    if (mod10 >= 2 && mod10 <= 4) return few;
+    return many;
+  };
   return <>
     <div className="sidebar-section generation-fields">
       <div className="section-heading"><h2>Генерация</h2><Icon name="sparkles" size={17} className="section-symbol" /></div>
@@ -85,6 +98,11 @@ export default function ControlPanel({ gen, render, onGen, onRender, onRandomSee
       {isOverland && <>
         <Slider label="Постройки" value={gen.structures} min={0} max={6} onChange={(structures) => onGen({ structures })} />
         <Toggle label="Руины вместо целых зданий" checked={gen.ruined} onChange={(ruined) => onGen({ ruined })} />
+        <Toggle
+          label="Структурная генерация (эксперимент)"
+          checked={(gen.generationEngine ?? 'structured') === 'structured'}
+          onChange={(value) => onGen({ generationEngine: value ? 'structured' : 'legacy' })}
+        />
       </>}
     </details>
     <details className="sidebar-section generation-fields">
@@ -102,10 +120,54 @@ export default function ControlPanel({ gen, render, onGen, onRender, onRandomSee
       <Toggle label="Виньетка" checked={render.vignette} onChange={(vignette) => onRender({ vignette })} />
       <Toggle label="Растительность" checked={render.showTrees} onChange={(showTrees) => onRender({ showTrees })} />
       <Toggle label="Камни" checked={render.showRocks} onChange={(showRocks) => onRender({ showRocks })} />
+      <Toggle label="Мелкий декор" checked={render.showDecor !== false} onChange={(showDecor) => onRender({ showDecor })} />
+        <Toggle label="Разметка генерации (debug)" checked={render.showDebug === true} onChange={(showDebug) => onRender({ showDebug })} />
       <Toggle label="Постройки" checked={render.showStructures} onChange={(showStructures) => onRender({ showStructures })} />
       {isDungeon && <Toggle label="Метки ловушек" checked={render.showSecrets} onChange={(showSecrets) => onRender({ showSecrets })} />}
       {isSettlement && <Toggle label="Городские объекты" checked={render.showCivic} onChange={(showCivic) => onRender({ showCivic })} />}
       <Toggle label="Сундуки" checked={render.showChests} onChange={(showChests) => onRender({ showChests })} />
     </details>
+
+    <div className="sidebar-section generation-report">
+      <div className="section-heading"><h2>Отчёт генерации</h2><Icon name={problems.length ? 'target' : 'check'} size={17} className="section-symbol" /></div>
+      <div className={`gen-report-state ${problems.length ? 'is-warning' : 'is-ok'}`}>
+        <span className="gen-report-dot" />
+        {problems.length === 0 ? 'Проверка пройдена' : `${problems.length} ${plural(problems.length, 'проблема', 'проблемы', 'проблем')}`}
+      </div>
+      {plan && (
+        <div className="gen-report-stats">
+          <span>{plan.zones.length} зон</span>
+          <span>{plan.poi.length} POI</span>
+          <span>{plan.groups.length} групп</span>
+          {(plan.composition?.openSpaces.length ?? 0) > 0 && (
+            <span>{plan.composition!.openSpaces.length} пространств</span>
+          )}
+          {(plan.composition?.masses.length ?? 0) > 0 && (
+            <span>{plan.composition!.masses.length} масс леса</span>
+          )}
+          <span>{(plan.roads ?? []).filter((path) => path.type === 'trail').length} троп</span>
+          {plan.spawn && <span>старт {plan.spawn.x}:{plan.spawn.y}</span>}
+        </div>
+      )}
+      {problems.length > 0 && (
+        <ul className="gen-report-list">
+          {problems.slice(0, 5).map((problem, index) => <li key={`${problem.kind}-${index}`}>{problem.message}</li>)}
+        </ul>
+      )}
+      {warnings.length > 0 && (
+        <ul className="gen-report-list is-warnings">
+          {warnings.slice(0, 3).map((warning, index) => <li key={index}>{warning}</li>)}
+        </ul>
+      )}
+      {actions.length > 0 && (
+        <>
+          <div className="gen-report-label">Починено автоматически</div>
+          <ul className="gen-report-list is-actions">
+            {actions.slice(0, 5).map((action, index) => <li key={index}>{action}</li>)}
+          </ul>
+        </>
+      )}
+      {!plan && <p className="field-hint">Для этого биома план генерации пока не строится.</p>}
+    </div>
   </>;
 }

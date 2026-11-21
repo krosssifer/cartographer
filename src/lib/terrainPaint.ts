@@ -41,28 +41,69 @@ interface Paint {
   rgb: RGB;
   tint: RGB;
   source?: Uint8ClampedArray;
-  columns?: Int32Array;
-  rows?: Int32Array;
+  stepX?: number;
+  stepY?: number;
+  offset?: number;
+  tileWidth?: number;
+  tileHeight?: number;
 }
 
-function buildPaint(samples: number, w: number, h: number, textured: boolean, seed: number, biome: MapData['biome']): Paint[] {
-  const materialSamples = new Map<Material, Pick<Paint, 'source' | 'columns' | 'rows'>>();
+function buildPaint(samples: number, textured: boolean, seed: number, biome: MapData['biome']): Paint[] {
+  const materialSamples = new Map<Material, Pick<Paint, 'source' | 'stepX' | 'stepY' | 'offset' | 'tileWidth' | 'tileHeight'>>();
   const assets = getAssets();
   return names.map((name, i) => {
-    const kind = name === 'bridge' ? 'water' : name === 'door' ? 'flagstone' : name === 'sand' && biome === 'desert' ? 'dunes' : materials[i];
+    const kind = name === 'bridge' ? 'water'
+      : name === 'door' ? 'flagstone'
+      : name === 'sand' && biome === 'desert' ? 'dunes'
+      : name === 'water' && (biome === 'cave' || biome === 'dungeon') ? 'waterRapids'
+      : materials[i];
     const art = kind && textured ? assets.materials[kind] : undefined;
     const info: Paint = { rgb: TERRAIN_COLORS[name === 'bridge' ? 'water' : name === 'door' ? 'floor' : name], tint: tint[name] ?? [1, 1, 1] };
     if (!kind || !art) return info;
     if (!materialSamples.has(kind)) {
       const span = ART_SCALE[kind] * samples;
-      const stepX = art.width / span, stepY = art.height / span;
+      // Текстура семплируется в ART_SCALE раз мельче, чем её родное разрешение:
+      // без предварительного уменьшения это даёт алиасинг (муар, «полосы»).
+      // Поэтому сначала один раз боксим материал до плотности ~1 тексель/пиксель.
+      const factor = Math.max(1, Math.round(art.width / span));
+      const baked = factor > 1 ? downsample(art, factor) : art;
+      const stepX = baked.width / span, stepY = baked.height / span;
       const offset = ((seed >>> 0) % 97) * 11;
-      const columns = Int32Array.from({ length: w }, (_, x) => ((Math.floor(x * stepX) + offset) % art.width) * 4);
-      const rows = Int32Array.from({ length: h }, (_, y) => ((Math.floor(y * stepY) + offset) % art.height) * art.width * 4);
-      materialSamples.set(kind, { source: art.data, columns, rows });
+      // Обычная циклическая (wrap) развёртка: текстуры готовятся скриптом
+      // scripts/make-seamless.py так, что их кромки совпадают точно, поэтому шва
+      // нет. Прежняя mirror-развёртка давала 4-кратную симметрию — на снегу,
+      // воде и дорогах это читалось как «калейдоскоп» из ромбов.
+      materialSamples.set(kind, {
+        source: baked.data,
+        stepX,
+        stepY,
+        offset,
+        tileWidth: baked.width,
+        tileHeight: baked.height,
+      });
     }
     return { ...info, ...materialSamples.get(kind) };
   });
+}
+
+/** Усреднение блоков factor×factor — один раз на материал, чтобы убрать алиасинг. */
+function downsample(art: { width: number; height: number; data: Uint8ClampedArray }, factor: number) {
+  const w = Math.floor(art.width / factor), h = Math.floor(art.height / factor);
+  const out = new Uint8ClampedArray(w * h * 4);
+  const total = factor * factor;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let r = 0, g = 0, b = 0;
+    for (let dy = 0; dy < factor; dy++) {
+      const row = ((y * factor + dy) * art.width + x * factor) * 4;
+      for (let dx = 0; dx < factor; dx++) {
+        const o = row + dx * 4;
+        r += art.data[o]; g += art.data[o + 1]; b += art.data[o + 2];
+      }
+    }
+    const o = (y * w + x) * 4;
+    out[o] = r / total; out[o + 1] = g / total; out[o + 2] = b / total; out[o + 3] = 255;
+  }
+  return { width: w, height: h, data: out };
 }
 
 let last: { cells: MapData['cells']; key: string; image: ImageData } | undefined;
@@ -74,22 +115,26 @@ let last: { cells: MapData['cells']; key: string; image: ImageData } | undefined
  */
 export function paintTerrain(map: MapData, settings: RenderSettings, seed: number): ImageData {
   const { width, height } = map;
-  const samples = Math.min(settings.cellSize, 48, Math.max(14, Math.floor(Math.sqrt(14_000_000 / (width * height)))));
+  const samples = Math.max(14, Math.min(settings.cellSize, Math.floor(Math.sqrt(22_000_000 / (width * height)))));
   const key = `${seed}:${samples}:${settings.texture}:${settings.shading}:${settings.showStructures}:${getAssets().ready}`;
   if (last?.cells === map.cells && last.key === key) return last.image;
 
   const w = width * samples, h = height * samples;
   const raster = new ImageData(w, h), pixels = raster.data;
-  const paint = buildPaint(samples, w, h, settings.texture, seed, map.biome);
+  const paint = buildPaint(samples, settings.texture, seed, map.biome);
   const tiles = new Uint8Array(width * height);
   const light = new Float32Array(width * height);
   const fallbackLand = index[map.biome === 'cave' ? 'caveFloor' : map.biome === 'dungeon' ? 'floor' : map.biome === 'snow' ? 'snow' : map.biome === 'swamp' ? 'mud' : map.biome === 'village' || map.biome === 'town' ? 'plaza' : 'sand'];
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     const at = y * width + x;
     const { terrain, height: elevation } = map.cells[y][x];
+    // Стены нельзя заливать цветом «пустоты»: в подземелье void — это массив
+    // камня вокруг залов, а на поверхности wall — обычная каменная кладка.
+    // Раньше wall → void давало чёрные квадраты вокруг домов и руин.
+    const underground = map.biome === 'dungeon' || map.biome === 'cave';
     const shown = !settings.showStructures && (terrain === 'wall' || terrain === 'door')
       ? 'floor'
-      : terrain === 'wall' ? 'void' : terrain;
+      : terrain === 'wall' ? (underground ? 'caveWall' : 'wall') : terrain;
     tiles[at] = index[shown];
     if (settings.shading && !rigid[tiles[at]]) {
       const nw = map.cells[Math.max(0, y - 1)][Math.max(0, x - 1)].height;
@@ -116,8 +161,14 @@ export function paintTerrain(map: MapData, settings: RenderSettings, seed: numbe
       const here = tiles[at];
       const ix = dxIndex[px], fx = dxFrac[px];
       const nw = pRow + ix, sw = nRow + ix;
-      const p0 = (1 - dyFrac) * (1 - fx), p1 = (1 - dyFrac) * fx, p2 = dyFrac * (1 - fx), p3 = dyFrac * fx;
+      let p0 = (1 - dyFrac) * (1 - fx), p1 = (1 - dyFrac) * fx, p2 = dyFrac * (1 - fx), p3 = dyFrac * fx;
+      // Лёгкое обострение весов: граница грунтов читается, но без клеточной «лестницы».
+      const sumSq = p0 * p0 + p1 * p1 + p2 * p2 + p3 * p3;
+      if (sumSq > 0) { const inv = 1 / sumSq; p0 *= p0 * inv; p1 *= p1 * inv; p2 *= p2 * inv; p3 *= p3 * inv; }
       const wash = drift[nw + 2] * p0 + drift[nw + 5] * p1 + drift[sw + 2] * p2 + drift[sw + 5] * p3;
+      // Плавное смещение UV (в клетках): разрывает строгую периодичность тайла.
+      const washX = (drift[nw] * p0 + drift[nw + 3] * p1 + drift[sw] * p2 + drift[sw + 3] * p3) * 0.65;
+      const washY = (drift[nw + 1] * p0 + drift[nw + 4] * p1 + drift[sw + 1] * p2 + drift[sw + 4] * p3) * 0.65;
       let r = 0, g = 0, b = 0, wetR = 0, wetG = 0, wetB = 0, water = 0, land = 0, shade = light[at];
       let count = 1;
       slots[0] = at;
@@ -147,8 +198,19 @@ export function paintTerrain(map: MapData, settings: RenderSettings, seed: numbe
         }
         const mat = paint[tile];
         let a: number, c: number, d: number;
-        if (mat.source) {
-          const offset = mat.rows![py] + mat.columns![px];
+        if (mat.source && mat.stepX !== undefined && mat.stepY !== undefined) {
+          // Мировые координаты (с шумовым смещением для нежёстких поверхностей)
+          // вместо координат пикселя: рисунок больше не повторяется сеткой.
+          // UV считается в пикселях растра (как раньше), а смещение wash — в клетках.
+          const ux = rigid[tile] ? px : px + washX * samples;
+          const uy = rigid[tile] ? py : py + washY * samples;
+          const tw = mat.tileWidth!;
+          const th = mat.tileHeight!;
+          let tx = Math.floor(ux * mat.stepX) + mat.offset!;
+          let ty = Math.floor(uy * mat.stepY) + mat.offset!;
+          tx = ((tx % tw) + tw) % tw;
+          ty = ((ty % th) + th) % th;
+          const offset = (ty * tw + tx) * 4;
           a = mat.source[offset] * mat.tint[0]; c = mat.source[offset + 1] * mat.tint[1]; d = mat.source[offset + 2] * mat.tint[2];
         } else [a, c, d] = mat.rgb;
         if (wet[tile]) {

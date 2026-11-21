@@ -1,0 +1,30 @@
+{
+  "source": "C:\\AbsoluteDND\\v2.2.1\\sprites\\exotic.jpg",
+  "mode": "quad",
+  "sprites": [
+    {
+      "name": "cactus-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\cactus-2.webp",
+      "width": 877,
+      "height": 885
+    },
+    {
+      "name": "reed-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\reed-2.webp",
+      "width": 914,
+      "height": 930
+    },
+    {
+      "name": "dead-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\dead-2.webp",
+      "width": 949,
+      "height": 924
+    },
+    {
+      "name": "mushroom-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\mushroom-2.webp",
+      "width": 854,
+      "height": 809
+    }
+  ]
+}

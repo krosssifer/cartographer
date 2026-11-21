@@ -1,3 +1,5 @@
+import type { GenerationPlan } from './gen/plan';
+
 export type Biome = 'forest' | 'plains' | 'swamp' | 'desert' | 'snow' | 'cave' | 'dungeon' | 'village' | 'town';
 export type CryptArchetype = 'tomb' | 'catacombs' | 'temple' | 'archive' | 'prison';
 export type SettlementStyle = 'village' | 'town';
@@ -195,6 +197,8 @@ export interface MapData {
   chests: Chest[];
   river: Point[];
   road: Point[];
+  /** Структурный план (зоны/POI/группы). Optional — старые карты без него валидны. */
+  plan?: GenerationPlan;
 }
 
 export interface GenSettings {
@@ -222,6 +226,8 @@ export interface GenSettings {
   cryptTraps: boolean;
   cryptChasms: boolean;
   cryptArchetype: CryptArchetype;
+  /** Движок генерации: структурный pipeline или прежний поклеточный. */
+  generationEngine?: 'legacy' | 'structured';
 }
 
 export interface Selection {
@@ -279,5 +285,9 @@ export interface RenderSettings {
   showCivic: boolean;
   showCrypt: boolean;
   showSecrets: boolean;
+  /** Debug-разметка: зоны, POI, группы и дороги генератора. */
+  showDebug?: boolean;
+  /** Мелкий декор (трава, цветы, камешки, мох) — слой поверх земли. */
+  showDecor?: boolean;
   vignette: boolean;
 }

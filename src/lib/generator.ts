@@ -1,6 +1,17 @@
 import { Perlin } from './noise';
 import { cryptBlueprint, decorateCrypt } from './cryptLayout';
+import { repairMap } from './gen/repair';
+import { normalizeTerrain } from './gen/normalize';
+import { smoothTerrain } from './gen/morphology';
 import { generateSettlement } from './settlement';
+import { generateStructuredVegetation } from './gen/forest';
+import { caveEntranceWidth, generateStructuredCave } from './gen/cave';
+import { planRoadNetwork } from './gen/roads';
+import { planScene } from './gen/scene';
+import { dungeonPlan } from './gen/dungeon';
+import { cryptCompositionPlan, furnishByPurpose, placeCorridorTraps } from './gen/cryptplan';
+import { SeededRandom } from './gen/random';
+import type { Bridge, RoadNetwork } from './gen/plan';
 import { mulberry32, randInt, pick, hash2, type Rng } from './random';
 import type {
   Biome,
@@ -21,20 +32,55 @@ const WATER: Terrain[] = ['water', 'deepWater'];
 const isWater = (t: Terrain) => WATER.includes(t);
 const isBuilding = (t: Terrain) => t === 'floor' || t === 'wall' || t === 'door';
 
+/**
+ * Публичная точка входа: любой генератор отдаёт карту, после чего она проходит
+ * через валидатор и починку. Так будущие эксперименты с алгоритмами не могут
+ * тихо сломать проходимость или поставить объект в воду.
+ */
 export function generateMap(s: GenSettings): MapData {
+  const raw = generateMapRaw(s);
+  // Нормализация террейна до починки: убираем изолированные лужи, мосты без воды,
+  // оторванные куски дороги и случайные пятна земли — они читаются как баги.
+  const normalized = normalizeTerrain(raw, s);
+  // Морфология: убираем одноклеточные вкрапления и лестницы на стыках грунта.
+  const smoothed = smoothTerrain(normalized);
+  // Концы троп: после морфологии площадка у конца ответвления могла «зарасти».
+  // Возвращаем её — конец пути должен читаться как место, а не обрубок.
+  const blockedForYard = new Set<Terrain>(['water', 'deepWater', 'wall', 'void', 'caveWall', 'buildingWall', 'roof', 'door', 'floor']);
+  for (const path of smoothed.plan?.roads ?? []) {
+    const end = path.points[path.points.length - 1];
+    if (!end) continue;
+    const centerTerrain = smoothed.cells[end.y]?.[end.x]?.terrain;
+    if (!centerTerrain || blockedForYard.has(centerTerrain)) continue;
+    for (let dy = -2; dy <= 2; dy += 1) {
+      for (let dx = -2; dx <= 2; dx += 1) {
+        if (Math.abs(dx) === 2 && Math.abs(dy) === 2) continue;
+        const cell = smoothed.cells[end.y + dy]?.[end.x + dx];
+        if (!cell || blockedForYard.has(cell.terrain) || cell.terrain === 'bridge') continue;
+        if (dx === 0 && dy === 0) cell.terrain = 'road';
+        else if (cell.terrain !== 'road') cell.terrain = 'dirt';
+      }
+    }
+  }
+  const repaired = repairMap(smoothed);
+  if (!repaired.map.plan) return repaired.map;
+  return { ...repaired.map, plan: { ...repaired.map.plan, report: repaired.report, actions: [...(repaired.map.plan.actions ?? []), ...repaired.actions] } };
+}
+
+function generateMapRaw(s: GenSettings): MapData {
   if (s.biome === 'cave') return generateCave(s);
   if (s.biome === 'dungeon') return generateDungeon(s);
   if (s.biome === 'village' || s.biome === 'town') return generateSettlement(s);
   return generateOverland(s);
 }
 
-// ---------- Вспомогательные функции ----------
-
 function emptyCells(w: number, h: number, terrain: Terrain): Cell[][] {
   const cells: Cell[][] = [];
   for (let y = 0; y < h; y++) {
     const row: Cell[] = [];
-    for (let x = 0; x < w; x++) row.push({ terrain, height: 0.5, moisture: 0.5 });
+    for (let x = 0; x < w; x++) {
+      row.push({ terrain, height: 0, moisture: 0 });
+    }
     cells.push(row);
   }
   return cells;
@@ -203,45 +249,122 @@ function generateOverland(s: GenSettings): MapData {
     }
   }
 
-  // Слой 3: река
+  // Сцена (MACRO): архетип, река/переправа, дорога, пространства — до террейна.
+  const scene = planScene(
+    { width: w, height: h, biome, river: s.river, road: s.road, structures: s.structures },
+    new SeededRandom(s.seed, 9001),
+  );
+
+  // Слой 3: река по сцене — русло-кривая от края к соседнему краю.
   const river: Point[] = [];
-  const riverHorizontal = rng() > 0.5;
-  if (s.river) {
-    const path = wavyPath(rng, hn, w, h, riverHorizontal, h * 0.25);
-    const wide = w * h > 600;
-    for (const p of path) {
-      river.push(p);
-      const cells2: Point[] = [p];
-      if (wide) cells2.push(riverHorizontal ? { x: p.x, y: p.y + 1 } : { x: p.x + 1, y: p.y });
-      for (const c of cells2) {
-        if (!inBounds(c.x, c.y, w, h)) continue;
-        cells[c.y][c.x].terrain = 'water';
-        cells[c.y][c.x].height = Math.min(cells[c.y][c.x].height, wl - 0.02);
+  const riverHorizontal = scene.river
+    ? ((): boolean => {
+        const first = scene.river.path[0];
+        const last = scene.river.path[scene.river.path.length - 1];
+        return Math.abs(last.x - first.x) >= Math.abs(last.y - first.y);
+      })()
+    : rng() > 0.5;
+  if (scene.river) {
+    const half = Math.max(0, scene.river.width - 1);
+    const waterCells: Point[] = [];
+    const path = scene.river.path;
+    for (let index = 0; index < path.length; index += 1) {
+      const point = path[index];
+      const before = path[Math.max(0, index - 1)];
+      const after = path[Math.min(path.length - 1, index + 1)];
+      const tangentX = after.x - before.x;
+      const tangentY = after.y - before.y;
+      const tangentLength = Math.hypot(tangentX, tangentY) || 1;
+      const normalX = -tangentY / tangentLength;
+      const normalY = tangentX / tangentLength;
+      river.push(point);
+      for (let delta = -half; delta <= half; delta += 1) {
+        const cell: Point = { x: Math.round(point.x + normalX * delta), y: Math.round(point.y + normalY * delta) };
+        if (!inBounds(cell.x, cell.y, w, h)) continue;
+        cells[cell.y][cell.x].terrain = 'water';
+        cells[cell.y][cell.x].height = Math.min(cells[cell.y][cell.x].height, wl - 0.02);
+        waterCells.push(cell);
       }
-      // Берег
-      for (let dy = -1; dy <= (wide ? 2 : 1); dy++) {
-        for (let dx = -1; dx <= (wide ? 2 : 1); dx++) {
-          const nx = p.x + dx;
-          const ny = p.y + dy;
+    }
+    // Вода вне русла не имеет причины существовать: оставляем только клетки
+    // в пределах ширины реки (иначе фоновая «вода» из шума раздувает покрытие).
+    const keepWater = new Uint8Array(w * h);
+    const waterDistance = new Int16Array(w * h).fill(-1);
+    const waterQueue: number[] = [];
+    for (const cell of waterCells) {
+      const index = cell.y * w + cell.x;
+      if (keepWater[index]) continue;
+      keepWater[index] = 1;
+      waterDistance[index] = 0;
+      waterQueue.push(index);
+    }
+    const keepLimit = scene.river.width + 2;
+    for (let head = 0; head < waterQueue.length; head += 1) {
+      const index = waterQueue[head];
+      const depth = waterDistance[index];
+      if (depth >= keepLimit) continue;
+      const x = index % w;
+      const y = (index - x) / w;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as [number, number][]) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (!inBounds(nx, ny, w, h)) continue;
+        const next = ny * w + nx;
+        if (waterDistance[next] >= 0) continue;
+        waterDistance[next] = depth + 1;
+        keepWater[next] = 1;
+        waterQueue.push(next);
+      }
+    }
+    const dryTerrain = biome === 'swamp' ? 'mud' : biome === 'snow' ? 'snow' : biome === 'desert' ? 'sand' : 'grass';
+    for (let y = 0; y < h; y += 1) {
+      for (let x = 0; x < w; x += 1) {
+        const cell = cells[y][x];
+        if (isWater(cell.terrain) && !keepWater[y * w + x]) cell.terrain = dryTerrain;
+      }
+    }
+    // Берег: песок/грязь/снег в кольце вокруг воды (переход «вода → суша → растительность»).
+    const bankTerrain = biome === 'swamp' ? 'mud' : biome === 'snow' ? 'snow' : 'sand';
+    for (const cell of waterCells) {
+      for (let dy = -2; dy <= 2; dy += 1) {
+        for (let dx = -2; dx <= 2; dx += 1) {
+          const nx = cell.x + dx;
+          const ny = cell.y + dy;
           if (!inBounds(nx, ny, w, h)) continue;
-          const c = cells[ny][nx];
-          if (!isWater(c.terrain) && c.terrain !== 'rock') {
-            c.terrain = biome === 'swamp' ? 'mud' : biome === 'snow' ? 'snow' : 'sand';
-          }
+          const target = cells[ny][nx];
+          if (isWater(target.terrain) || target.terrain === 'rock') continue;
+          if (Math.abs(dx) + Math.abs(dy) > 3) continue;
+          target.terrain = bankTerrain;
         }
       }
     }
   }
 
   // Слой 4: дорога (перпендикулярно реке по возможности)
+  const structuredEngine = (s.generationEngine ?? 'structured') === 'structured';
   const road: Point[] = [];
+  let roadNetwork: RoadNetwork | null = null;
+  let roadBridges: Bridge[] = [];
   if (s.road) {
-    const horizontal = s.river ? !riverHorizontal : rng() > 0.5;
-    const path = routeRoad(cells, wavyPath(rng, mn, w, h, horizontal, h * 0.15, false), horizontal, horizontal ? h : w);
-    for (const p of path) {
-      road.push(p);
-      const c = cells[p.y][p.x];
-      c.terrain = isWater(c.terrain) ? 'bridge' : 'road';
+    if (structuredEngine) {
+      // Структурный планировщик: узлы → cost-field → полотно 2 клетки → обочины → мосты.
+      const planned = planRoadNetwork(
+        s,
+        cells,
+        new SeededRandom(s.seed, 5171),
+        scene.road ? { entry: scene.road.entry, exit: scene.road.exit, waypoints: scene.road.via } : {},
+      );
+      roadNetwork = planned.network;
+      roadBridges = planned.bridges;
+      for (const p of planned.centerline) road.push(p);
+    } else {
+      const horizontal = scene.river ? !riverHorizontal : rng() > 0.5;
+      const path = routeRoad(cells, wavyPath(rng, mn, w, h, horizontal, h * 0.15, false), horizontal, horizontal ? h : w);
+      for (const p of path) {
+        road.push(p);
+        const c = cells[p.y][p.x];
+        c.terrain = isWater(c.terrain) ? 'bridge' : 'road';
+      }
     }
   }
 
@@ -279,17 +402,59 @@ function generateOverland(s: GenSettings): MapData {
     if (side === 2) { dx = sx; dy = sy + randInt(rng, 1, sh - 2); }
     if (side === 3) { dx = sx + sw - 1; dy = sy + randInt(rng, 1, sh - 2); }
     cells[dy][dx].terrain = 'door';
-    // Руины: разрушаем часть стен и пола
+    // Руины: стены осыпаются, внутренние перегородки исчезают, пол зарастает.
+    // Вокруг не остаётся сплошной застройки: только обломки кладки в траве.
     if (ruin) {
+      const ground: Terrain = biome === 'desert' ? 'sand' : biome === 'snow' ? 'snow' : 'grass';
       for (let y = sy; y < sy + sh; y++) {
         for (let x = sx; x < sx + sw; x++) {
           const c = cells[y][x];
           const corner = (x === sx || x === sx + sw - 1) && (y === sy || y === sy + sh - 1);
-          if (c.terrain === 'wall' && !corner && rng() < 0.35) c.terrain = 'floor';
-          else if (c.terrain === 'floor' && rng() < 0.25) c.terrain = biome === 'desert' ? 'sand' : biome === 'snow' ? 'snow' : 'grass';
+          if (c.terrain === 'wall' && !corner && rng() < 0.6) c.terrain = 'floor';
+          if (c.terrain === 'floor' && rng() < 0.55) c.terrain = ground;
         }
       }
+      // Пол без соседних стен — уже не руина, а открытая земля: зарастает.
+      const snapshot = cells.map((row) => row.map((cell) => cell.terrain));
+      for (let y = sy; y < sy + sh; y++) {
+        for (let x = sx; x < sx + sw; x++) {
+          if (cells[y][x].terrain !== 'floor') continue;
+          let walls = 0;
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const t = snapshot[y + dy]?.[x + dx];
+            if (t === 'wall' || t === 'door') walls += 1;
+          }
+          if (!walls && rng() < 0.85) cells[y][x].terrain = ground;
+        }
+      }
+      if (cells[dy]?.[dx]?.terrain === 'door' && rng() < 0.5) cells[dy][dx].terrain = ground;
     }
+  }
+
+  // Слой 6 (структурный движок): зоны → POI → группы → объекты.
+  if ((s.generationEngine ?? 'structured') === 'structured') {
+    const structured = generateStructuredVegetation(s, cells, river, road, structures);
+    return {
+      width: w,
+      height: h,
+      biome,
+      cells,
+      trees: structured.trees,
+      rocks: structured.rocks,
+      structures,
+      chests: [],
+      river,
+      road,
+      plan: {
+        ...structured.plan,
+        roads: [...(roadNetwork?.paths ?? []), ...(structured.plan.roads ?? [])],
+        roadGraph: roadNetwork?.graph ?? [],
+        bridges: [...roadBridges],
+        river: structured.plan.river ?? river,
+        riverWidth: scene.river ? scene.river.width : w * h > 600 ? 2 : 1,
+        scene,
+      },
+    };
   }
 
   // Слой 6: растительность
@@ -392,6 +557,74 @@ function generateCave(s: GenSettings): MapData {
   const keep = Array.from({ length: h }, () => new Array<boolean>(w).fill(false));
   for (const p of best) keep[p.y][p.x] = true;
 
+  // ---- Вход в пещеру -------------------------------------------------------
+  // Одна дыра в стене на случайной стороне карты: от края внутрь прорубается
+  // коридор шириной 2 клетки до ближайшего зала. Клетки коридора остаются
+  // сухими, чтобы вход не превратился в лужу.
+  const entrance = (() => {
+    const floors: Point[] = [];
+    for (let y = 0; y < h; y += 1) {
+      for (let x = 0; x < w; x += 1) if (keep[y][x]) floors.push({ x, y });
+    }
+    if (!floors.length) return null;
+
+    const side = Math.floor(rng() * 4);
+    const along = side < 2 ? 2 + Math.floor(rng() * Math.max(1, w - 4)) : 2 + Math.floor(rng() * Math.max(1, h - 4));
+    const edge: Point =
+      side === 0 ? { x: along, y: 0 } : side === 1 ? { x: along, y: h - 1 } : side === 2 ? { x: 0, y: along } : { x: w - 1, y: along };
+    const inner: Point =
+      side === 0 ? { x: along, y: 1 } : side === 1 ? { x: along, y: h - 2 } : side === 2 ? { x: 1, y: along } : { x: w - 2, y: along };
+    const onBorder = (x: number, y: number) => x === 0 || y === 0 || x === w - 1 || y === h - 1;
+
+    let target = floors[0];
+    let bestDistance = Infinity;
+    for (const cell of floors) {
+      const distance = Math.abs(cell.x - inner.x) + Math.abs(cell.y - inner.y);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        target = cell;
+      }
+    }
+
+    // BFS по всем клеткам (стены тоже проходимы — мы их прорубаем), но по
+    // границе ходить запрещено, иначе вход расползётся вдоль края карты.
+    const parent = new Int32Array(w * h).fill(-1);
+    const seen = new Uint8Array(w * h);
+    const startAt = inner.y * w + inner.x;
+    seen[startAt] = 1;
+    const queue = [startAt];
+    for (let head = 0; head < queue.length; head += 1) {
+      const at = queue[head];
+      const x = at % w;
+      const y = Math.floor(at / w);
+      if (x === target.x && y === target.y) break;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        if (onBorder(nx, ny)) continue;
+        const next = ny * w + nx;
+        if (seen[next]) continue;
+        seen[next] = 1;
+        parent[next] = at;
+        queue.push(next);
+      }
+    }
+    const path: Point[] = [edge];
+    const tail: Point[] = [];
+    let at = target.y * w + target.x;
+    while (at !== -1) {
+      tail.push({ x: at % w, y: Math.floor(at / w) });
+      if (parent[at] === -1) break;
+      at = parent[at];
+    }
+    tail.reverse();
+    for (const cell of tail) path.push(cell);
+    return { edge, path };
+  })();
+
+  const entranceWidth = caveEntranceWidth(w, h);
+
   const cells = emptyCells(w, h, 'caveWall');
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -402,7 +635,65 @@ function generateCave(s: GenSettings): MapData {
       cells[y][x] = { terrain: t, height: hv, moisture: mv };
     }
   }
+  // Каменные столбы: отдельный шумовой слой, чтобы большие залы не читались как
+  // пустое поле. Столбы ставим только в открытых местах (6+ открытых соседей),
+  // поэтому проходимость не рвётся.
+  const pillarNoise = new Perlin(s.seed + 977);
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      if (cells[y][x].terrain !== 'caveFloor') continue;
+      if (pillarNoise.fbm(x * 0.21 + 13, y * 0.21 + 7, 2) < 0.6) continue;
+      let openNeighbours = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          if (cells[y + dy][x + dx].terrain === 'caveFloor') openNeighbours += 1;
+        }
+      }
+      if (openNeighbours >= 6 && rng() < 0.55) {
+        cells[y][x] = { terrain: 'caveWall', height: cells[y][x].height, moisture: cells[y][x].moisture };
+      }
+    }
+  }
+
+  // ---- Прорубка входа в готовый террейн ---------------------------------
+  // Рубим уже после столбов и заливки воды: иначе столб или вода могут
+  // запечатать единственный проход из коридора в зал.
+  if (entrance) {
+    const offsets: number[] = [];
+    const firstOffset = -Math.floor(entranceWidth / 2);
+    for (let i = 0; i < entranceWidth; i += 1) offsets.push(firstOffset + i);
+
+    entrance.path.forEach((cell, index) => {
+      const previous = entrance.path[Math.max(0, index - 1)];
+      const next = entrance.path[Math.min(entrance.path.length - 1, index + 1)];
+      const horizontal = next.y === previous.y;
+      for (const offset of offsets) {
+        const wx = cell.x + (horizontal ? 0 : offset);
+        const wy = cell.y + (horizontal ? offset : 0);
+        if (wx < 0 || wy < 0 || wx >= w || wy >= h) continue;
+        cells[wy][wx] = { terrain: 'caveFloor', height: cells[wy][wx].height, moisture: cells[wy][wx].moisture };
+      }
+    });
+  }
+
   // Убираем воду у самых стен, чтобы берег читался
+  if ((s.generationEngine ?? 'structured') === 'structured') {
+    const cave = generateStructuredCave(s, cells, entrance?.edge, entranceWidth);
+    return {
+      width: w,
+      height: h,
+      biome: 'cave',
+      cells,
+      trees: cave.trees,
+      rocks: cave.rocks,
+      structures: [],
+      chests: [],
+      river: [],
+      road: [],
+      plan: cave.plan,
+    };
+  }
   const trees: Tree[] = [];
   const rocks: Rock[] = [];
   for (let y = 1; y < h - 1; y++) {
@@ -622,5 +913,20 @@ function generateDungeon(s: GenSettings): MapData {
       }
     }
   }
-  return decorateCrypt({ width: w, height: h, biome: 'dungeon', cells, trees, rocks, structures: rooms, chests: [], river: [], road: [] }, s);
+  const dungeonMap = decorateCrypt(
+    { width: w, height: h, biome: 'dungeon', cells, trees, rocks, structures: rooms, chests: [], river: [], road: [] },
+    s,
+  );
+  if ((s.generationEngine ?? 'structured') === 'structured') {
+    // Граф залов, глубина от входа и назначения — часть структурного плана.
+    const basePlan = dungeonPlan(rooms, cells, w, h);
+    // Зоны, POI и группы залов: план описывает замысел склепа, а не только граф.
+    const composed = cryptCompositionPlan(dungeonMap, basePlan);
+    // Наполнение по назначению: сокровищница без сундука — не сокровищница.
+    const furnished = furnishByPurpose({ ...dungeonMap, plan: composed }, composed);
+    const trapped = placeCorridorTraps({ ...dungeonMap, crypt: furnished.map.crypt, plan: furnished.plan }, furnished.plan);
+    dungeonMap.crypt = trapped.map.crypt;
+    dungeonMap.plan = trapped.plan;
+  }
+  return dungeonMap;
 }

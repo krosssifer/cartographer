@@ -22,22 +22,41 @@ for (const kind of CRYPT_KINDS) {
 export const artUrl = (name: string) => files[`../assets/cartography/${name}.webp`] ?? furnitureVectors[name] ?? cryptVectors[name] ?? chestVectors[name] ?? synthesized[name];
 export const CHEST_ART = chest;
 
-export const MATERIALS = ['grass', 'earth', 'bank', 'water', 'flagstone', 'bedrock', 'snow', 'peat', 'caveSoil', 'dunes', 'hatching', 'cobbles', 'thatch', 'shingles', 'terracotta', 'slate'] as const;
+export const MATERIALS = ['grass', 'earth', 'bank', 'water', 'waterDeep', 'waterRapids', 'flagstone', 'bedrock', 'snow', 'peat', 'caveSoil', 'dunes', 'hatching', 'cobbles', 'thatch', 'shingles', 'terracotta', 'slate'] as const;
 export type Material = typeof MATERIALS[number];
 
 export const ROOFS = ['thatch', 'shingles', 'terracotta', 'slate'] as const;
 
 export const TILE_ART: Partial<Record<Terrain, Material>> = {
-  grass: 'grass', darkGrass: 'grass', dirt: 'earth', road: 'earth', sand: 'bank', mud: 'peat',
-  rock: 'bedrock', caveFloor: 'caveSoil', caveWall: 'bedrock', floor: 'flagstone', wall: undefined, void: undefined,
+  grass: 'grass', darkGrass: 'grass', dirt: 'earth', road: 'bank', sand: 'bank', mud: 'peat',
+  rock: 'bedrock', caveFloor: 'caveSoil', caveWall: 'bedrock', floor: 'flagstone', wall: 'bedrock', void: undefined,
   plaza: 'cobbles', buildingFloor: 'flagstone', buildingWall: 'bedrock', roof: 'thatch',
-  water: 'water', deepWater: 'water', ice: 'snow', snow: 'snow',
+  water: 'water', deepWater: 'waterDeep', ice: 'snow', snow: 'snow',
 };
 
 export const ART_SCALE: Record<Material, number> = {
-  grass: 5.9, earth: 5.7, bank: 6.8, water: 7.5, flagstone: 4.4, bedrock: 6.0, snow: 7.5, peat: 5.9,
+  grass: 5.9, earth: 3.6, bank: 6.8, water: 7.5, waterDeep: 6.2, waterRapids: 7.0,
+  flagstone: 4.4, bedrock: 6.0, snow: 7.5, peat: 5.9,
   caveSoil: 5.8, dunes: 6.7, hatching: 8.1, cobbles: 4.1, thatch: 2.8, shingles: 2.2, terracotta: 2.6, slate: 2.4,
 };
+
+/**
+ * Дополнительные варианты одного объекта: `oak.webp`, `oak-2.webp`, `oak-3.webp`.
+ * Базовый файл без числового суффикса считается первым вариантом.
+ * Вариант выбирается стабильным хэшем инстанса (см. artPick), поэтому один и
+ * тот же объект не «перескакивает» между картинками при перерисовке.
+ */
+const VARIANTS: Record<string, string[]> = {};
+const variantIndex = (name: string) => parseInt(name.slice(name.lastIndexOf('-') + 1), 10) || 1;
+for (const path of Object.keys(files)) {
+  const name = path.slice(path.lastIndexOf('/') + 1, -5);
+  const extra = /^(.+)-(\d+)$/.exec(name);
+  (VARIANTS[extra ? extra[1] : name] ??= []).push(name);
+}
+for (const list of Object.values(VARIANTS)) list.sort((a, b) => variantIndex(a) - variantIndex(b));
+
+/** Имена всех вариантов объекта (включая базовый). */
+export const artVariants = (name: string): string[] => VARIANTS[name] ?? [];
 
 interface MapAssets {
   art: Record<string, HTMLImageElement>;
@@ -49,6 +68,17 @@ const assets: MapAssets = { art: {}, materials: {}, ready: false };
 let loading: Promise<MapAssets> | undefined;
 let marketLoading: Promise<void> | undefined;
 export const getAssets = () => assets;
+
+/** Загруженная картинка объекта без учёта вариантов. */
+export const artImage = (name: string) => assets.art[name];
+
+/** Картинка объекта с учётом варианта; `hash` в диапазоне 0…1. */
+export function artPick(name: string, hash: number): HTMLImageElement | undefined {
+  const list = VARIANTS[name];
+  if (!list || list.length < 2) return assets.art[name];
+  const index = Math.min(list.length - 1, Math.max(0, Math.floor(hash * list.length)));
+  return assets.art[list[index]] ?? assets.art[name];
+}
 
 const isMarketAsset = (path: string) => /\/market[A-Z][^/]*\.webp$/.test(path);
 

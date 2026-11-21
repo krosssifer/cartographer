@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type PointerEvent, type RefObject } from 'react';
-import { renderMap } from '../lib/render';
+import { drawObjectGhost, excludeObject, highResSettings, objectGhostBounds, renderMap, renderPixelRatio } from '../lib/render';
 import { artUrl } from '../lib/assets';
 import { cloneMap, eraseArea, floodFill, getChestStamp, normalizeSelection, paintCells, pasteArea, placeChest, placeObject, placeStructure, pruneCrypt } from '../lib/edits';
 import { addBuilding, addCivic, addFurnishing, buildingAt, buildingStamp, canPlaceBuilding, canPlaceCivic, changeRoof, civicStamp, furnishingAt, removeFurnishing } from '../lib/settlementEdits';
@@ -64,8 +64,39 @@ export default function CanvasEditor(p: Props) {
   const [cursor, setCursor] = useState<Point | null>(null);
   const [anchor, setAnchor] = useState<Point | null>(null);
   const [panning, setPanning] = useState(false);
+  // Перетаскивание объектов и движение курсора идут через requestAnimationFrame:
+  // без этого каждый pointermove запускал полную перерисовку карты.
+  const frameRef = useRef<number | null>(null);
+  const queueRef = useRef<Point | null>(null);
   const objects = useRef<{ target: ObjectTarget; origin: Point; moved: number } | null>(null);
   const pending = useRef<MapData | null>(null);
+  // Статичный слой карты без перетаскиваемого объекта: рисуется один раз при захвате,
+  // дальше на каждом кадре только «блит» + один объект. Это убирает полную
+  // перерисовку карты из цикла перетаскивания.
+  const staticRef = useRef<HTMLCanvasElement | null>(null);
+  const offsetRef = useRef<Point>({ x: 0, y: 0 });
+  // Участок холста, занятый «призраком» на прошлом кадре: только его и
+  // восстанавливаем из статичного слоя. Вся карта на кадр не копируется.
+  const dirtyRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const ghostRef = useRef<HTMLCanvasElement | null>(null);
+  const boundsRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const layerDrawnRef = useRef(false);
+  const ghostLayerRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Сброс кэшей перетаскивания: статичный слой, призрак и «грязная» рамка живут один драг.
+  function resetDragCache() {
+    staticRef.current = null;
+    ghostRef.current = null;
+    boundsRef.current = null;
+    layerDrawnRef.current = false;
+    dirtyRef.current = null;
+    offsetRef.current = { x: 0, y: 0 };
+    const overlay = ghostLayerRef.current;
+    if (overlay) {
+      overlay.style.display = 'none';
+      overlay.style.transform = '';
+    }
+  }
   const cs = render.cellSize;
   const W = map.width * cs, H = map.height * cs;
   const custom: FurnitureSprite | undefined = map.furnitureSprites?.find((item) => item.id === settings.furnitureSprite);
@@ -74,8 +105,112 @@ export default function CanvasEditor(p: Props) {
   const chestOptions = { kind: settings.chestKind, size: stampDimensions(settings, CHESTS[settings.chestKind]) };
 
   useLayoutEffect(() => {
-    if (p.assetsReady && ref.current) renderMap(ref.current, draft ?? dragMap ?? p.displayMap ?? map, render, p.seed);
+    if (!p.assetsReady || !ref.current) return;
+    // Пока тащат объект, карту целиком не перерисовываем: React-рендер мог
+    // случиться из-за состояния родителя и «дёрнул» бы объект назад.
+    if (objects.current) {
+      paintDragLayer();
+      return;
+    }
+    renderMap(ref.current, draft ?? dragMap ?? p.displayMap ?? map, highResSettings(map, render), p.seed);
   }, [map, p.displayMap, draft, dragMap, render, p.seed, p.assetsReady]);
+
+  function ensureDragAssets(target: ObjectTarget) {
+    if (staticRef.current && ghostRef.current) return;
+    const canvas = ref.current;
+    if (!canvas) return;
+    const grid = highResSettings(map, render);
+    // 1) Один раз за перетаскивание: карта без этого объекта и её показ на холсте.
+    if (!staticRef.current) {
+      const layer = document.createElement('canvas');
+      renderMap(layer, excludeObject(draft ?? p.displayMap ?? map, target), grid, p.seed);
+      staticRef.current = layer;
+      const ctx = canvas.getContext('2d');
+      if (ctx) ctx.drawImage(layer, 0, 0);
+      layerDrawnRef.current = true;
+    }
+    // 2) Один раз: сам объект со всеми тенями — в маленький offscreen-спрайт.
+    const bounds = objectGhostBounds(map, grid, target);
+    const ghost = document.createElement('canvas');
+    ghost.width = Math.max(1, Math.ceil(bounds.w));
+    ghost.height = Math.max(1, Math.ceil(bounds.h));
+    const gctx = ghost.getContext('2d');
+    if (gctx) {
+      gctx.imageSmoothingEnabled = true;
+      gctx.imageSmoothingQuality = 'high';
+      gctx.translate(-bounds.x, -bounds.y);
+      drawObjectGhost(gctx, map, grid, p.seed, target, 0, 0);
+    }
+    ghostRef.current = ghost;
+    boundsRef.current = bounds;
+    // 3) Копия спрайта в overlay-canvas над холстом: во время драга двигаем её CSS-трансформом.
+    const overlay = ghostLayerRef.current;
+    if (overlay) {
+      overlay.width = ghost.width;
+      overlay.height = ghost.height;
+      const octx = overlay.getContext('2d');
+      if (octx) {
+        octx.clearRect(0, 0, overlay.width, overlay.height);
+        octx.drawImage(ghost, 0, 0);
+      }
+      const pxPerCss = canvas.width / Math.max(1, canvas.clientWidth);
+      overlay.style.width = `${ghost.width / pxPerCss}px`;
+      overlay.style.height = `${ghost.height / pxPerCss}px`;
+      overlay.style.left = `${bounds.x / pxPerCss}px`;
+      overlay.style.top = `${bounds.y / pxPerCss}px`;
+      overlay.style.transform = 'translate3d(0, 0, 0)';
+      overlay.style.display = 'block';
+    }
+  }
+
+  // Кадр перетаскивания: ни одной операции с основным холстом — только CSS-трансформ overlay.
+  function paintDragLayer() {
+    const target = objects.current;
+    if (!target) return;
+    ensureDragAssets(target.target);
+    const overlay = ghostLayerRef.current, canvas = ref.current;
+    if (!overlay || !canvas) return;
+    const grid = highResSettings(map, render);
+    const pxPerCss = canvas.width / Math.max(1, canvas.clientWidth);
+    const dx = (offsetRef.current.x * grid.cellSize) / pxPerCss;
+    const dy = (offsetRef.current.y * grid.cellSize) / pxPerCss;
+    overlay.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+    dirtyRef.current = null;
+  }
+
+  function scheduleFrame() {
+    if (frameRef.current !== null) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null;
+      const pos = queueRef.current;
+      if (!pos) return;
+      const target = objects.current;
+      if (!target) {
+        setCursor(pos);
+        p.onCursor(cell(pos));
+        return;
+      }
+      // Перетаскивание объекта: никакого setState — рисуем слой напрямую,
+      // иначе React перерисовывает всю карту на каждый кадр.
+      const dx = pos.x - target.origin.x;
+      const dy = pos.y - target.origin.y;
+      target.moved = Math.max(target.moved, Math.hypot(dx, dy));
+      const result = moveObject(map, target.target, dx, dy);
+      if (!result.error) {
+        pending.current = result.map;
+        offsetRef.current = { x: dx, y: dy };
+      }
+      paintDragLayer();
+    });
+  }
+
+  function cancelFrame() {
+    if (frameRef.current !== null) {
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    }
+    queueRef.current = null;
+  }
 
   const point = (e: PointerEvent<HTMLCanvasElement>) => {
     const box = e.currentTarget.getBoundingClientRect();
@@ -126,6 +261,7 @@ export default function CanvasEditor(p: Props) {
         p.onObject(hit);
         objects.current = { target: hit, origin: pos, moved: 0 };
         pending.current = null;
+        resetDragCache();
         e.preventDefault();
         e.currentTarget.setPointerCapture(e.pointerId);
         setCursor(pos);
@@ -197,20 +333,12 @@ export default function CanvasEditor(p: Props) {
 
   function move(e: PointerEvent<HTMLCanvasElement>) {
     const pos = point(e), g = gesture.current;
-    setCursor(pos); p.onCursor(cell(pos));
     if (!g || g.pointer !== e.pointerId) {
-      if (objects.current) {
-        const dx = pos.x - objects.current.origin.x, dy = pos.y - objects.current.origin.y;
-        objects.current.moved = Math.hypot(dx, dy);
-        const result = moveObject(map, objects.current.target, dx, dy);
-        if (!result.error) {
-          pending.current = result.map;
-          setDragMap(result.map);
-        }
-        p.onCursor(cell(pos));
-      }
+      queueRef.current = pos;
+      scheduleFrame();
       return;
     }
+    setCursor(pos); p.onCursor(cell(pos));
     if (g.tool === 'hand') {
       p.scrollRef.current?.scrollTo(g.left - e.clientX + g.client.x, g.top - e.clientY + g.client.y);
       return;
@@ -229,10 +357,28 @@ export default function CanvasEditor(p: Props) {
   }
 
   function finish(e: PointerEvent<HTMLCanvasElement>, cancel = false) {
+    cancelFrame();
     if (objects.current) {
+      // Финальная позиция берётся из события: между последним кадром и pointerup
+      // могло не хватить одного rAF, и объект иначе «отставал» бы на несколько пикселей.
+      if (!cancel) {
+        const pos = point(e);
+        const dx = pos.x - objects.current.origin.x;
+        const dy = pos.y - objects.current.origin.y;
+        if (Math.hypot(dx, dy) > 0.02) {
+          const last = moveObject(map, objects.current.target, dx, dy);
+          if (!last.error) {
+            pending.current = last.map;
+            offsetRef.current = { x: dx, y: dy };
+          }
+        }
+        objects.current.moved = Math.max(objects.current.moved, Math.hypot(dx, dy));
+      }
       const moved = objects.current.moved;
       const movedMap = cancel ? null : pending.current;
       objects.current = null; pending.current = null; setPanning(false); setDragMap(null);
+      resetDragCache();
+      if (ref.current) renderMap(ref.current, movedMap ?? draft ?? p.displayMap ?? map, highResSettings(map, render), p.seed);
       if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
       if (movedMap && moved > 0.02 && !cancel) p.onCommit(movedMap);
       return;
@@ -290,10 +436,11 @@ export default function CanvasEditor(p: Props) {
   const canDrag = !!hoverTarget && (settings.tool === 'select' || sameTarget(hoverTarget, p.selectedTarget))
     && !p.lockedLayers.includes(objectInfo(map, hoverTarget)?.layer ?? 'terrain');
   return <div className="canvas-stage" style={{ width: W * p.scale, height: H * p.scale }}>
-    <canvas ref={ref} aria-label={`Редактируемая карта ${map.width} на ${map.height} клеток`} width={W} height={H}
+    <canvas ref={ref} aria-label={`Редактируемая карта ${map.width} на ${map.height} клеток`} width={Math.round(W * renderPixelRatio(map, render))} height={Math.round(H * renderPixelRatio(map, render))}
       style={{ cursor: panning || objects.current ? 'grabbing' : canDrag ? 'grab' : isHand ? 'grab' : locked || (placing && !chest) || (footprint && !valid) || (settings.tool === 'furniture' && !itemValid) ? 'not-allowed' : 'crosshair', touchAction: 'none' }}
       onPointerDown={down} onPointerMove={move} onPointerUp={(e) => finish(e)} onPointerCancel={(e) => finish(e, true)} onLostPointerCapture={(e) => finish(e, true)}
       onPointerLeave={() => { if (!gesture.current) { setCursor(null); p.onCursor(null); } }} onContextMenu={(e) => e.preventDefault()} />
+    <canvas ref={ghostLayerRef} aria-hidden="true" className="pointer-events-none absolute" style={{ display: 'none', zIndex: 1 }} />
     <svg aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${W} ${H}`}>
       {p.highlight && <rect className="house-highlight" x={p.highlight.x * cs} y={p.highlight.y * cs} width={p.highlight.w * cs} height={p.highlight.h * cs} fill="none" stroke="#f5c384" strokeWidth="1.5" strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />}
       {p.selection && <rect x={p.selection.x * cs} y={p.selection.y * cs} width={p.selection.w * cs} height={p.selection.h * cs} fill="#d7a76722" stroke="#ffd893" strokeWidth="1.5" strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />}

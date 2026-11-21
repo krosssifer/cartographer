@@ -85,7 +85,7 @@ export const MARKET_STYLES = [
   { id: 'ring', label: 'Вокруг центра' },
   { id: 'fair', label: 'Ярмарка' },
 ] as const;
-const STALL_ARTS = ['marketStallProduce', 'marketStallBread', 'marketStallFruit', 'marketStallFish', 'marketStallMeat', 'marketStallPottery', 'marketStallFabric', 'marketStallGrain']; 
+const STALL_ARTS = ['marketStallProduce', 'marketStallBread', 'marketStallFruit', 'marketStallFish', 'marketStallMeat', 'marketStallPottery', 'marketStallFabric', 'marketStallGrain', 'marketStallPotion', 'marketStallTools', 'marketStallCheese', 'marketStallTextiles', 'marketStallSweets']; 
 export const isSettlement = (biome: string): biome is SettlementStyle => biome === 'town' || biome === 'village';
 export const intersects = (a: Selection, b: Selection, margin = 0) =>
   a.x - margin < b.x + b.w && a.x + a.w + margin > b.x && a.y - margin < b.y + b.h && a.y + a.h + margin > b.y;

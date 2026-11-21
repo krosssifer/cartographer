@@ -1,0 +1,30 @@
+{
+  "source": "C:\\AbsoluteDND\\v2.2.1\\sprites\\tree.jpg",
+  "mode": "quad",
+  "sprites": [
+    {
+      "name": "oak-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\oak-2.webp",
+      "width": 965,
+      "height": 948
+    },
+    {
+      "name": "oakGold-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\oakGold-2.webp",
+      "width": 966,
+      "height": 949
+    },
+    {
+      "name": "pine-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\pine-2.webp",
+      "width": 947,
+      "height": 1006
+    },
+    {
+      "name": "bush-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\bush-2.webp",
+      "width": 925,
+      "height": 888
+    }
+  ]
+}

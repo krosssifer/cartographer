@@ -1,0 +1,60 @@
+{
+  "source": "C:\\AbsoluteDND\\v2.2.1\\sprites\\furniture.jpg",
+  "mode": "auto",
+  "sprites": [
+    {
+      "name": "furniture-table-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\furniture-table-2.webp",
+      "width": 513,
+      "height": 514
+    },
+    {
+      "name": "furniture-bar-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\furniture-bar-2.webp",
+      "width": 781,
+      "height": 411
+    },
+    {
+      "name": "furniture-chair-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\furniture-chair-2.webp",
+      "width": 258,
+      "height": 338
+    },
+    {
+      "name": "furniture-bar-3",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\furniture-bar-3.webp",
+      "width": 646,
+      "height": 661
+    },
+    {
+      "name": "furniture-bed-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\furniture-bed-2.webp",
+      "width": 419,
+      "height": 624
+    },
+    {
+      "name": "furniture-wardrobe-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\furniture-wardrobe-2.webp",
+      "width": 447,
+      "height": 629
+    },
+    {
+      "name": "furniture-hearth-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\furniture-hearth-2.webp",
+      "width": 590,
+      "height": 463
+    },
+    {
+      "name": "furniture-rug-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\furniture-rug-2.webp",
+      "width": 649,
+      "height": 430
+    },
+    {
+      "name": "furniture-barrels-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\furniture-barrels-2.webp",
+      "width": 536,
+      "height": 517
+    }
+  ]
+}

@@ -1,5 +1,12 @@
 import { Perlin } from './noise';
 import { hash2, mulberry32 } from './random';
+import { SeededRandom } from './gen/random';
+import type { GenerationPlan, GroupType, ObjectGroup, Poi, Zone, ZoneType } from './gen/plan';
+import {
+  buildSettlementComposition,
+  insideOpenSpace,
+  type SettlementCompositionInput,
+} from './gen/composition';
 import { CIVIC_KIT, contains, intersects } from './settlementKit';
 import type { Building, Cell, ChestRotation, CivicKind, CivicObject, GenSettings, MapData, Point, RoofMaterial, Selection, SettlementStyle, Terrain, Tree } from './types';
 
@@ -18,11 +25,14 @@ interface Plan {
   civic: CivicObject[];
   road: Point[];
   river: Point[];
+  /** Осевые линии улиц: по ним рендер рисует гладкие ленты. */
+  lanes: { points: Point[]; width: number; surface: 'road' | 'plaza' }[];
 }
 
 let cached: { key: string; value: Plan } | undefined;
 
 function buildPlan(s: GenSettings, style: SettlementStyle): Plan {
+  const lanes: Plan['lanes'] = [];
   const { width: w, height: h, seed } = s;
   const key = `${style}:${seed}:${w}:${h}:${s.road}:${s.river}:${s.publicSpaces}:${s.marketStyle}:${s.marketRichness}`;
   if (cached?.key === key) return cached.value;
@@ -94,6 +104,14 @@ function buildPlan(s: GenSettings, style: SettlementStyle): Plan {
   }
 
   function lane(points: Point[], radius: number, surface: Terrain, cross = false) {
+    // Запоминаем осевую линию улицы (для гладкого рендера), сама покраска — ниже.
+    const centreline: Point[] = [];
+    const record = (x: number, y: number) => {
+      const cellX = Math.round(x), cellY = Math.round(y);
+      const last = centreline[centreline.length - 1];
+      if (last && last.x === cellX && last.y === cellY) return;
+      centreline.push({ x: cellX, y: cellY });
+    };
     for (let i = 1; i < points.length; i++) {
       const a = points[Math.max(0, i - 2)], b = points[i - 1], c = points[i], d = points[Math.min(points.length - 1, i + 1)];
       const samples = Math.max(4, Math.ceil(Math.hypot(c.x - b.x, c.y - b.y) * 3));
@@ -101,10 +119,14 @@ function buildPlan(s: GenSettings, style: SettlementStyle): Plan {
         .5 * (2 * q + (r - p) * t + (2 * p - 5 * q + 4 * r - z) * t * t + (3 * q - p - 3 * r + z) * t * t * t);
       for (let j = 0; j <= samples; j++) {
         const t = j / samples, x = curve(a.x, b.x, c.x, d.x, t), y = curve(a.y, b.y, c.y, d.y, t);
+        record(x, y);
         for (let yy = Math.floor(y - radius); yy <= y + radius; yy++) for (let xx = Math.floor(x - radius); xx <= x + radius; xx++) {
           if (Math.hypot(x - xx, y - yy) <= radius) paint(xx, yy, surface, cross);
         }
       }
+    }
+    if (centreline.length >= 2) {
+      lanes.push({ points: centreline, width: Math.max(1, Math.round(radius * 2)), surface: surface === 'plaza' ? 'plaza' : 'road' });
     }
   }
 
@@ -325,9 +347,233 @@ function buildPlan(s: GenSettings, style: SettlementStyle): Plan {
     }
   }
 
-  const result = { cells, plots, civic, road, river };
+  const result = { cells, plots, civic, road, river, lanes };
   cached = { key, value: result };
   return result;
+}
+
+/**
+ * Композиция зелени для поселения: зоны вместо поклеточного шума.
+ *
+ * Деревья живут не «где повезёт», а по зонам: опушки по краям карты (рощи),
+ * кусты вдоль улиц, редкая трава во дворах. Всё, что занято домами,
+ * площадью и улицами, исключено из размещения.
+ */
+function settlementComposition(
+  s: GenSettings,
+  layout: Plan,
+  buildings: Building[],
+): { trees: Tree[]; rocks: MapData['rocks']; plan: GenerationPlan } {
+  const { width: w, height: h } = s;
+  const rng = new SeededRandom(s.seed, 3301);
+  const cells = layout.cells;
+  const green = (terrain: Terrain): boolean => terrain === 'grass' || terrain === 'darkGrass' || terrain === 'dirt';
+  const occupied = (x: number, y: number): boolean =>
+    !green(cells[y][x].terrain) ||
+    buildings.some((b) => contains({ x: b.x - 1, y: b.y - 1, w: b.w + 2, h: b.h + 2 }, x, y)) ||
+    layout.civic.some((c) => contains({ x: c.x - 1, y: c.y - 1, w: c.w + 2, h: c.h + 2 }, x, y));
+
+  // Расстояние до мостовой/площади — из него получаются придорожные зоны.
+  const streetDist = new Int16Array(w * h).fill(99);
+  const queue: number[] = [];
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      if (!green(cells[y][x].terrain)) {
+        streetDist[y * w + x] = 0;
+        queue.push(y * w + x);
+      }
+    }
+  }
+  for (let head = 0; head < queue.length; head += 1) {
+    const at = queue[head];
+    const level = streetDist[at];
+    if (level >= 4) continue;
+    const x = at % w;
+    const y = Math.floor(at / w);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const next = ny * w + nx;
+      if (streetDist[next] <= level + 1) continue;
+      streetDist[next] = level + 1;
+      queue.push(next);
+    }
+  }
+
+  const zoneOf = (x: number, y: number): ZoneType => {
+    const edge = Math.min(y, x, w - x - 1, h - y - 1);
+    if (streetDist[y * w + x] <= 2) return 'roadside';
+    if (edge <= 3) return 'sparse_forest';
+    return 'meadow';
+  };
+  const DENSITY: Partial<Record<ZoneType, number>> = { roadside: 0.16, sparse_forest: 0.62, meadow: 0.1 };
+  const zoneIndex = new Map<ZoneType, number>();
+  const zoneList: ZoneType[] = ['roadside', 'sparse_forest', 'meadow'];
+  zoneList.forEach((type, index) => zoneIndex.set(type, index));
+  const zoneAt = new Uint8Array(w * h);
+  const counts = new Map<ZoneType, number>();
+  const bounds = new Map<ZoneType, { x0: number; y0: number; x1: number; y1: number }>();
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const type = zoneOf(x, y);
+      zoneAt[y * w + x] = zoneIndex.get(type)!;
+      counts.set(type, (counts.get(type) ?? 0) + 1);
+      const box = bounds.get(type) ?? { x0: x, y0: y, x1: x, y1: y };
+      box.x0 = Math.min(box.x0, x);
+      box.y0 = Math.min(box.y0, y);
+      box.x1 = Math.max(box.x1, x);
+      box.y1 = Math.max(box.y1, y);
+      bounds.set(type, box);
+    }
+  }
+  const zones: Zone[] = [];
+  counts.forEach((area, type) => {
+    const box = bounds.get(type)!;
+    zones.push({ id: `${type}_0`, type, density: DENSITY[type] ?? 0, bounds: { x: box.x0, y: box.y0, w: box.x1 - box.x0 + 1, h: box.y1 - box.y0 + 1 }, area });
+  });
+
+  const trees: Tree[] = [];
+  const rocks: MapData['rocks'] = [];
+  const groups: ObjectGroup[] = [];
+  const plan: GenerationPlan = { version: 1, engine: 'structured', zones, poi: [], groups };
+
+  // ---- Композиция поселения ----------------------------------------------
+  // Площадь — арена боя, дворы вокруг домов — открытые пятна, улицы их
+  // связывают. Композиция строится до растительности: внутри открытых
+  // пространств деревьев не будет.
+  const plazaArea = (() => {
+    let count = 0;
+    let sx = 0;
+    let sy = 0;
+    for (let y = 0; y < h; y += 1) {
+      for (let x = 0; x < w; x += 1) {
+        if (cells[y][x].terrain !== 'plaza') continue;
+        count += 1;
+        sx += x + 0.5;
+        sy += y + 0.5;
+      }
+    }
+    if (count < 6) return undefined;
+    return { x: sx / count, y: sy / count, radius: Math.max(2.6, Math.sqrt(count / Math.PI)) };
+  })();
+  const compositionInput: SettlementCompositionInput = {
+    width: w,
+    height: h,
+    cells,
+    plaza: plazaArea,
+    buildings: buildings.map((building) => ({ x: building.x, y: building.y, w: building.w, h: building.h })),
+  };
+  const composition = buildSettlementComposition(compositionInput);
+  plan.composition = composition;
+
+  const tooClose = (x: number, y: number, min: number): boolean =>
+    trees.some((tree) => Math.hypot(tree.x - x, tree.y - y) < min);
+
+  const plant = (kind: Tree['kind'], cx: number, cy: number, tight: boolean): Tree | null => {
+    const x = Math.round(cx);
+    const y = Math.round(cy);
+    if (x < 1 || y < 1 || x >= w - 1 || y >= h - 1) return null;
+    if (occupied(x, y)) return null;
+    if (insideOpenSpace(composition, cx, cy, 0.2)) return null;
+    if (tooClose(cx, cy, tight ? 0.75 : 1.1)) return null;
+    const tree: Tree = { x: cx, y: cy, r: kind === 'bush' ? rng.range(0.26, 0.38) : rng.range(0.34, 0.52), kind, v: rng.next() };
+    trees.push(tree);
+    return tree;
+  };
+
+  const dropRock = (cx: number, cy: number): void => {
+    const x = Math.round(cx);
+    const y = Math.round(cy);
+    if (x < 1 || y < 1 || x >= w - 1 || y >= h - 1) return;
+    if (occupied(x, y)) return;
+    if (insideOpenSpace(composition, cx, cy, 0.2)) return;
+    if (rocks.some((rock) => Math.hypot(rock.x - cx, rock.y - cy) < 0.8)) return;
+    const r = rng.range(0.16, 0.26);
+    rocks.push({ x: cx, y: cy, r, v: rng.next(), pts: [[-r, 0], [-r * 0.2, -r], [r, -r * 0.4], [r * 0.6, r * 0.7], [-r * 0.5, r]] });
+  };
+
+  // ---- Композиционные центры: рощи на опушке и зелёная площадь ----
+  const pois: Poi[] = [];
+  const groveSpots: { x: number; y: number }[] = [];
+  for (let attempt = 0; attempt < 90 && groveSpots.length < 3; attempt += 1) {
+    const x = 2 + Math.floor(rng.next() * (w - 4));
+    const y = 2 + Math.floor(rng.next() * (h - 4));
+    if (zoneOf(x, y) !== 'sparse_forest' || occupied(x, y)) continue;
+    if (groveSpots.some((spot) => Math.hypot(spot.x - x, spot.y - y) < 8)) continue;
+    groveSpots.push({ x, y });
+  }
+  for (const spot of groveSpots) {
+    pois.push({ id: `grove_${pois.length}`, type: 'grove', x: spot.x, y: spot.y, radius: 2.4 });
+  }
+
+  const groupPlan = (type: GroupType, x: number, y: number, placed: number): void => {
+    groups.push({ id: `${type}_${groups.length}`, type, x, y, placed });
+  };
+
+  for (const poi of pois) {
+    let placed = 0;
+    const count = 3 + Math.floor(rng.next() * 3);
+    for (let i = 0; i < count; i += 1) {
+      const angle = rng.range(0, Math.PI * 2);
+      const distance = rng.range(0.4, poi.radius);
+      const kind: Tree['kind'] = rng.chance(0.15) ? 'bush' : rng.chance(0.75) ? 'oak' : 'pine';
+      if (plant(kind, poi.x + Math.cos(angle) * distance, poi.y + Math.sin(angle) * distance, true)) placed += 1;
+    }
+    groupPlan('forest_cluster', poi.x, poi.y, placed);
+  }
+
+  // ---- Кусты вдоль улиц ----
+  const streetCells: number[] = [];
+  for (let at = 0; at < w * h; at += 1) if (streetDist[at] === 1) streetCells.push(at);
+  for (let i = 0; i < 4 && streetCells.length; i += 1) {
+    const at = streetCells[Math.floor(rng.next() * streetCells.length)];
+    const x = at % w;
+    const y = Math.floor(at / w);
+    let placed = 0;
+    for (let j = 0; j < 2; j += 1) {
+      if (plant('bush', x + rng.range(-1.4, 1.4), y + rng.range(-1.4, 1.4), true)) placed += 1;
+    }
+    if (placed > 0) groupPlan('roadside_line', x, y, placed);
+  }
+
+  // ---- Одиночные деревья по плотности зон ----
+  for (let y = 1; y < h - 1; y += 1) {
+    for (let x = 1; x < w - 1; x += 1) {
+      if (occupied(x, y)) continue;
+      const type = zoneList[zoneAt[y * w + x]];
+      const base = DENSITY[type] ?? 0;
+      const chance = base * (0.35 + s.vegetation * 0.9);
+      if (!rng.chance(chance * 0.55)) continue;
+      const kind: Tree['kind'] = rng.chance(0.55) ? 'bush' : rng.chance(0.7) ? 'oak' : 'pine';
+      plant(kind, x + 0.5 + rng.range(-0.35, 0.35), y + 0.5 + rng.range(-0.35, 0.35), false);
+    }
+  }
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const x = 2 + Math.floor(rng.next() * (w - 4));
+    const y = 2 + Math.floor(rng.next() * (h - 4));
+    if (zoneOf(x, y) === 'sparse_forest' && rng.chance(s.rocks * 0.4)) dropRock(x + rng.range(-0.3, 0.3), y + rng.range(-0.3, 0.3));
+  }
+
+  // Старт партии — на площади, если она есть, иначе в центре карты.
+  let spawn: { x: number; y: number } | undefined;
+  for (let y = 0; y < s.height && !spawn; y += 1) {
+    for (let x = 0; x < s.width && !spawn; x += 1) {
+      if (cells[y][x].terrain === 'plaza') spawn = { x, y };
+    }
+  }
+  plan.spawn = spawn ?? { x: Math.floor(s.width / 2), y: Math.floor(s.height / 2) };
+  // Улицы — такие же ленты, как тракты в дикой природе: рендер рисует их гладко.
+  const streetPaths = layout.lanes.map((lane, index) => ({
+    id: `street_${index}`,
+    type: 'main' as const,
+    width: lane.width,
+    points: lane.points,
+    bridges: 0,
+    surface: lane.surface,
+  }));
+  plan.roads = [...(plan.roads ?? []), ...streetPaths];
+  return { trees, rocks, plan };
 }
 
 export function generateSettlement(s: GenSettings): MapData {
@@ -337,7 +583,15 @@ export function generateSettlement(s: GenSettings): MapData {
   const count = density === 0 ? 0 : Math.min(plan.plots.length, Math.max(1, Math.round(plan.plots.length * density ** 1.18)));
   const buildings = plan.plots.slice(0, count);
   const { width, height, seed } = s;
-  const trees: Tree[] = [], rocks: MapData['rocks'] = [];
+  let trees: Tree[] = [];
+  let rocks: MapData['rocks'] = [];
+  let generationPlan: GenerationPlan | undefined;
+  if ((s.generationEngine ?? 'structured') === 'structured') {
+    const composition = settlementComposition(s, plan, buildings);
+    trees = composition.trees;
+    rocks = composition.rocks;
+    generationPlan = composition.plan;
+  } else {
   for (let y = 1; y < height - 1; y++) for (let x = 1; x < width - 1; x++) {
     const terrain = plan.cells[y][x].terrain;
     if (terrain !== 'grass' && terrain !== 'darkGrass' && terrain !== 'dirt') continue;
@@ -351,6 +605,7 @@ export function generateSettlement(s: GenSettings): MapData {
       rocks.push({ x: x + .5, y: y + .5, r, v, pts: [[-r, 0], [-r * .2, -r], [r, -r * .4], [r * .6, r * .7], [-r * .5, r]] });
     }
   }
+  }
 
-  return { width, height, biome: style, cells: plan.cells, road: plan.road, river: plan.river, trees, rocks, structures: [], buildings, civic: plan.civic, chests: [] };
+  return { width, height, biome: style, cells: plan.cells, road: plan.road, river: plan.river, trees, rocks, structures: [], buildings, civic: plan.civic, chests: [], plan: generationPlan };
 }

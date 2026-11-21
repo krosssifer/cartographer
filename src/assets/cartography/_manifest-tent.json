@@ -1,0 +1,54 @@
+{
+  "source": "C:\\AbsoluteDND\\v2.2.1\\sprites\\tent.jpg",
+  "mode": "auto",
+  "sprites": [
+    {
+      "name": "marketTentStripe-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketTentStripe-2.webp",
+      "width": 672,
+      "height": 557
+    },
+    {
+      "name": "marketTentBrown-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketTentBrown-2.webp",
+      "width": 573,
+      "height": 573
+    },
+    {
+      "name": "marketTentTarp-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketTentTarp-2.webp",
+      "width": 603,
+      "height": 490
+    },
+    {
+      "name": "marketTentRound-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketTentRound-2.webp",
+      "width": 629,
+      "height": 618
+    },
+    {
+      "name": "marketTentCanopy-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketTentCanopy-2.webp",
+      "width": 611,
+      "height": 609
+    },
+    {
+      "name": "marketTentPatch-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketTentPatch-2.webp",
+      "width": 644,
+      "height": 594
+    },
+    {
+      "name": "marketTentBurlap-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketTentBurlap-2.webp",
+      "width": 621,
+      "height": 521
+    },
+    {
+      "name": "marketTentAwning-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketTentAwning-2.webp",
+      "width": 640,
+      "height": 536
+    }
+  ]
+}

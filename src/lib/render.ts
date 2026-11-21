@@ -1,13 +1,16 @@
 import { getAssets } from './assets';
+import { paintDecor } from './decor';
+import { drawLooked, spriteLook } from './spriteLook';
 import { cryptPainter } from './cryptPaint';
 import { settlementPainter } from './settlementPaint';
 import { hash2 } from './random';
 import { paintTerrain } from './terrainPaint';
+import { chaikin } from './pathSmooth';
 import { chestArt, chestDimensions } from './chests';
 import { doorAxis, doorStyle, drawDoor } from './doors';
 import { treeDimensions, rockDimensions } from './objectSizing';
 import { drawWalls } from './wallPaint';
-import type { Chest, MapData, RenderSettings, Rock, Terrain, Tree } from './types';
+import type { Chest, MapData, ObjectTarget, RenderSettings, Rock, Terrain, Tree } from './types';
 
 export { TERRAIN_COLORS, TERRAIN_LABELS } from './palette';
 
@@ -20,109 +23,661 @@ function contour(ctx: CanvasRenderingContext2D, points: readonly (readonly [numb
   ctx.closePath();
 }
 
+/**
+ * Во сколько раз рисуем карту плотнее её CSS-размера.
+ *
+ * Превью и редактор показывают канвас через CSS-масштаб (зум до 300 %), поэтому
+ * при плотности 1 пиксель/клетка зум сразу «мылит». Увеличиваем внутреннее
+ * разрешение с запасом, но ограничиваем общий размер буфера, чтобы большие
+ * карты (100×80) не съедали сотни мегабайт.
+ */
+export function renderPixelRatio(map: MapData, rs: RenderSettings, budget = 16_000_000) {
+  const pixels = map.width * rs.cellSize * map.height * rs.cellSize;
+  if (!pixels) return 1;
+  if (pixels >= budget) return 1;
+  const ratio = Math.min(2.5, Math.sqrt(budget / pixels));
+  return Math.max(1, Math.floor(ratio * 2) / 2);
+}
+
+/** Настройки рендера в повышенной плотности (cellSize умножается на ratio). */
+export const highResSettings = (map: MapData, rs: RenderSettings, ratio = renderPixelRatio(map, rs)): RenderSettings =>
+  ratio === 1 ? rs : { ...rs, cellSize: rs.cellSize * ratio };
+
 /** Стены как в примере Sol Max: плоская топографическая проекция. Сетка и масштаб остаются точными, без приподнятой перспективы. */
+
+/**
+ * Гладкое полотно дорог и троп поверх клеточного террейна.
+ * Терраин остаётся клеточным под капотом, но игрок видит ленту с
+ * округлыми стыками — без «лестницы» по краям поворотов.
+ * Рисуем три прохода: тень-обочина, обочина, само полотно с текстурой земли.
+ */
+
+/**
+ * Гладкая лента реки по осевой линии: берега остаются клеточными, а вода
+ * получает скруглённые изгибы вместо «лестницы».
+ */
+
+/**
+ * Дощатые настилы на пересечении дороги с водой: деревянный пол поверх
+ * клеток bridge + поперечные доски. Мост читается как мост, а не как
+ * коричневая клетка.
+ */
+/**
+ * Настилы мостов.
+ *
+ * Если план содержит спроектированные мосты (`plan.bridges`), рисуем настил
+ * прямоугольником, повёрнутым по оси дороги — мост выглядит как инженерное
+ * сооружение, а не как пятно поверх клеток. Для старых проектов остаётся
+ * прежний режим по клеткам `bridge`.
+ */
+/** Обводит кругами все клетки, подходящие под match, в один путь (скруглённое русло/дорога). */
+function traceCellBlobs(
+  ctx: CanvasRenderingContext2D,
+  map: MapData,
+  cs: number,
+  match: (terrain: Terrain, x: number, y: number) => boolean,
+  radius: number,
+  fresh = true,
+) {
+  if (fresh) ctx.beginPath();
+  for (let y = 0; y < map.height; y += 1) {
+    const row = map.cells[y];
+    for (let x = 0; x < map.width; x += 1) {
+      if (!match(row[x].terrain, x, y)) continue;
+      const cx = (x + 0.5) * cs;
+      const cy = (y + 0.5) * cs;
+      ctx.roundRect(cx - radius, cy - radius, radius * 2, radius * 2, radius * 0.45);
+    }
+  }
+}
+
+function drawBridgeDecks(ctx: CanvasRenderingContext2D, map: MapData, cs: number) {
+  const timber = getAssets().art["timber"];
+  const deckFill = (): string | CanvasPattern => {
+    if (!timber) return "#7a5a3c";
+    const pattern = ctx.createPattern(timber, "repeat");
+    if (!pattern) return "#7a5a3c";
+    pattern.setTransform(new DOMMatrix([cs / 150, 0, 0, cs / 150, 0, 0]));
+    return pattern;
+  };
+
+  const bridges = map.plan?.bridges ?? [];
+  if (bridges.length) {
+    ctx.save();
+    for (const bridge of bridges) {
+      // Настил шире полотна и длиннее пробега: он накрывает клеточные обрезки
+      // и читается как одна цельная доска от берега до берега.
+      const width = (Math.max(1, bridge.width) + 0.4) * cs;
+      const length = bridge.length * cs;
+      ctx.save();
+      ctx.translate(bridge.x * cs, bridge.y * cs);
+      const road = (map.plan?.roads ?? []).find((item) => item.id === bridge.pathId);
+      let angle = bridge.angle;
+      if (road && road.points.length > 1) {
+        let nearest = 0;
+        let nearestDistance = Number.POSITIVE_INFINITY;
+        road.points.forEach((point, index) => {
+          const dx = (point.x + 0.5) * cs - bridge.x * cs;
+          const dy = (point.y + 0.5) * cs - bridge.y * cs;
+          const distance = dx * dx + dy * dy;
+          if (distance < nearestDistance) { nearestDistance = distance; nearest = index; }
+        });
+        const before = road.points[Math.max(0, nearest - 2)];
+        const after = road.points[Math.min(road.points.length - 1, nearest + 2)];
+        if (before !== after) angle = Math.atan2(after.y - before.y, after.x - before.x);
+      }
+      ctx.rotate(angle);
+      ctx.fillStyle = "rgba(30, 22, 14, 0.35)";
+      ctx.beginPath();
+      ctx.roundRect(-length / 2 - 2, -width / 2 - 2, length + 4, width + 4, 3);
+      ctx.fill();
+      ctx.fillStyle = deckFill();
+      ctx.beginPath();
+      ctx.roundRect(-length / 2, -width / 2, length, width, 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(48, 32, 20, 0.45)";
+      ctx.lineWidth = Math.max(1, cs * 0.05);
+      const plank = Math.max(4, cs * 0.28);
+      for (let px = -length / 2 + plank; px < length / 2; px += plank) {
+        ctx.beginPath();
+        ctx.moveTo(px, -width / 2);
+        ctx.lineTo(px, width / 2);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = "rgba(44, 30, 18, 0.55)";
+      ctx.lineWidth = Math.max(1, cs * 0.06);
+      ctx.beginPath();
+      ctx.roundRect(-length / 2, -width / 2, length, width, 2);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(60, 44, 30, 0.85)";
+      ctx.lineWidth = Math.max(1, cs * 0.07);
+      ctx.beginPath();
+      ctx.moveTo(-length / 2, -width / 2);
+      ctx.lineTo(length / 2, -width / 2);
+      ctx.moveTo(-length / 2, width / 2);
+      ctx.lineTo(length / 2, width / 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+    return;
+  }
+
+  // Legacy: проект без плана мостов — рисуем по клеткам bridge.
+  const roads = map.plan?.roads ?? [];
+  if (!roads.length) return;
+  ctx.save();
+  ctx.lineJoin = "round";
+  ctx.lineCap = "butt";
+  for (const road of roads) {
+    if (!road.bridges) continue;
+    const bridgeCells = road.points.filter((point) => map.cells[point.y]?.[point.x]?.terrain === "bridge");
+    if (!bridgeCells.length) continue;
+    const deck = chaikin(bridgeCells.length >= 2 ? bridgeCells : [...bridgeCells, bridgeCells[0]], 1);
+    const width = Math.max(1, road.width) * cs;
+    const trace = () => {
+      ctx.beginPath();
+      deck.forEach((point, index) => {
+        const px = (point.x + 0.5) * cs;
+        const py = (point.y + 0.5) * cs;
+        if (index === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      });
+    };
+    trace();
+    ctx.strokeStyle = "rgba(30, 22, 14, 0.35)";
+    ctx.lineWidth = width + Math.max(2, cs * 0.22);
+    ctx.stroke();
+    trace();
+    ctx.strokeStyle = deckFill();
+    ctx.lineWidth = width;
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(48, 32, 20, 0.45)";
+    ctx.lineWidth = Math.max(1, cs * 0.05);
+    for (let index = 0; index < deck.length - 1; index += 1) {
+      const a = deck[index];
+      const mx = (a.x + 0.5) * cs;
+      const my = (a.y + 0.5) * cs;
+      ctx.beginPath();
+      ctx.moveTo(mx, my - width / 2);
+      ctx.lineTo(mx, my + width / 2);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function drawRiverRibbon(ctx: CanvasRenderingContext2D, map: MapData, cs: number) {
+  const isWater = (terrain: Terrain): boolean => terrain === "water" || terrain === "deepWater";
+  const W = Math.max(1, Math.round(map.width * cs));
+  const H = Math.max(1, Math.round(map.height * cs));
+  const make = (): HTMLCanvasElement => {
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    return canvas;
+  };
+
+  // Клеточная маска воды. Контур получаем размытием + накоплением альфы:
+  // силуэт выходит органично плавным, но тело воды остаётся плотным (без «тумана»).
+  const mask = make();
+  const maskCtx = mask.getContext("2d");
+  if (!maskCtx) return;
+  maskCtx.fillStyle = "#ffffff";
+  let hasWater = false;
+  const cell = Math.ceil(cs);
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      if (!isWater(map.cells[y][x].terrain)) continue;
+      hasWater = true;
+      maskCtx.fillRect(Math.floor(x * cs), Math.floor(y * cs), cell, cell);
+    }
+  }
+  if (!hasWater) return;
+
+  const assets = getAssets();
+  const pattern = (
+    target: CanvasRenderingContext2D,
+    image: CanvasImageSource | undefined,
+    tile: number,
+    fallback: string,
+  ): string | CanvasPattern => {
+    if (!image) return fallback;
+    const created = target.createPattern(image, "repeat");
+    if (!created) return fallback;
+    created.setTransform(new DOMMatrix([cs / tile, 0, 0, cs / tile, 0, 0]));
+    return created;
+  };
+
+  const blurOf = (radius: number): HTMLCanvasElement | null => {
+    const canvas = make();
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+    context.filter = `blur(${Math.max(0.6, radius).toFixed(2)}px)`;
+    context.drawImage(mask, 0, 0);
+    context.filter = "none";
+    return canvas;
+  };
+
+  // Плотная маска воды: три слоя размытой маски, сложенные аддитивно,
+  // дают насыщенную середину и узкий мягкий край.
+  const grain = blurOf(cs * 0.42);
+  if (!grain) return;
+  const body = make();
+  const bodyCtx = body.getContext("2d");
+  if (!bodyCtx) return;
+  bodyCtx.globalCompositeOperation = "lighter";
+  bodyCtx.drawImage(grain, 0, 0);
+  bodyCtx.drawImage(grain, 0, 0);
+  bodyCtx.drawImage(grain, 0, 0);
+  bodyCtx.globalCompositeOperation = "source-over";
+
+  const water = make();
+  const waterCtx = water.getContext("2d");
+  if (!waterCtx) return;
+  waterCtx.fillStyle = pattern(waterCtx, assets.art["water"], 260, "#5b86ab");
+  waterCtx.fillRect(0, 0, W, H);
+  waterCtx.globalCompositeOperation = "destination-in";
+  waterCtx.drawImage(body, 0, 0);
+
+  // Береговая полоса: расширенный силуэт минус сами клетки воды (только снаружи).
+  const ring = make();
+  const ringCtx = ring.getContext("2d");
+  if (!ringCtx) return;
+  ringCtx.filter = `blur(${Math.max(2, cs * 0.95).toFixed(2)}px)`;
+  ringCtx.drawImage(mask, 0, 0);
+  ringCtx.filter = "none";
+  ringCtx.globalCompositeOperation = "destination-out";
+  ringCtx.drawImage(mask, 0, 0);
+  ringCtx.globalCompositeOperation = "source-in";
+  ringCtx.fillStyle = pattern(ringCtx, assets.art["bank"], 190, "#c6b480");
+  ringCtx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.globalAlpha = 0.85;
+  ctx.drawImage(ring, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.drawImage(water, 0, 0);
+  ctx.restore();
+}
+
+function drawRoadRibbons(ctx: CanvasRenderingContext2D, map: MapData, cs: number) {
+  const roads = map.plan?.roads ?? [];
+  if (!roads.length) return;
+  const assets = getAssets();
+  const style = (image: CanvasImageSource | undefined, tile: number, fallback: string): string | CanvasPattern => {
+    if (!image) return fallback;
+    const pattern = ctx.createPattern(image, "repeat");
+    if (!pattern) return fallback;
+    pattern.setTransform(new DOMMatrix([cs / tile, 0, 0, cs / tile, 0, 0]));
+    return pattern;
+  };
+  const earthStyle = style(assets.art["earth"], 200, "#8f7350");
+  const bankStyle = style(assets.art["bank"], 210, "#c8ad80");
+  const cobbleStyle = style(assets.art["cobbles"], 190, "#b8b0a2");
+  const isRoad = (terrain: Terrain): boolean => terrain === "road" || terrain === "bridge";
+  const nearRoad = (x: number, y: number): boolean => {
+    for (let dy = -1; dy <= 1; dy += 1) {
+      for (let dx = -1; dx <= 1; dx += 1) {
+        const terrain = map.cells[y + dy]?.[x + dx]?.terrain;
+        if (terrain === "road" || terrain === "bridge") return true;
+      }
+    }
+    return false;
+  };
+
+  ctx.save();
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+
+  // Мягкое пятно по клеткам дороги и обочины: сглаживает клеточный край под лентой.
+  traceCellBlobs(ctx, map, cs, (terrain, x, y) => isRoad(terrain) || (terrain === "dirt" && nearRoad(x, y)), cs * 0.72);
+  ctx.filter = "blur(" + Math.max(1, cs * 0.3).toFixed(1) + "px)";
+  ctx.globalAlpha = 0.18;
+  ctx.fillStyle = earthStyle;
+  ctx.fill();
+  ctx.filter = "none";
+  ctx.globalAlpha = 1;
+
+  for (const road of roads) {
+    const points = chaikin(road.points, 3);
+    if (points.length < 2) continue;
+    const base = Math.max(1, road.width) * cs;
+    const trace = () => {
+      ctx.beginPath();
+      points.forEach((point, index) => {
+        const px = (point.x + 0.5) * cs;
+        const py = (point.y + 0.5) * cs;
+        if (index === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      });
+    };
+    const stroke = (lineWidth: number, strokeStyle: string | CanvasPattern, alpha: number, blur: number) => {
+      trace();
+      ctx.filter = blur > 0 ? "blur(" + blur.toFixed(1) + "px)" : "none";
+      ctx.globalAlpha = alpha;
+      ctx.lineWidth = lineWidth;
+      ctx.strokeStyle = strokeStyle;
+      ctx.stroke();
+      ctx.filter = "none";
+      ctx.globalAlpha = 1;
+    };
+    const plaza = road.surface === "plaza";
+    const body = plaza ? cobbleStyle : bankStyle;
+    // Обочина: три убывающих по ширине и растущих по плотности прохода.
+    stroke(base + cs * 1.25, earthStyle, 0.2, cs * 0.5);
+    stroke(base + cs * 0.62, earthStyle, 0.42, cs * 0.2);
+    stroke(base + cs * 0.3, earthStyle, 0.55, cs * 0.08);
+    // Полотно и утоптанная середина.
+    stroke(base + cs * 0.06, body, 0.6, cs * 0.12);
+    stroke(base - cs * 0.12, body, 0.85, cs * 0.03);
+    if (!plaza) stroke(base * 0.42, earthStyle, 0.14, cs * 0.24);
+  }
+  ctx.restore();
+}
+// Растровый слой террейна перерисовывается только когда меняются клетки или
+// настройки отрисовки. При перетаскивании объектов террейн остаётся прежним,
+// поэтому берём готовый канвас из кэша — иначе каждый кадр считался бы заново.
+let terrainLayerCache: { key: string; canvas: HTMLCanvasElement } | null = null;
+
+function terrainLayerKey(map: MapData, rs: RenderSettings, seed: number, W: number, H: number): string {
+  let hash = 2166136261 >>> 0;
+  const cells = map.cells;
+  for (let y = 0; y < cells.length; y += 1) {
+    const row = cells[y];
+    for (let x = 0; x < row.length; x += 1) {
+      const cell = row[x];
+      const terrain = cell.terrain;
+      hash = (hash ^ (terrain.charCodeAt(0) * 131 + terrain.length)) >>> 0;
+      hash = Math.imul(hash, 16777619) >>> 0;
+      hash = (hash ^ Math.round((cell.height ?? 0.5) * 255)) >>> 0;
+      hash = Math.imul(hash, 16777619) >>> 0;
+    }
+  }
+  return [W, H, seed, map.biome, rs.texture ? 1 : 0, rs.shading ? 1 : 0, hash >>> 0].join('|');
+}
+
+function terrainLayer(map: MapData, rs: RenderSettings, seed: number, W: number, H: number): HTMLCanvasElement {
+  const key = terrainLayerKey(map, rs, seed, W, H);
+  if (terrainLayerCache && terrainLayerCache.key === key) return terrainLayerCache.canvas;
+  const terrain = paintTerrain(map, rs, seed);
+  const layer = document.createElement('canvas');
+  layer.width = terrain.width;
+  layer.height = terrain.height;
+  const layerCtx = layer.getContext('2d');
+  if (layerCtx) layerCtx.putImageData(terrain, 0, 0);
+  terrainLayerCache = { key, canvas: layer };
+  return layer;
+}
+
+
+/**
+ * Карта без одного объекта — статичный слой для перетаскивания. Полная
+ * отрисовка делается один раз при захвате, дальше двигается только объект.
+ */
+export function excludeObject(map: MapData, target: ObjectTarget): MapData {
+  switch (target.type) {
+    case 'tree':
+      return { ...map, trees: map.trees.filter((_, index) => index !== target.index) };
+    case 'rock':
+      return { ...map, rocks: map.rocks.filter((_, index) => index !== target.index) };
+    case 'chest':
+      return { ...map, chests: map.chests.filter((_, index) => index !== target.index) };
+    case 'crypt':
+      return { ...map, crypt: (map.crypt ?? []).filter((_, index) => index !== target.index) };
+    case 'civic':
+      return { ...map, civic: (map.civic ?? []).filter((_, index) => index !== target.index) };
+    default:
+      return map;
+  }
+}
+
+/**
+ * Рисует ОДИН объект поверх заранее отрисованного статичного слоя.
+ * Используется при перетаскивании: та же геометрия и тени, что в renderMap.
+ */
+/**
+ * Прямоугольник «призрака» объекта на холсте (в пикселях канвы) с запасом
+ * под мягкую тень. Нужен, чтобы при перетаскивании восстанавливать из
+ * статичного слоя только небольшой участок, а не всю карту.
+ */
+export function objectGhostBounds(
+  map: MapData,
+  rs: RenderSettings,
+  target: ObjectTarget,
+): { x: number; y: number; w: number; h: number } {
+  const cs = rs.cellSize;
+  let x = 0;
+  let y = 0;
+  let w = cs * 2;
+  let h = cs * 2;
+  if (target.type === 'tree') {
+    const tree = map.trees[target.index];
+    if (tree) {
+      const dims = treeDimensions(tree);
+      x = tree.x * cs;
+      y = tree.y * cs;
+      w = (tree.size?.w ?? dims.w) * cs;
+      h = (tree.size?.h ?? dims.h) * cs;
+    }
+  } else if (target.type === 'rock') {
+    const rock = map.rocks[target.index];
+    if (rock) {
+      const dims = rockDimensions(rock);
+      x = rock.x * cs;
+      y = rock.y * cs;
+      w = (rock.size?.w ?? dims.w) * cs;
+      h = (rock.size?.h ?? dims.h) * cs;
+    }
+  } else if (target.type === 'chest') {
+    const chest = map.chests[target.index];
+    if (chest) {
+      const dims = chestDimensions(chest);
+      x = chest.x * cs;
+      y = chest.y * cs;
+      w = dims.w * cs;
+      h = dims.h * cs;
+    }
+  } else if (target.type === 'crypt') {
+    const item = map.crypt?.[target.index];
+    if (item) {
+      x = item.x * cs - cs;
+      y = item.y * cs - cs;
+      w = cs * 3;
+      h = cs * 3;
+    }
+  } else if (target.type === 'civic') {
+    const item = map.civic?.[target.index];
+    if (item) {
+      x = item.x * cs;
+      y = item.y * cs;
+      w = item.w * cs;
+      h = item.h * cs;
+    }
+  }
+  const pad = cs * 1.1;
+  return { x: x - pad, y: y - pad, w: w + pad * 2, h: h + pad * 2 };
+}
+
+export function drawObjectGhost(
+  ctx: CanvasRenderingContext2D,
+  map: MapData,
+  rs: RenderSettings,
+  seed: number,
+  target: ObjectTarget,
+  dx: number,
+  dy: number,
+) {
+  const cs = rs.cellSize;
+  ctx.save();
+  ctx.translate(dx, dy);
+  if (target.type === 'tree') {
+    const tree = map.trees[target.index];
+    if (tree) {
+      if (rs.shading && tree.kind !== 'mushroom' && tree.kind !== 'reed') {
+        const dims = treeDimensions(tree);
+        const radius = tree.r * cs;
+        groundShadow(ctx, tree.x * cs + radius * 0.6, tree.y * cs + radius * 0.66, dims.w * cs * 0.53, dims.h * cs * 0.48, 0.56);
+      }
+      drawTree(ctx, tree, cs, map.biome);
+    }
+  } else if (target.type === 'rock') {
+    const rock = map.rocks[target.index];
+    if (rock) {
+      if (rs.shading) {
+        const dims = rockDimensions(rock);
+        groundShadow(ctx, (rock.x + rock.r * 0.24) * cs, (rock.y + rock.r * 0.33) * cs, dims.w * cs * 0.6, dims.h * cs * 0.53, 0.53);
+      }
+      drawRock(ctx, rock, cs);
+    }
+  } else if (target.type === 'chest') {
+    const chest = map.chests[target.index];
+    if (chest) drawChest(ctx, chest, cs, rs.shading);
+  } else if (target.type === 'crypt') {
+    const item = map.crypt?.[target.index];
+    if (item) {
+      const crypt = cryptPainter(ctx, map, rs, seed);
+      crypt.depth();
+      crypt.prop(item);
+    }
+  } else if (target.type === 'civic') {
+    const item = map.civic?.[target.index];
+    if (item) {
+      const city = settlementPainter(ctx, rs, seed, map.furnitureSprites);
+      city.civic(item);
+    }
+  }
+  ctx.restore();
+}
+
 export function renderMap(canvas: HTMLCanvasElement, map: MapData, rs: RenderSettings, seed: number) {
   const cs = rs.cellSize;
-  const W = map.width * cs, H = map.height * cs;
+  const W = map.width * cs;
+  const H = map.height * cs;
   if (canvas.width !== W) canvas.width = W;
   if (canvas.height !== H) canvas.height = H;
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext("2d");
   if (!ctx) return;
   ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.putImageData(paintTerrain(map, rs, seed), 0, 0);
+  ctx.imageSmoothingQuality = "high";
+
+  // Террейн берём из кэша (перерисовывается только при изменении клеток) и
+  // масштабируем на холст — растр может быть другого размера из-за LOD.
+  const layer = terrainLayer(map, rs, seed, W, H);
+  ctx.drawImage(layer, 0, 0, W, H);
+
+  // Река, дороги и настилы мостов: поверх террейна, под постройками и объектами.
+  if (map.plan?.river?.length) drawRiverRibbon(ctx, map, cs);
+  if (map.plan?.roads?.length) drawRoadRibbons(ctx, map, cs);
+  if (map.plan?.roads?.length) drawBridgeDecks(ctx, map, cs);
+
   const crypt = cryptPainter(ctx, map, rs, seed);
   crypt.depth();
-  if (rs.showCrypt) { crypt.floorProps(); crypt.lights(); }
+  if (rs.showCrypt) {
+    crypt.floorProps();
+    crypt.lights();
+  }
 
   if (rs.showStructures) {
     const spriteWalls = drawWalls(ctx, map, cs, seed, rs.shading, rs.wallThickness);
-    if (!spriteWalls && rs.shading) eachStructure(map, (terrain, x, y) => {
-      if (terrain === 'wall') {
+    if (!spriteWalls && rs.shading) {
+      eachStructure(map, (terrainKind, x, y) => {
+        if (terrainKind !== "wall") return;
         ctx.save();
         ctx.translate((x + 0.08) * cs, (y + 0.16) * cs);
         ctx.scale(cs, cs);
         const parts = wallParts(map, x, y);
-        ctx.fillStyle = 'rgba(28,23,17,.39)';
+        ctx.fillStyle = "rgba(28,23,17,.39)";
         ctx.beginPath();
         for (const [px, py, w, h] of parts) ctx.rect(px, py, w + 0.03, h + 0.035);
         ctx.fill();
         ctx.restore();
-      }
-    });
-    eachStructure(map, (terrain, x, y) => {
-      if (terrain === 'wall') {
+      });
+    }
+    const plannedDecks = (map.plan?.bridges?.length ?? 0) > 0;
+    eachStructure(map, (terrainKind, x, y) => {
+      if (terrainKind === "wall") {
         if (!spriteWalls) drawWall(ctx, map, x, y, cs, seed);
         return;
       }
-      if (terrain === 'bridge') drawWoodwork(ctx, map, terrain, x, y, cs, seed, rs.texture);
-      if (terrain === 'door') {
-        ctx.save(); ctx.translate((x + .5) * cs, (y + .5) * cs); ctx.scale(cs, cs);
-        if (doorAxis(map, x, y) === 'vertical') ctx.rotate(Math.PI / 2);
-        drawDoor(ctx, doorStyle(map.biome, x, y, seed), .96, map.biome === 'dungeon' && hash2(x, y, seed + 19) > .62);
+      if (terrainKind === "bridge" && !plannedDecks) drawWoodwork(ctx, map, "bridge", x, y, cs, seed, rs.texture);
+      if (terrainKind === "door") {
+        ctx.save();
+        ctx.translate((x + 0.5) * cs, (y + 0.5) * cs);
+        ctx.scale(cs, cs);
+        if (doorAxis(map, x, y) === "vertical") ctx.rotate(Math.PI / 2);
+        drawDoor(ctx, doorStyle(map.biome, x, y, seed), 0.96, map.biome === "dungeon" && hash2(x, y, seed + 19) > 0.62);
         ctx.restore();
       }
     });
   }
 
   const city = settlementPainter(ctx, rs, seed, map.furnitureSprites);
-  if (rs.showCivic) for (const item of map.civic ?? []) if (item.kind === 'square') city.civic(item);
+  if (rs.showCivic) for (const item of map.civic ?? []) if (item.kind === "square") city.civic(item);
   if (rs.showStructures) for (const building of map.buildings ?? []) city.building(building);
+
+  paintDecor(ctx, map, rs);
 
   const objects: { y: number; paint: () => void }[] = [];
   if (rs.showCrypt) for (const item of crypt.upright) objects.push({ y: item.y * cs + item.h * cs, paint: () => crypt.prop(item) });
   if (rs.showRocks) for (const rock of map.rocks) objects.push({ y: rock.y * cs, paint: () => drawRock(ctx, rock, cs) });
   if (rs.showTrees) for (const tree of map.trees) objects.push({ y: (tree.y + tree.r) * cs, paint: () => drawTree(ctx, tree, cs, map.biome) });
+
   if (rs.shading) {
     if (rs.showTrees) for (const tree of map.trees) {
-      if (tree.kind === 'mushroom' || tree.kind === 'reed') continue;
-      const dims = treeDimensions(tree), radius = tree.r * cs;
-      groundShadow(ctx, tree.x * cs + radius * 0.6, tree.y * cs + radius * 0.66, dims.w * cs * .53, dims.h * cs * .48, 0.56);
+      if (tree.kind === "mushroom" || tree.kind === "reed") continue;
+      const dims = treeDimensions(tree);
+      const radius = tree.r * cs;
+      groundShadow(ctx, tree.x * cs + radius * 0.6, tree.y * cs + radius * 0.66, dims.w * cs * 0.53, dims.h * cs * 0.48, 0.56);
     }
     if (rs.showRocks) for (const rock of map.rocks) {
       const dims = rockDimensions(rock);
-      groundShadow(ctx, (rock.x + rock.r * 0.24) * cs, (rock.y + rock.r * 0.33) * cs, dims.w * cs * .60, dims.h * cs * .53, 0.53);
+      groundShadow(ctx, (rock.x + rock.r * 0.24) * cs, (rock.y + rock.r * 0.33) * cs, dims.w * cs * 0.6, dims.h * cs * 0.53, 0.53);
     }
   }
-  if (rs.showCivic) for (const item of map.civic ?? []) if (item.kind !== 'square') {
-    objects.push({ y: (item.y + item.h) * cs, paint: () => city.civic(item) });
-  }
+
+  if (rs.showCivic) for (const item of map.civic ?? []) if (item.kind !== "square") objects.push({ y: (item.y + item.h) * cs, paint: () => city.civic(item) });
   objects.sort((a, b) => a.y - b.y).forEach((item) => item.paint());
+
   if (rs.showChests) for (const chest of map.chests) drawChest(ctx, chest, cs, rs.shading);
 
   if (rs.vignette) {
     const edge = ctx.createRadialGradient(W * 0.43, H * 0.42, Math.min(W, H) * 0.34, W * 0.49, H * 0.48, Math.hypot(W, H) * 0.54);
-    edge.addColorStop(0, 'rgba(35,32,21,0)');
-    edge.addColorStop(1, 'rgba(29,26,20,.33)');
+    edge.addColorStop(0, "rgba(35,32,21,0)");
+    edge.addColorStop(1, "rgba(29,26,20,.33)");
     ctx.fillStyle = edge;
     ctx.fillRect(0, 0, W, H);
   }
 
+  if (rs.showDebug) drawDebugOverlay(ctx, map, rs);
+
   if (rs.showGrid) {
     ctx.save();
-    const dungeon = map.biome === 'dungeon';
+    const dungeon = map.biome === "dungeon";
     if (dungeon) {
       ctx.beginPath();
-      for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
-        const terrain = map.cells[y][x].terrain;
-        if (terrain !== 'void' && terrain !== 'wall') ctx.rect(x * cs, y * cs, cs, cs);
+      for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+        const terrainKind = map.cells[y][x].terrain;
+        if (terrainKind !== "void" && terrainKind !== "wall") ctx.rect(x * cs, y * cs, cs, cs);
       }
       ctx.clip();
     }
-    ctx.globalAlpha = rs.gridOpacity * (dungeon ? .82 : 1);
+    ctx.globalAlpha = rs.gridOpacity * (dungeon ? 0.82 : 1);
     ctx.strokeStyle = rs.gridColor;
     ctx.lineWidth = Math.max(0.65, cs * 0.018);
     ctx.beginPath();
-    if (rs.gridType === 'square') {
-      for (let x = 1; x < map.width; x++) { ctx.moveTo(x * cs + 0.5, 0); ctx.lineTo(x * cs + 0.5, H); }
-      for (let y = 1; y < map.height; y++) { ctx.moveTo(0, y * cs + 0.5); ctx.lineTo(W, y * cs + 0.5); }
+    if (rs.gridType === "square") {
+      for (let x = 1; x < map.width; x += 1) { ctx.moveTo(x * cs + 0.5, 0); ctx.lineTo(x * cs + 0.5, H); }
+      for (let y = 1; y < map.height; y += 1) { ctx.moveTo(0, y * cs + 0.5); ctx.lineTo(W, y * cs + 0.5); }
     } else {
       const radius = cs / Math.sqrt(3);
-      for (let row = -1; row * radius * 1.5 < H + cs; row++) for (let col = -1; col * cs < W + cs; col++) {
-        const x = col * cs + (row % 2 ? cs / 2 : 0), y = row * radius * 1.5;
-        for (let i = 0; i < 4; i++) {
-          const a = Math.PI / 6 + i * Math.PI / 3;
-          const sx = x + Math.cos(a) * radius, sy = y + Math.sin(a) * radius;
+      for (let row = -1; row * radius * 1.5 < H + cs; row += 1) for (let col = -1; col * cs < W + cs; col += 1) {
+        const x = col * cs + (row % 2 ? cs / 2 : 0);
+        const y = row * radius * 1.5;
+        for (let i = 0; i < 4; i += 1) {
+          const angle = Math.PI / 6 + i * Math.PI / 3;
+          const sx = x + Math.cos(angle) * radius;
+          const sy = y + Math.sin(angle) * radius;
           if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
         }
       }
@@ -130,6 +685,157 @@ export function renderMap(canvas: HTMLCanvasElement, map: MapData, rs: RenderSet
     ctx.stroke();
     ctx.restore();
   }
+}
+const DEBUG_ZONE_FILL: Record<string, string> = {
+  dense_forest: "rgba(20, 92, 44, 0.34)",
+  medium_forest: "rgba(44, 122, 62, 0.26)",
+  sparse_forest: "rgba(96, 152, 74, 0.18)",
+  clearing: "rgba(206, 196, 96, 0.16)",
+  meadow: "rgba(142, 192, 84, 0.14)",
+  forest_edge: "rgba(124, 82, 168, 0.20)",
+  wetland: "rgba(44, 124, 154, 0.22)",
+  rocky: "rgba(124, 124, 136, 0.24)",
+  roadside: "rgba(196, 146, 64, 0.24)",
+  riverbank: "rgba(64, 146, 196, 0.22)",
+  chamber: "rgba(154, 134, 94, 0.20)",
+  tunnel: "rgba(122, 112, 92, 0.16)",
+  shore: "rgba(74, 146, 196, 0.22)",
+  rubble: "rgba(112, 102, 92, 0.20)",
+};
+
+function drawDebugOverlay(ctx: CanvasRenderingContext2D, map: MapData, rs: RenderSettings) {
+  const plan = map.plan;
+  if (!plan) return;
+  const cs = rs.cellSize;
+  ctx.save();
+
+  for (const zone of plan.zones) {
+    ctx.fillStyle = DEBUG_ZONE_FILL[zone.type] ?? "rgba(120, 120, 120, 0.12)";
+    ctx.fillRect(zone.bounds.x * cs, zone.bounds.y * cs, zone.bounds.w * cs, zone.bounds.h * cs);
+  }
+
+  ctx.lineWidth = Math.max(1.5, cs * 0.05);
+  for (const road of plan.roads ?? []) {
+    if (road.points.length < 2) continue;
+    ctx.strokeStyle = road.type === "main" ? "rgba(255, 196, 64, 0.85)" : "rgba(255, 226, 140, 0.7)";
+    ctx.beginPath();
+    road.points.forEach((point, index) => {
+      const px = (point.x + 0.5) * cs;
+      const py = (point.y + 0.5) * cs;
+      if (index === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+  }
+
+  // Коридор вокруг полотна: BFS-расстояние от клеток дороги.
+  {
+    const w = map.width;
+    const h = map.height;
+    const distance = new Int16Array(w * h).fill(99);
+    const queue: number[] = [];
+    for (let y = 0; y < h; y += 1) {
+      for (let x = 0; x < w; x += 1) {
+        const terrain = map.cells[y][x].terrain;
+        if (terrain === "road" || terrain === "bridge") {
+          distance[y * w + x] = 0;
+          queue.push(y * w + x);
+        }
+      }
+    }
+    for (let index = 0; index < queue.length; index += 1) {
+      const cell = queue[index];
+      const level = distance[cell];
+      if (level >= 4) continue;
+      const cx = cell % w;
+      const cy = Math.floor(cell / w);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const next = ny * w + nx;
+        if (distance[next] <= level + 1) continue;
+        distance[next] = level + 1;
+        queue.push(next);
+      }
+    }
+    ctx.fillStyle = "rgba(255, 210, 110, 0.07)";
+    for (let cell = 0; cell < distance.length; cell += 1) {
+      if (distance[cell] === 0 || distance[cell] > 3) continue;
+      ctx.fillRect((cell % w) * cs, Math.floor(cell / w) * cs, cs, cs);
+    }
+  }
+
+  ctx.strokeStyle = "rgba(18, 22, 16, 0.22)";
+  ctx.lineWidth = Math.max(1, cs * 0.03);
+  for (const tree of map.trees) {
+    const inset = cs * 0.3;
+    ctx.strokeRect(Math.floor(tree.x) * cs + inset, Math.floor(tree.y) * cs + inset, cs - inset * 2, cs - inset * 2);
+  }
+  for (const rock of map.rocks) ctx.strokeRect(Math.floor(rock.x) * cs, Math.floor(rock.y) * cs, cs, cs);
+
+  const spawn = map.plan?.spawn;
+  if (spawn) {
+    const px = (spawn.x + 0.5) * cs;
+    const py = (spawn.y + 0.5) * cs;
+    ctx.save();
+    ctx.strokeStyle = "rgba(120, 240, 255, 0.95)";
+    ctx.lineWidth = Math.max(1.5, cs * 0.07);
+    ctx.beginPath();
+    ctx.arc(px, py, cs * 0.55, 0, Math.PI * 2);
+    ctx.moveTo(px - cs * 0.8, py);
+    ctx.lineTo(px + cs * 0.8, py);
+    ctx.moveTo(px, py - cs * 0.8);
+    ctx.lineTo(px, py + cs * 0.8);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  const roomColors: Record<string, string> = {
+    entrance: "#ffd166", hall: "#f2c894", guard: "#ff9a9a",
+    crypt: "#c8aaff", treasury: "#ffe066", storage: "#a9d3a9",
+  };
+  const roomLabels: Record<string, string> = {
+    entrance: "ВХ", hall: "ЗЛ", guard: "СТ", crypt: "КР", treasury: "СОК", storage: "СКЛ",
+  };
+  const rooms = plan.rooms ?? [];
+  if (rooms.length) {
+    ctx.font = Math.max(9, Math.round(cs * 0.5)) + "px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const room of rooms) {
+      ctx.strokeStyle = roomColors[room.purpose] ?? "#ffffff";
+      ctx.lineWidth = Math.max(1.5, cs * 0.06);
+      ctx.strokeRect(room.bounds.x * cs, room.bounds.y * cs, room.bounds.w * cs, room.bounds.h * cs);
+      const label = roomLabels[room.purpose] ?? "?";
+      const cx = (room.bounds.x + room.bounds.w / 2) * cs;
+      const cy = (room.bounds.y + room.bounds.h / 2) * cs;
+      ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+      ctx.fillText(label, cx, cy);
+      ctx.fillStyle = roomColors[room.purpose] ?? "#ffffff";
+      ctx.fillText(label, cx, cy);
+    }
+  }
+
+  for (const group of plan.groups) {
+    ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
+    ctx.beginPath();
+    ctx.arc(group.x * cs, group.y * cs, Math.max(2, cs * 0.08), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const poiColors: Record<string, string> = {
+    entrance: "#ffd166", grove: "#7ef29a", clearing: "#ffe066", camp: "#ff9a6b",
+    boulder_field: "#b9c2ff", pool: "#63c8ff", chamber: "#f2c894",
+  };
+  for (const poi of plan.poi) {
+    ctx.strokeStyle = poiColors[poi.type] ?? "#ffffff";
+    ctx.lineWidth = Math.max(1.5, cs * 0.06);
+    ctx.beginPath();
+    ctx.arc(poi.x * cs, poi.y * cs, Math.max(4, (poi.radius ?? 2) * cs), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function eachStructure(map: MapData, draw: (terrain: Terrain, x: number, y: number) => void) {
@@ -278,30 +984,22 @@ function groundShadow(ctx: CanvasRenderingContext2D, x: number, y: number, rx: n
   ctx.restore();
 }
 
-function drawSprite(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, width: number, angle: number, height?: number) {
-  const h = height ?? width * img.naturalHeight / img.naturalWidth;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(angle);
-  ctx.drawImage(img, -width / 2, -h / 2, width, h);
-  ctx.restore();
-}
-
 function drawTree(ctx: CanvasRenderingContext2D, tree: Tree, cs: number, biome: MapData['biome']) {
   const { kind, v, r } = tree;
   const name = kind === 'oak' && v > 0.61 ? 'oakGold' : kind;
-  const img = getAssets().art[name];
-  const size = tree.size ? tree.size.w * cs : r * cs * (kind === 'oak' ? 4.1 : kind === 'pine' ? 4.08 : kind === 'bush' ? 3.54 : 2.85);
-  if (img) {
-    ctx.save();
-    if ('filter' in ctx) {
-      if (biome === 'snow' && kind === 'pine') ctx.filter = 'saturate(.67) brightness(1.25)';
-      else if (kind === 'pine') ctx.filter = 'saturate(.76) hue-rotate(-19deg)';
-      else if (kind === 'bush' || kind === 'mushroom') ctx.filter = 'saturate(.66)';
-    }
-    drawSprite(ctx, img, tree.x * cs, tree.y * cs, size, tree.size ? 0 : (v - 0.5) * 0.89, tree.size ? tree.size.h * cs : undefined);
-    ctx.restore();
-  } else {
+  const look = spriteLook(tree.x, tree.y, 11);
+  const base = tree.size ? tree.size.w * cs : r * cs * (kind === 'oak' ? 4.1 : kind === 'pine' ? 4.08 : kind === 'bush' ? 3.54 : 2.85);
+  const size = tree.size ? base : base * look.scale;
+  // Сезонная и биомная коррекция цвета — как раньше, но теперь совмещается с
+  // вариацией оттенка конкретного дерева.
+  let season = '';
+  if (biome === 'snow' && kind === 'pine') season = 'saturate(.67) brightness(1.25)';
+  else if (kind === 'pine') season = 'saturate(.76) hue-rotate(-19deg)';
+  else if (kind === 'bush' || kind === 'mushroom') season = 'saturate(.66)';
+  const drawn = drawLooked(ctx, name, look, tree.x * cs, tree.y * cs, size,
+    tree.size ? tree.size.h * cs : undefined,
+    tree.size ? 0 : (v - 0.5) * 0.89, season);
+  if (!drawn) {
     ctx.fillStyle = '#34442a';
     ctx.strokeStyle = '#566744';
     ctx.lineWidth = r * cs * .12;
@@ -317,9 +1015,11 @@ function drawTree(ctx: CanvasRenderingContext2D, tree: Tree, cs: number, biome: 
 }
 
 function drawRock(ctx: CanvasRenderingContext2D, rock: Rock, cs: number) {
-  const img = getAssets().art[rock.v > 0.68 ? 'smallRock' : 'rock'];
-  if (img) drawSprite(ctx, img, rock.x * cs, rock.y * cs, (rock.size?.w ?? rock.r * 3.05) * cs, rock.size ? 0 : (rock.v - 0.5) * 1.1, rock.size ? rock.size.h * cs : undefined);
-  else {
+  const look = spriteLook(rock.x, rock.y, 23);
+  const width = (rock.size?.w ?? rock.r * 3.05) * cs * (rock.size ? 1 : look.scale);
+  const drawn = drawLooked(ctx, rock.v > 0.68 ? 'smallRock' : 'rock', look, rock.x * cs, rock.y * cs,
+    width, rock.size ? rock.size.h * cs : undefined, rock.size ? 0 : (rock.v - 0.5) * 1.1);
+  if (!drawn) {
     contour(ctx, rock.pts.map(([x, y]) => [(rock.x + x) * cs, (rock.y + y) * cs]));
     ctx.fillStyle = '#817c6f'; ctx.fill();
     ctx.strokeStyle = '#463f35'; ctx.lineWidth = cs * 0.035; ctx.stroke();
@@ -332,10 +1032,10 @@ function drawChest(ctx: CanvasRenderingContext2D, chest: Chest, cs: number, shad
   const x = chest.x * cs, y = chest.y * cs;
   const size = chestDimensions(chest);
   if (shaded) groundShadow(ctx, x + cs * 0.064, y + cs * 0.098, cs * size.w * .54, cs * size.h * .63, 0.67);
-  const img = getAssets().art[chestArt(chest)];
   const angle = chest.rotation / 180 * Math.PI;
-  if (img) drawSprite(ctx, img, x, y, cs * size.w, angle, cs * size.h);
-  else {
+  const look = spriteLook(chest.x, chest.y, 31, false);
+  const drawn = drawLooked(ctx, chestArt(chest), look, x, y, cs * size.w, cs * size.h, angle);
+  if (!drawn) {
     ctx.save();
     ctx.translate(x, y); ctx.rotate(angle); ctx.scale(cs, cs);
     ctx.fillStyle = '#37261b'; ctx.fillRect(-.45, -.29, .9, .58);

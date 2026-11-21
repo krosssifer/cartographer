@@ -34,3 +34,10 @@ pnpm-debug.log*
 *.tmp
 *.tmpdir/
 .tmp-build/
+# исходники спрайтов и бэкапы генератора (восстанавливаются скриптами, ~20 МБ)
+assets/source/generated/
+# python-кэш скриптов
+scripts/__pycache__/
+*.pyc
+# рабочие каталоги сборки/отладки
+.tmp/

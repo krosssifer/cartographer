@@ -1,0 +1,66 @@
+{
+  "source": "C:\\AbsoluteDND\\v2.2.1\\sprites\\wagon.jpg",
+  "mode": "auto",
+  "sprites": [
+    {
+      "name": "marketStallProduce-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketStallProduce-2.webp",
+      "width": 667,
+      "height": 457
+    },
+    {
+      "name": "marketStallFruit-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketStallFruit-2.webp",
+      "width": 662,
+      "height": 461
+    },
+    {
+      "name": "marketStallBread-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketStallBread-2.webp",
+      "width": 655,
+      "height": 474
+    },
+    {
+      "name": "marketStallGrain-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketStallGrain-2.webp",
+      "width": 584,
+      "height": 413
+    },
+    {
+      "name": "marketStallMeat-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketStallMeat-2.webp",
+      "width": 597,
+      "height": 517
+    },
+    {
+      "name": "marketStallPottery-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketStallPottery-2.webp",
+      "width": 534,
+      "height": 542
+    },
+    {
+      "name": "marketStallFabric-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketStallFabric-2.webp",
+      "width": 557,
+      "height": 668
+    },
+    {
+      "name": "marketStallPotion-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketStallPotion-2.webp",
+      "width": 540,
+      "height": 528
+    },
+    {
+      "name": "marketStallTools-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketStallTools-2.webp",
+      "width": 527,
+      "height": 524
+    },
+    {
+      "name": "marketStallFish-2",
+      "file": "C:\\AbsoluteDND\\cartographer\\src\\assets\\cartography\\marketStallFish-2.webp",
+      "width": 527,
+      "height": 563
+    }
+  ]
+}

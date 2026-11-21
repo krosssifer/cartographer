@@ -1,6 +1,7 @@
-import { getAssets } from './assets';
+import { artPick, getAssets } from './assets';
 import { CRYPT, coversHazard, cryptArt, hazard, isSecret } from './cryptKit';
 import { hash2 } from './random';
+import { spriteLook } from './spriteLook';
 import type { CryptObject, MapData, RenderSettings } from './types';
 
 export function cryptPainter(ctx: CanvasRenderingContext2D, map: MapData, settings: RenderSettings, seed: number) {
@@ -107,8 +108,10 @@ export function cryptPainter(ctx: CanvasRenderingContext2D, map: MapData, settin
     }
     const rotate = rotation % 180 !== 0;
     const wide = (rotate ? h : w), tall = (rotate ? w : h);
-    const img = art[cryptArt(kind)];
+    const look = spriteLook(x * 0.5 + 5.1, y * 0.5 + 3.3, 53);
+    const img = artPick(cryptArt(kind), look.variant);
     ctx.translate(w / 2, h / 2); ctx.rotate(rotation * Math.PI / 180);
+    if (look.flipX) ctx.scale(-1, 1);
     const cover = coversHazard(kind);
     const fitW = wide * (cover ? 1.21 : spec.secret ? .78 : kind === 'pit' ? 1.01 : .90);
     const fitH = tall * (cover ? .97 : spec.secret ? .78 : kind === 'pit' ? 1.01 : .90);
@@ -116,6 +119,7 @@ export function cryptPainter(ctx: CanvasRenderingContext2D, map: MapData, settin
       if (kind === 'runeCircle') ctx.globalAlpha = .69;
       else if (spec.secret) ctx.globalAlpha = .86;
       else if (kind === 'rug') { ctx.globalAlpha = .83; ctx.filter = 'saturate(.72) brightness(.83)'; }
+      else if (look.filter) ctx.filter = look.filter;
       if (!cover && !spec.secret && !['steps', 'web'].includes(kind)) {
         const k = Math.min(fitW / img.naturalWidth, fitH / img.naturalHeight);
         ctx.drawImage(img, -img.naturalWidth * k / 2, -img.naturalHeight * k / 2, img.naturalWidth * k, img.naturalHeight * k);

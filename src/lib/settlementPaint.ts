@@ -1,5 +1,6 @@
 import { getAssets } from './assets';
 import { hash2 } from './random';
+import { drawLookedFit, spriteLook } from './spriteLook';
 import { civicArt, marketStalls, ROOF_KIT } from './settlementKit';
 import { DIRECTIONS, facingOf } from './interiors';
 import { drawInterior } from './interiorPaint';
@@ -162,15 +163,10 @@ export function settlementPainter(ctx: CanvasRenderingContext2D, settings: Rende
     const swap = item.rotation === 90 || item.rotation === 270;
     const logicalW = swap ? h : w, logicalH = swap ? w : h;
     const drawSprite = (name: string, x: number, y: number, spanW: number, spanH: number) => {
-      const img = art[name];
-      if (img) {
-        const scale = Math.min(spanW / img.naturalWidth, spanH / img.naturalHeight);
-        const sw = img.naturalWidth * scale, sh = img.naturalHeight * scale;
-        ctx.drawImage(img, x - sw / 2, y - sh / 2, sw, sh);
-      } else {
-        ctx.fillStyle = kind === 'well' || kind === 'fountain' ? '#4f7b72' : kind === 'garden' ? '#55613d' : '#a36b4f';
-        ctx.beginPath(); ctx.roundRect(x - spanW / 2, y - spanH / 2, spanW, spanH, .25); ctx.fill();
-      }
+      const look = spriteLook(x * 0.02 + 7.3, y * 0.02 + 2.9, 47);
+      if (drawLookedFit(ctx, name, look, x, y, spanW, spanH, { keepAspect: true })) return;
+      ctx.fillStyle = kind === 'well' || kind === 'fountain' ? '#4f7b72' : kind === 'garden' ? '#55613d' : '#a36b4f';
+      ctx.beginPath(); ctx.roundRect(x - spanW / 2, y - spanH / 2, spanW, spanH, .25); ctx.fill();
     };
     if (kind === 'market') {
       const normal = marketStalls(logicalW, logicalH, item.variant);
