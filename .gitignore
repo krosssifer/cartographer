@@ -45,3 +45,8 @@ scripts/__pycache__/
 .npm-cache/
 .tmp2/
 .tmp*/
+
+# Build/preview temp dirs
+.build/
+_bundle/
+

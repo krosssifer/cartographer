@@ -41,6 +41,8 @@ export const DEFAULT_GEN: GenSettings = {
   publicSpaces: true,
   marketStyle: 'auto',
   marketRichness: 0.62,
+  urbanDressing: 0.6,
+  cityCondition: 'lived_in',
   // Новые карты получают рынок по архетипу; проекты без поля остаются на прежнем рынке.
   marketArchetype: 'auto',
   cryptDetail: .67,

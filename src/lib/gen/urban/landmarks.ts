@@ -14,11 +14,26 @@ import type {
   RoofShape,
   Selection,
   SettlementStyle,
+  TreeKind,
 } from '../../types';
 import type { DistrictLayoutResult } from './districts';
 import type { UrbanSkeleton } from './nodes';
 import type { PlotSubdivisionResult } from './plots';
 import type { UrbanRoadResult } from './roads';
+import {
+  LITTER_PROPS,
+  STREET_RECIPES,
+  YARD_RECIPES,
+  courtyardGround,
+  districtProfile,
+  isDressableGround,
+  litterBudget,
+  pickWeightedProp,
+  streetBudget,
+  yardPropCount,
+  type CityCondition,
+  type UrbanVisualProfile,
+} from './dressing';
 import {
   N4,
   URBAN_ZONE_ORDER,
@@ -46,11 +61,26 @@ export interface BuildingsAndLandmarksResult {
   chains: AdventureChain[];
   piers: number;
   courtyardCount: number;
+  /** Статистика Urban Dressing (для отчёта и отладки). */
+  dressing?: {
+    materialCells: number;
+    propsPlaced: number;
+    litterPlaced: number;
+    treesPlaced: number;
+    doorClearance?: number;
+  };
 }
 
 const CARGO_GOODS: readonly CivicKind[] = [
   'marketCrates', 'marketBarrels', 'marketSacks', 'marketBarrelPair', 'marketRope',
 ];
+
+/** Настройки визуального наполнения города (Urban Dressing). */
+export interface UrbanDressingSettings {
+  /** Насыщенность 0..1 из настроек генерации. */
+  density: number;
+  condition: CityCondition;
+}
 
 export function placeBuildingsLandmarksAndDetails(
   ctx: UrbanContext,
@@ -62,6 +92,7 @@ export function placeBuildingsLandmarksAndDetails(
   baseCivic: CivicObject[],
   market?: MarketOutcome,
   marketPiers = 0,
+  dressing?: UrbanDressingSettings,
 ): BuildingsAndLandmarksResult {
   const { width: w, height: h, seed, type, character, town, geo } = ctx;
   const { cells, waterDist, geography, length, span, at } = geo;
@@ -1114,6 +1145,242 @@ export function placeBuildingsLandmarksAndDetails(
   }
 
   // ---- 8. Окраины: садовые участки, кладбище, горные штольни, караванная стоянка
+  // ---- 7.5. URBAN DRESSING: материалы дворов, микросцены, мебель, растительность,
+  // мусор. Работает только поверх готовой геометрии: дороги, дома, участки и
+  // площадь не меняются, насыщенность управляется настройками генерации.
+  const dressingDensity = dressing ? between(dressing.density, 0, 1) : 0.6;
+  const cityCondition: CityCondition = dressing?.condition ?? 'lived_in';
+  let dressingStats: BuildingsAndLandmarksResult['dressing'];
+  if (dressingDensity > 0.02) {
+    const plotRankOf = new Map<number, number>();
+    placedPlots.forEach((p, i) => {
+      if (p) plotRankOf.set(p.id, i);
+    });
+    const dressedCells = new Uint8Array(w * h);
+    let materialCells = 0;
+    let propsPlaced = 0;
+    let litterPlaced = 0;
+    let treesPlaced = 0;
+
+    const profileOf = (plot: UrbanPlot): UrbanVisualProfile => {
+      const district = districts[plot.districtIndex];
+      const kind = district?.kind ?? 'residential';
+      return districtProfile(kind, plot.wealth ?? district?.wealth ?? 0.45, plot.zone, town);
+    };
+    const rankOf = (plot: UrbanPlot): number => plotRankOf.get(plot.id) ?? -1;
+
+    /** Свободная площадка под предмет: только пригодный грунт без построек и настилов. */
+    const freeBox = (x0: number, y0: number, bw: number, bh: number): boolean => {
+      for (let yy = y0; yy < y0 + bh; yy += 1) {
+        for (let xx = x0; xx < x0 + bw; xx += 1) {
+          if (!inside(xx, yy)) return false;
+          const c = id(xx, yy);
+          if (builtCellMask[c] || passageMask[c] || streets[c] || reserved[c]) return false;
+          if (waterDist[c] < 2 || !isDressableGround(terrain(xx, yy))) return false;
+        }
+      }
+      return true;
+    };
+    const nearStreet = (x0: number, y0: number, bw: number, bh: number, reach: number): boolean => {
+      for (let yy = y0 - reach; yy < y0 + bh + reach; yy += 1) {
+        for (let xx = x0 - reach; xx < x0 + bw + reach; xx += 1) {
+          if (!inside(xx, yy)) continue;
+          if (streets[id(xx, yy)]) return true;
+        }
+      }
+      return false;
+    };
+
+    // (а) Материалы дворов и подворотен: двор вокруг дома получает покрытие района.
+    for (const plot of urbanPlots) {
+      const bounds = plot.bounds;
+      if (!bounds) continue;
+      const profile = profileOf(plot);
+      const buildRect = plot.buildRect;
+      const material = courtyardGround(
+        plot.courtyardKind ?? 'enclosed_courtyard',
+        profile,
+        hash2(bounds.x, bounds.y, seed + 0x7711),
+      );
+      for (let yy = bounds.y; yy < bounds.y + bounds.h; yy += 1) {
+        for (let xx = bounds.x; xx < bounds.x + bounds.w; xx += 1) {
+          if (!inside(xx, yy)) continue;
+          const cellId = id(xx, yy);
+          if (dressedCells[cellId] || builtCellMask[cellId] || passageMask[cellId]) continue;
+          if (streets[cellId] || reserved[cellId] || waterDist[cellId] < 2) continue;
+          if (!isDressableGround(terrain(xx, yy))) continue;
+          if (buildRect) {
+            const gapX = xx < buildRect.x ? buildRect.x - xx : xx >= buildRect.x + buildRect.w ? xx - (buildRect.x + buildRect.w - 1) : 0;
+            const gapY = yy < buildRect.y ? buildRect.y - yy : yy >= buildRect.y + buildRect.h ? yy - (buildRect.y + buildRect.h - 1) : 0;
+            if (Math.max(gapX, gapY) > 3) continue;
+          }
+          const noise = hash2(xx, yy, seed + 0x7712);
+          const edge = !buildRect || xx === bounds.x || yy === bounds.y || xx === bounds.x + bounds.w - 1 || yy === bounds.y + bounds.h - 1;
+          if (edge && noise < 0.5) continue;
+          cells[yy][xx].terrain = material;
+          dressedCells[cellId] = 1;
+          materialCells += 1;
+        }
+      }
+    }
+
+    // (а2) Утоптанная земля вокруг домов: двор читается даже там, где участок тесный.
+    for (const plot of urbanPlots) {
+      const rect = plot.buildRect;
+      if (!rect) continue;
+      const profile = profileOf(plot);
+      const material = courtyardGround(plot.courtyardKind ?? 'enclosed_courtyard', profile, hash2(rect.x, rect.y, seed + 0x7718));
+      for (let yy = rect.y - 2; yy < rect.y + rect.h + 2; yy += 1) {
+        for (let xx = rect.x - 2; xx < rect.x + rect.w + 2; xx += 1) {
+          if (xx >= rect.x && xx < rect.x + rect.w && yy >= rect.y && yy < rect.y + rect.h) continue;
+          if (!inside(xx, yy)) continue;
+          const cellId = id(xx, yy);
+          if (dressedCells[cellId] || builtCellMask[cellId] || passageMask[cellId]) continue;
+          if (streets[cellId] || reserved[cellId] || waterDist[cellId] < 2) continue;
+          if (!isDressableGround(terrain(xx, yy))) continue;
+          if (hash2(xx, yy, seed + 0x7719) < 0.42) continue;
+          cells[yy][xx].terrain = material;
+          dressedCells[cellId] = 1;
+          materialCells += 1;
+        }
+      }
+    }
+
+    // (б) Микросцены во дворах: бочки, ящики, мешки, сено, телеги, столы по типу двора.
+    for (const plot of urbanPlots) {
+      const rank = rankOf(plot);
+      if (rank < 0 || !plot.bounds) continue;
+      const profile = profileOf(plot);
+      const courtyard = plot.courtyardKind ?? 'enclosed_courtyard';
+      const recipe = YARD_RECIPES[courtyard] ?? YARD_RECIPES.enclosed_courtyard;
+      const count = yardPropCount(profile, cityCondition, dressingDensity, hash2(plot.bounds.x, plot.bounds.y, seed + 0x7713));
+      const bounds = plot.bounds;
+      for (let n = 0; n < count; n += 1) {
+        const item = pickWeightedProp(recipe, hash2(bounds.x + n * 7, bounds.y + n * 3, seed + 0x7714));
+        for (let attempt = 0; attempt < 18; attempt += 1) {
+          const rollX = hash2(bounds.x + attempt * 13 + n * 3, bounds.y + attempt * 7, seed + 0x7716);
+          const rollY = hash2(bounds.y + attempt * 11 + n * 5, bounds.x + attempt * 3, seed + 0x7717);
+          const px = bounds.x + Math.floor(rollX * Math.max(1, bounds.w - item.w + 1));
+          const py = bounds.y + Math.floor(rollY * Math.max(1, bounds.h - item.h + 1));
+          if (!freeBox(px, py, item.w, item.h)) continue;
+          if (!notNearAnyDoor(px, py, item.w, item.h)) continue;
+          if (addRankedCivic(rank, item.kind, px, py, item.w, item.h, n)) {
+            propsPlaced += 1;
+            break;
+          }
+        }
+      }
+    }
+
+    // (в) Уличная мебель: скамьи, колодцы, доски объявлений, поклажа у домов вдоль улиц.
+    for (const district of districts) {
+      const profile = districtProfile(district.kind, district.wealth, 'inner_city', town);
+      const budget = streetBudget(district.area, profile, cityCondition, dressingDensity);
+      const recipe = STREET_RECIPES[district.kind] ?? STREET_RECIPES.residential;
+      const radius = Math.sqrt(Math.max(1, district.area)) * 0.9;
+      for (let n = 0; n < budget; n += 1) {
+        const item = pickWeightedProp(recipe, hash2(district.x + n * 5, district.y + n * 9, seed + 0x7720));
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+          const rollX = hash2(district.x + attempt * 17 + n, district.y + attempt * 3, seed + 0x7721);
+          const rollY = hash2(district.y + attempt * 19 + n, district.x + attempt * 7, seed + 0x7722);
+          const px = Math.round(district.x + (rollX - 0.5) * radius * 2);
+          const py = Math.round(district.y + (rollY - 0.5) * radius * 2);
+          if (!freeBox(px, py, item.w, item.h)) continue;
+          if (!nearStreet(px, py, item.w, item.h, 2)) continue;
+          if (!notNearAnyDoor(px - 1, py - 1, item.w + 2, item.h + 2)) continue;
+          if (addRankedCivic(-1, item.kind, px, py, item.w, item.h, n)) {
+            propsPlaced += 1;
+            break;
+          }
+        }
+      }
+    }
+
+    // (г) Мусор и следы жизни: количество зависит от состояния города.
+    for (const district of districts) {
+      const profile = districtProfile(district.kind, district.wealth, 'inner_city', town);
+      const budget = litterBudget(district.area, profile, cityCondition, dressingDensity);
+      const radius = Math.sqrt(Math.max(1, district.area)) * 0.9;
+      for (let n = 0; n < budget; n += 1) {
+        const item = pickWeightedProp(LITTER_PROPS, hash2(district.x + n * 3, district.y + n * 11, seed + 0x7730));
+        for (let attempt = 0; attempt < 24; attempt += 1) {
+          const rollX = hash2(district.x + attempt * 23 + n, district.y + attempt * 5, seed + 0x7731);
+          const rollY = hash2(district.y + attempt * 29 + n, district.x + attempt * 13, seed + 0x7732);
+          const px = Math.round(district.x + (rollX - 0.5) * radius * 1.8);
+          const py = Math.round(district.y + (rollY - 0.5) * radius * 1.8);
+          if (!freeBox(px, py, item.w, item.h)) continue;
+          if (!notNearAnyDoor(px - 1, py - 1, item.w + 2, item.h + 2)) continue;
+          if (addRankedCivic(-1, item.kind, px, py, item.w, item.h, n)) {
+            litterPlaced += 1;
+            break;
+          }
+        }
+      }
+    }
+
+    // (д) Растительность во дворах: кусты у жилья, деревья в зелёных районах.
+    for (const plot of urbanPlots) {
+      if (!plot.bounds) continue;
+      const profile = profileOf(plot);
+      const bounds = plot.bounds;
+      const rolls = Math.round((bounds.w + bounds.h) / 5);
+      const count = Math.max(0, Math.min(5, Math.round(rolls * profile.vegetation * dressingDensity)));
+      const green = plot.courtyardKind === 'private_garden' || plot.courtyardKind === 'garden_yard';
+      for (let n = 0; n < count; n += 1) {
+        const kind: TreeKind = green ? 'bush' : profile.vegetation > 0.55 ? 'oak' : 'bush';
+        for (let attempt = 0; attempt < 10; attempt += 1) {
+          const rollX = hash2(bounds.x + attempt * 31 + n * 5, bounds.y + attempt * 7, seed + 0x7741);
+          const rollY = hash2(bounds.y + attempt * 37 + n * 3, bounds.x + attempt * 11, seed + 0x7742);
+          const px = bounds.x + Math.floor(rollX * bounds.w);
+          const py = bounds.y + Math.floor(rollY * bounds.h);
+          if (!freeBox(px, py, 1, 1)) continue;
+          if (!notNearAnyDoor(px, py, 1, 1)) continue;
+          const cellId = id(px, py);
+          ctx.trees.push({
+            x: px + 0.5,
+            y: py + 0.5,
+            r: kind === 'bush' ? 0.34 : 0.55,
+            kind,
+            v: rollX,
+          });
+          reserved[cellId] = 1;
+          treesPlaced += 1;
+          break;
+        }
+      }
+    }
+
+    // (е) Уличные деревья: зелёные аллеи вдоль улиц в жилых и храмовых районах.
+    for (const district of districts) {
+      const profile = districtProfile(district.kind, district.wealth, 'inner_city', town);
+      const budget = Math.max(0, Math.min(18, Math.round((district.area / 110) * profile.vegetation * dressingDensity)));
+      const radius = Math.sqrt(Math.max(1, district.area)) * 0.95;
+      for (let n = 0; n < budget; n += 1) {
+        for (let attempt = 0; attempt < 30; attempt += 1) {
+          const rollX = hash2(district.x + attempt * 41 + n, district.y + attempt * 13, seed + 0x7750);
+          const rollY = hash2(district.y + attempt * 43 + n, district.x + attempt * 17, seed + 0x7751);
+          const px = Math.round(district.x + (rollX - 0.5) * radius * 2);
+          const py = Math.round(district.y + (rollY - 0.5) * radius * 2);
+          if (!freeBox(px, py, 1, 1)) continue;
+          if (!nearStreet(px, py, 1, 1, 2)) continue;
+          if (!notNearAnyDoor(px, py, 1, 1)) continue;
+          ctx.trees.push({
+            x: px + 0.5,
+            y: py + 0.5,
+            r: profile.vegetation > 0.55 ? 0.52 : 0.34,
+            kind: profile.vegetation > 0.55 ? 'oak' : 'bush',
+            v: rollX,
+          });
+          reserved[id(px, py)] = 1;
+          treesPlaced += 1;
+          break;
+        }
+      }
+    }
+
+    dressingStats = { materialCells, propsPlaced, litterPlaced, treesPlaced };
+  }
+
   for (const plot of urbanPlots) {
     if (plot.fn !== 'garden' || !plot.yardRect) continue;
     const yr = plot.yardRect;
@@ -1249,6 +1516,39 @@ export function placeBuildingsLandmarksAndDetails(
     });
   }
 
+  // Финальная гарантия: ни один городской предмет не перекрывает клетку
+  // непосредственно перед дверью — иначе выход из дома блокируется.
+  const doorStepCells = new Set<number>();
+  for (const b of placed) {
+    const step = b.facing === 90 ? [-1, 0] : b.facing === 180 ? [0, -1] : b.facing === 270 ? [1, 0] : [0, 1];
+    const sx = b.door.x + step[0];
+    const sy = b.door.y + step[1];
+    if (inside(sx, sy)) doorStepCells.add(id(sx, sy));
+  }
+  let doorClearance = 0;
+  for (let i = rankedCivic.length - 1; i >= 0; i--) {
+    const item = rankedCivic[i].item;
+    if (item.kind === 'square' || doorStepCells.size === 0) continue;
+    let blocksDoor = false;
+    for (let yy = item.y; yy < item.y + item.h && !blocksDoor; yy += 1) {
+      for (let xx = item.x; xx < item.x + item.w; xx += 1) {
+        if (inside(xx, yy) && doorStepCells.has(id(xx, yy))) {
+          blocksDoor = true;
+          break;
+        }
+      }
+    }
+    if (!blocksDoor) continue;
+    for (let yy = item.y; yy < item.y + item.h; yy += 1) {
+      for (let xx = item.x; xx < item.x + item.w; xx += 1) {
+        if (inside(xx, yy)) reserved[id(xx, yy)] = 0;
+      }
+    }
+    rankedCivic.splice(i, 1);
+    doorClearance += 1;
+  }
+  if (dressingStats) dressingStats.doorClearance = doorClearance;
+
   return {
     buildings: placed,
     plotDistrict,
@@ -1260,5 +1560,6 @@ export function placeBuildingsLandmarksAndDetails(
     chains,
     piers,
     courtyardCount,
+    dressing: dressingStats,
   };
 }

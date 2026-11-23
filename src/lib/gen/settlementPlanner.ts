@@ -54,7 +54,8 @@ import { buildUrbanSkeleton } from './urban/nodes';
 import { buildUrbanRoadNetwork } from './urban/roads';
 import { buildDistrictsAndBlocks } from './urban/districts';
 import { subdivideIntoPlots } from './urban/plots';
-import { placeBuildingsLandmarksAndDetails } from './urban/landmarks';
+import { placeBuildingsLandmarksAndDetails, type UrbanDressingSettings } from './urban/landmarks';
+import { coversCell, doorStepCells } from './urban/dressing';
 import { validateAndRepairUrbanPlan } from './urban/validate';
 import { buildSettlementDebugData } from './urban/debug';
 import {
@@ -124,6 +125,13 @@ export interface SettlementReport {
     courtyards: number;
   };
   quality?: SettlementQualityReport;
+  /** Статистика визуального наполнения города (Urban Dressing). */
+  dressing?: {
+    materialCells: number;
+    propsPlaced: number;
+    litterPlaced: number;
+    treesPlaced: number;
+  };
   debug?: SettlementDebugData;
 }
 
@@ -177,7 +185,7 @@ export function buildTypedPlan(s: GenSettings, style: SettlementStyle): TypedSet
   const layout = resolveSettlementLayout(type, s.settlementLayout);
   const character = getUrbanCharacter(s.settlementCharacter, type);
   const { width: w, height: h, seed } = s;
-  const key = `${type.id}:${layout}:${character.id}:${style}:${seed}:${w}:${h}:${s.road}:${s.river}:${s.publicSpaces}:${s.marketRichness}:${s.marketStyle}:${s.marketArchetype}`;
+  const key = `${type.id}:${layout}:${character.id}:${style}:${seed}:${w}:${h}:${s.road}:${s.river}:${s.publicSpaces}:${s.marketRichness}:${s.marketStyle}:${s.marketArchetype}:${s.urbanDressing ?? 0.6}:${s.cityCondition ?? 'lived_in'}`;
   if (cached?.key === key) return cached.value;
 
   const town = type.style === 'town';
@@ -383,6 +391,11 @@ export function buildTypedPlan(s: GenSettings, style: SettlementStyle): TypedSet
   const plotSub = subdivideIntoPlots(urbanCtx, skel, roadNet, distLayout, baseCivic, market);
 
   // ---- Шаги 11–16: Здания по фасаду, дворы, доминанты, окраины, D&D --------
+  // Настройки визуального наполнения (Urban Dressing): насыщенность и состояние города.
+  const dressing: UrbanDressingSettings = {
+    density: s.urbanDressing ?? 0.6,
+    condition: s.cityCondition ?? 'lived_in',
+  };
   const built = placeBuildingsLandmarksAndDetails(
     urbanCtx,
     skel,
@@ -393,6 +406,7 @@ export function buildTypedPlan(s: GenSettings, style: SettlementStyle): TypedSet
     baseCivic,
     market,
     marketPiers,
+    dressing,
   );
 
   // ---- Шаги 17–18: Пост-валидация, локальная починка и Quality Score -------
@@ -405,6 +419,27 @@ export function buildTypedPlan(s: GenSettings, style: SettlementStyle): TypedSet
     built,
     marketArea,
   );
+
+  // Р“Р°СЂР°РЅС‚РёСЏ РёРіСЂР°Р±РµР»СЊРЅРѕСЃС‚Рё: РёРјРµРЅРЅРѕ РїРѕСЃР»Рµ РїРѕС‡РёРЅРєРё РјС‹ Р·РЅР°РµРј РѕРєРѕРЅС‡Р°С‚РµР»СЊРЅС‹Р№ СЃРїРёСЃРѕРє Р·РґР°РЅРёР№.
+  // Р›СЋР±РѕР№ РіРѕСЂРѕРґСЃРєРѕР№ РїСЂРµРґРјРµС‚, РЅР°РєСЂС‹РІС€РёР№ РєР»РµС‚РєСѓ РїРµСЂРµРґ РґРІРµСЂСЊСЋ, СЃРЅРёРјР°РµС‚СЃСЏ.
+  {
+    const steps = doorStepCells(built.buildings, w, h);
+    if (steps.size > 0) {
+      const kept: typeof built.rankedCivic = [];
+      let removed = 0;
+      for (const ranked of built.rankedCivic) {
+        if (ranked.item.kind !== 'square' && coversCell(ranked.item, steps, w)) {
+          removed += 1;
+          continue;
+        }
+        kept.push(ranked);
+      }
+      if (removed > 0) {
+        built.rankedCivic = kept;
+        if (built.dressing) built.dressing.doorClearance = (built.dressing.doorClearance ?? 0) + removed;
+      }
+    }
+  }
 
   // ---- Подсчёт мостов (связные группы bridge за вычетом причалов) ----------
   let bridges = 0;
@@ -464,6 +499,7 @@ export function buildTypedPlan(s: GenSettings, style: SettlementStyle): TypedSet
     streets: lanes.length,
     bridges,
     piers: built.piers,
+    dressing: built.dressing,
     districts: distLayout.districts.map((d) => ({
       kind: d.kind,
       label: DISTRICTS[d.kind].label,

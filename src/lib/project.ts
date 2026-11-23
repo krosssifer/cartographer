@@ -29,7 +29,7 @@ export interface Project {
 type NewEditorFields = 'roofMaterial' | 'roofShape' | 'civicKind' | 'stampRotation' | 'buildingSize' | 'civicSize' | 'chestRotation' | 'furnitureKind' | 'furnitureErase'
   | 'furnitureFinish' | 'furnitureSprite' | 'cryptKind' | 'cryptErase' | 'cryptConceal' | 'chestKind' | 'objectSizes' | 'sizeLock' | 'sizeUnit';
 type NewRenderFields = 'showChests' | 'showRoofs' | 'showCivic' | 'showCrypt' | 'showSecrets' | 'wallThickness';
-type NewGenFields = 'density' | 'settlement' | 'publicSpaces' | 'marketStyle' | 'marketRichness' | 'cryptDetail' | 'cryptTraps' | 'cryptChasms' | 'cryptArchetype';
+type NewGenFields = 'density' | 'settlement' | 'publicSpaces' | 'marketStyle' | 'marketRichness' | 'cryptDetail' | 'cryptTraps' | 'cryptChasms' | 'cryptArchetype' | 'urbanDressing' | 'cityCondition';
 type ImportProject = Omit<Project, 'gen' | 'map' | 'render' | 'editor'> & {
   gen: Omit<GenSettings, NewGenFields> & Partial<Pick<GenSettings, NewGenFields>>;
   map: (Omit<MapData, 'chests'> & { chests?: MapData['chests'] }) | null;
@@ -60,6 +60,8 @@ export function validateProject(v: unknown): v is ImportProject {
   if (g.marketStyle !== undefined && !['auto', 'rows', 'ring', 'fair'].includes(String(g.marketStyle))) return false;
   if (g.marketRichness !== undefined && !finite(g.marketRichness, 0, 1)) return false;
   if (g.marketArchetype !== undefined && !isMarketArchetypeSetting(g.marketArchetype)) return false;
+  if (g.urbanDressing !== undefined && !finite(g.urbanDressing, 0, 1)) return false;
+  if (g.cityCondition !== undefined && g.cityCondition !== 'pristine' && g.cityCondition !== 'lived_in' && g.cityCondition !== 'worn') return false;
   if (g.cryptDetail !== undefined && !finite(g.cryptDetail, 0, 1)) return false;
   if (g.cryptArchetype !== undefined && !['tomb', 'catacombs', 'temple', 'archive', 'prison'].includes(String(g.cryptArchetype))) return false;
   if (![g.cryptTraps, g.cryptChasms].every((v) => v === undefined || bool(v))) return false;
@@ -200,6 +202,7 @@ export function parseProject(value: unknown): Project | null {
     version: 1,
     gen: {
       cryptDetail: DEFAULT_GEN.cryptDetail, cryptTraps: true, cryptChasms: true, cryptArchetype: 'tomb',
+    urbanDressing: DEFAULT_GEN.urbanDressing, cityCondition: DEFAULT_GEN.cityCondition,
       ...value.gen,
       settlement: value.gen.settlement ?? (value.gen.biome === 'town' ? 'town' : 'village'),
       density: value.gen.density ?? 0.42,

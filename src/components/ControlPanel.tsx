@@ -1,4 +1,4 @@
-import type { MapData, Biome, CryptArchetype, GenSettings, RenderSettings, SettlementDebugLayers } from '../lib/types';
+import type { MapData, Biome, CityCondition, CryptArchetype, GenSettings, RenderSettings, SettlementDebugLayers } from '../lib/types';
 import { DEFAULT_SETTLEMENT_DEBUG } from '../lib/gen/urban/debug';
 import { BIOME_LABELS, CRYPT_ARCHETYPE_IDS, CRYPT_ARCHETYPE_LABELS, PRESETS } from '../lib/presets';
 import { Slider, Toggle, pct } from './controls';
@@ -99,6 +99,31 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
       {!isSettlementType(gen.settlementType) && <SettlementChoices style={gen.biome === 'town' ? 'town' : 'village'} onStyle={(style) => onGen({ biome: style, settlement: style })} />}
       <DensitySlider density={gen.density} onDensity={(density) => onGen({ density })} />
       <Toggle label="Площади и городские детали" checked={gen.publicSpaces} onChange={(publicSpaces) => onGen({ publicSpaces })} />
+      {isSettlementType(gen.settlementType) && (
+        <>
+          <Slider
+            label="Городская среда"
+            value={gen.urbanDressing ?? 0.6}
+            min={0}
+            max={1}
+            step={0.05}
+            format={pct}
+            onChange={(urbanDressing) => onGen({ urbanDressing })}
+          />
+          <label className="field-label">
+            Состояние города
+            <select
+              aria-label="Состояние города"
+              value={gen.cityCondition ?? 'lived_in'}
+              onChange={(event) => onGen({ cityCondition: event.target.value as CityCondition })}
+            >
+              <option value="pristine">Чистый</option>
+              <option value="lived_in">Жилой</option>
+              <option value="worn">Изношенный</option>
+            </select>
+          </label>
+        </>
+      )}
       <Toggle label="Река" checked={gen.river} onChange={(river) => onGen({ river })} />
       <Toggle label="Сеть улиц" checked={gen.road} onChange={(road) => onGen({ road })} />
     </div>}

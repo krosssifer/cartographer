@@ -18,6 +18,9 @@ export type CivicKind = 'market' | 'square' | 'well' | 'fountain' | 'cart' | 'ga
   | 'marketWell' | 'marketHay' | 'marketBarrelLying'
   | 'marketBench' | 'marketTable' | 'marketTableLong' | 'marketFence' | 'marketHayLarge' | 'marketTableSet';
 export type MarketStyle = 'auto' | 'rows' | 'ring' | 'fair';
+
+/** Визуальное состояние города для городского декора (Urban Dressing). */
+export type CityCondition = 'pristine' | 'lived_in' | 'worn';
 export type CryptKind =
   | 'chasm' | 'pit' | 'grate' | 'bridge' | 'spikeGlyph' | 'pressureTile' | 'runeTrap' | 'fallSeal'
   | 'skeleton' | 'bones' | 'urns' | 'coffin' | 'openCoffin' | 'altar' | 'lectern' | 'runeCircle' | 'steps' | 'pillar' | 'statue' | 'brazier'
@@ -257,6 +260,10 @@ export interface GenSettings {
   publicSpaces: boolean;
   marketStyle: MarketStyle;
   marketRichness: number;
+  /** Насыщенность городского декора 0..1 (Urban Dressing): 0 — только геометрия, 1 — максимум жизни. */
+  urbanDressing?: number;
+  /** Состояние города: чистый / жилой / изношенный — влияет на мусор и износ декора. */
+  cityCondition?: CityCondition;
   cryptDetail: number;
   cryptTraps: boolean;
   cryptChasms: boolean;
