@@ -53,7 +53,19 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
   return <>
     <div className="sidebar-section generation-fields">
       <div className="section-heading"><h2>Генерация</h2><Icon name="sparkles" size={17} className="section-symbol" /></div>
-      <label className="field-label">Биом<select aria-label="Биом" value={gen.biome} onChange={(e) => onGen({ biome: e.target.value as Biome })}>
+      <label className="field-label">Биом<select aria-label="Биом" value={gen.biome} onChange={(e) => {
+        const nextBiome = e.target.value as Biome;
+        if ((nextBiome === 'town' || nextBiome === 'village') && gen.settlementType === undefined) {
+          onGen({
+            biome: nextBiome,
+            settlement: nextBiome,
+            settlementType: nextBiome === 'town' ? 'trade_town' : 'large_village',
+            density: Math.max(gen.density, 0.64),
+          });
+        } else {
+          onGen({ biome: nextBiome });
+        }
+      }}>
         {Object.entries(BIOME_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select></label>
       <label className="field-label">Пресет<select aria-label="Пресет" value="" onChange={(e) => {
@@ -150,17 +162,19 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
         const patch = (key: keyof SettlementDebugLayers, val: boolean) =>
           onRender({ settlementDebug: { ...dbg, [key]: val } });
         return <>
-          <Toggle label="Debug: Влияние рельефа" checked={dbg.terrainInfluence} onChange={(v) => patch('terrainInfluence', v)} />
-          <Toggle label="Debug: Районы" checked={dbg.districts} onChange={(v) => patch('districts', v)} />
-          <Toggle label="Debug: Подписи районов" checked={dbg.districtLabels} onChange={(v) => patch('districtLabels', v)} />
-          <Toggle label="Debug: Главные дороги" checked={dbg.primaryRoads} onChange={(v) => patch('primaryRoads', v)} />
-          <Toggle label="Debug: Второстепенные улицы" checked={dbg.secondaryRoads} onChange={(v) => patch('secondaryRoads', v)} />
+          <Toggle label="Debug: Граница города (Footprint)" checked={dbg.footprint} onChange={(v) => patch('footprint', v)} />
+          <Toggle label="Debug: Плотность (Urban Density)" checked={dbg.density} onChange={(v) => patch('density', v)} />
+          <Toggle label="Debug: Районы (Districts)" checked={dbg.districts} onChange={(v) => patch('districts', v)} />
+          <Toggle label="Debug: Кварталы (Blocks)" checked={dbg.blocks} onChange={(v) => patch('blocks', v)} />
           <Toggle label="Debug: Участки (Plots)" checked={dbg.plots} onChange={(v) => patch('plots', v)} />
-          <Toggle label="Debug: Контуры и фасады" checked={dbg.footprints} onChange={(v) => patch('footprints', v)} />
+          <Toggle label="Debug: Иерархия дорог (4 ур.)" checked={dbg.roadHierarchy} onChange={(v) => patch('roadHierarchy', v)} />
+          <Toggle label="Debug: Фасады зданий (Frontage)" checked={dbg.frontage} onChange={(v) => patch('frontage', v)} />
+          <Toggle label="Debug: Дворы и флигели (Courtyards)" checked={dbg.courtyards} onChange={(v) => patch('courtyards', v)} />
+          <Toggle label="Debug: Открытые зоны (Empty Areas)" checked={dbg.emptyAreas} onChange={(v) => patch('emptyAreas', v)} />
+          <Toggle label="Debug: Доступность (Accessibility)" checked={dbg.accessibility} onChange={(v) => patch('accessibility', v)} />
+          <Toggle label="Debug: Влияние реки (River Influence)" checked={dbg.riverInfluence} onChange={(v) => patch('riverInfluence', v)} />
           <Toggle label="Debug: Ориентиры и цепочки" checked={dbg.landmarks} onChange={(v) => patch('landmarks', v)} />
-          <Toggle label="Debug: Доступность и оценка" checked={dbg.accessibility} onChange={(v) => patch('accessibility', v)} />
-          <Toggle label="Debug: Иерархия и граф дорог" checked={dbg.roadHierarchy} onChange={(v) => patch('roadHierarchy', v)} />
-          <Toggle label="Debug: Возраст города" checked={dbg.urbanAge} onChange={(v) => patch('urbanAge', v)} />
+          <Toggle label="Debug: Подписи районов" checked={dbg.districtLabels} onChange={(v) => patch('districtLabels', v)} />
         </>;
       })()}
       <Toggle label="Постройки" checked={render.showStructures} onChange={(showStructures) => onRender({ showStructures })} />

@@ -8,21 +8,42 @@ import type { UrbanSkeleton } from './nodes';
 import type { UrbanRoadResult } from './roads';
 import {
   N4,
+  URBAN_ZONE_ORDER,
   between,
   facingVector,
   pickWeighted,
   rectPolygon,
   wet,
+  type CourtyardKind,
   type PlotFunction,
   type UrbanContext,
   type UrbanPlot,
   type UrbanRoadLevel,
+  type UrbanZone,
 } from './types';
 
 export interface PlotSubdivisionResult {
   plots: UrbanPlot[];
+  plotAt: Int32Array;
   distanceToStreet: Uint16Array;
   nearWall: Uint8Array;
+}
+
+function chooseCourtyardKind(
+  fn: PlotFunction,
+  dKind: UrbanPlot['districtType'],
+  zone: UrbanZone,
+  roll: number,
+): CourtyardKind {
+  if (fn === 'noble_villa' || dKind === 'noble') return 'private_garden';
+  if (dKind === 'temple') return 'temple_courtyard';
+  if (fn === 'warehouse' || dKind === 'docks' || dKind === 'market') return 'trade_courtyard';
+  if (fn === 'workshop' || dKind === 'craft') return 'workshop_yard';
+  if (fn === 'shop' && roll > .48) return 'inn_yard';
+  if (fn === 'farm' || dKind === 'farms' || zone === 'suburbs' || zone === 'outer_city') {
+    return 'garden_yard';
+  }
+  return roll > .72 ? 'garden_yard' : 'enclosed_courtyard';
 }
 
 export function subdivideIntoPlots(
@@ -37,7 +58,7 @@ export function subdivideIntoPlots(
   const { cells, slope } = geo;
   const { reserved } = skel;
   const { streets, streetLevel } = roadNet;
-  const { districts, districtAt, growthStageAt } = distLayout;
+  const { districts, districtAt, blockAt, growthStageAt } = distLayout;
 
   const inside = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h;
   const id = (x: number, y: number) => y * w + x;
@@ -71,7 +92,7 @@ export function subdivideIntoPlots(
     }
   }
 
-  // Буфер 1 клетки у городской стены (стена рисуется лентой и имеет боевой обход).
+  // Буфер 1 клетки у городской стены (боевой проход вдоль стены — Section 15).
   const nearWall = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -83,8 +104,8 @@ export function subdivideIntoPlots(
     }
   }
 
-  // Маска занятых под участки клеток, чтобы участки не пересекались.
   const plotClaimed = new Uint8Array(w * h);
+  const plotAt = new Int32Array(w * h).fill(-1);
   const maxBuildSlope = ctx.geo.geography === 'mountain' ? .26 : .2;
 
   const cellFreeForPlot = (x: number, y: number): boolean => {
@@ -115,15 +136,19 @@ export function subdivideIntoPlots(
   const onMarketFront = (p: Point): boolean =>
     market !== undefined && facesMarket(market.plan, p.x, p.y, streets);
 
-  // ---- 1. Сбор кандидатов фасадного межевания вдоль улиц --------------------
+  // ---- 1. Упорядоченный сбор уличного периметра по кварталам ----------------
+  // Вместо хаотичной расстановки штампов идём вдоль каждого фасада квартала по порядку (x / y),
+  // чтобы участки в ядре и внутренней части города стыковались в сплошной уличный фронт!
   type FrontAnchor = {
     x: number;
     y: number;
+    blockId: number;
     orientation: ChestRotation;
     roadPt: Point;
     roadLvl: UrbanRoadLevel;
     marketFace: boolean;
-    priority: number;
+    tier: number;
+    along: number;
   };
 
   const anchors: FrontAnchor[] = [];
@@ -138,9 +163,7 @@ export function subdivideIntoPlots(
     for (let y = 1; y < h - 1; y++) {
       for (let x = 1; x < w - 1; x++) {
         if (!cellFreeForPlot(x, y)) continue;
-        const dIdx = districtAt[id(x, y)];
-        const dDef = DISTRICTS[districts[dIdx].kind];
-
+        const idx = id(x, y);
         for (const { facing, dx, dy } of ORIENTATIONS) {
           const rx = x + dx, ry = y + dy;
           if (!inside(rx, ry)) continue;
@@ -149,19 +172,30 @@ export function subdivideIntoPlots(
           if (!exitClear({ x: rx, y: ry })) continue;
           const lvl = (streetLevel[rIdx] || 3) as UrbanRoadLevel;
           const mFace = onMarketFront({ x: rx, y: ry });
-          // Сортируем вдоль улицы по главным магистралям, рынку и привлекательности района.
-          const prio = (mFace ? 40 : 0)
-            + (5 - lvl) * 8
-            + dDef.appeal * 4
-            - skel.reach(x, y) * 2.2
-            + hash2(x, y, seed + 0x2201 + facing) * 1.1;
-          anchors.push({ x, y, orientation: facing, roadPt: { x: rx, y: ry }, roadLvl: lvl, marketFace: mFace, priority: prio });
+          // Приоритет фронта: рыночная площадь -> главные улицы (1) -> районные улицы (2) -> переулки (3..4).
+          const tier = mFace ? 0 : lvl;
+          const along = facing === 0 || facing === 180 ? x : y;
+          anchors.push({
+            x,
+            y,
+            blockId: blockAt[idx],
+            orientation: facing,
+            roadPt: { x: rx, y: ry },
+            roadLvl: lvl,
+            marketFace: mFace,
+            tier,
+            along,
+          });
         }
       }
     }
-    anchors.sort((a, b) => b.priority - a.priority || a.y - b.y || a.x - b.x);
+    anchors.sort((a, b) =>
+      a.tier - b.tier
+      || a.blockId - b.blockId
+      || a.orientation - b.orientation
+      || a.along - b.along,
+    );
   } else {
-    // Режим с выключенными улицами: сетка точек внутри кварталов.
     for (let y = 2; y < h - 4; y += 2) {
       for (let x = 2; x < w - 4; x += 2) {
         if (!cellFreeForPlot(x, y)) continue;
@@ -169,21 +203,26 @@ export function subdivideIntoPlots(
         const [dx, dy] = facingVector(facing);
         if (!exitClear({ x: x + dx, y: y + dy })) continue;
         anchors.push({
-          x, y, orientation: facing,
+          x,
+          y,
+          blockId: blockAt[id(x, y)],
+          orientation: facing,
           roadPt: { x: x + dx, y: y + dy },
           roadLvl: 3,
           marketFace: false,
-          priority: 10 - skel.reach(x, y) * 3 + hash2(x, y, seed + 0x441),
+          tier: Math.round(skel.footprintAt(x, y) * 10),
+          along: x + y * w,
         });
       }
     }
-    anchors.sort((a, b) => b.priority - a.priority);
+    anchors.sort((a, b) => a.tier - b.tier || a.along - b.along);
   }
 
   const plots: UrbanPlot[] = [];
 
   function classifyPlot(
     dKind: typeof districts[number]['kind'],
+    zone: UrbanZone,
     wealth: number,
     age: typeof GROWTH_STAGE_ORDER[number],
     roadLvl: UrbanRoadLevel,
@@ -192,32 +231,33 @@ export function subdivideIntoPlots(
     roll: number,
     openRoll: number,
   ): PlotFunction {
-    // Часть участков остаётся садами/дворами/пустырями — город не застраивается на 100%!
-    const openTarget = DISTRICTS[dKind].openShare * (age === 'suburbs' ? 1.35 : age === 'origin' || age === 'old_core' ? .55 : .85);
-    if (!marketFace && roadLvl >= 3 && openRoll < openTarget * .42) {
-      if (dKind === 'noble' || dKind === 'farms' || age === 'suburbs') return 'garden';
-      return openRoll < openTarget * .2 ? 'empty' : 'courtyard';
+    // В старом центре и на главных улицах открытых пустых участков почти нет — фронт плотный!
+    const openTarget = DISTRICTS[dKind].openShare
+      * (zone === 'old_core' ? .18 : zone === 'inner_city' ? .38 : zone === 'suburbs' ? 1.3 : .75);
+    if (!marketFace && roadLvl >= 3 && zone !== 'old_core' && openRoll < openTarget * .35) {
+      if (dKind === 'noble' || dKind === 'farms' || zone === 'suburbs') return 'garden';
+      return 'courtyard';
     }
 
     if (marketFace) {
-      return pickWeighted([['shop', 5], ['workshop', 2], ['warehouse', 1], ['large_residential', 1]], roll);
+      return pickWeighted([['shop', 6], ['workshop', 2], ['warehouse', 1], ['large_residential', 1]], roll);
     }
 
     switch (dKind) {
       case 'centre':
         return roadLvl <= 2
-          ? pickWeighted([['shop', 4], ['large_residential', 3], ['noble_villa', 1], ['workshop', 1]], roll)
-          : pickWeighted([['large_residential', 4], ['small_residential', 2], ['shop', 2]], roll);
+          ? pickWeighted([['shop', 5], ['large_residential', 3], ['workshop', 1], ['noble_villa', 1]], roll)
+          : pickWeighted([['large_residential', 4], ['small_residential', 2], ['shop', 2], ['workshop', 1]], roll);
       case 'market':
         return pickWeighted([['shop', 5], ['warehouse', 2], ['workshop', 2], ['small_residential', 1]], roll);
       case 'craft':
         return roadLvl <= 2
-          ? pickWeighted([['workshop', 5], ['shop', 2], ['warehouse', 2], ['small_residential', 1]], roll)
+          ? pickWeighted([['workshop', 5], ['shop', 3], ['warehouse', 2], ['small_residential', 1]], roll)
           : pickWeighted([['workshop', 5], ['small_residential', 3], ['warehouse', 2]], roll);
       case 'docks':
         return pickWeighted([['warehouse', 5], ['shop', 3], ['workshop', 2], ['small_residential', 2]], roll);
       case 'noble':
-        return area >= 48 && wealth > .65
+        return area >= 44 && wealth > .62
           ? pickWeighted([['noble_villa', 6], ['large_residential', 3], ['garden', 1]], roll)
           : pickWeighted([['large_residential', 6], ['noble_villa', 2]], roll);
       case 'temple':
@@ -227,93 +267,116 @@ export function subdivideIntoPlots(
       case 'farms':
         return pickWeighted([['farm', 6], ['stable', 2], ['garden', 2]], roll);
       case 'poor':
-        return pickWeighted([['small_residential', 7], ['workshop', 2], ['empty', 1]], roll);
+        return pickWeighted([['small_residential', 7], ['workshop', 2], ['empty', age === 'suburbs' ? 1 : 0]], roll);
       case 'residential':
       default:
-        if (roadLvl === 1 && town) {
-          return pickWeighted([['shop', 4], ['large_residential', 4], ['workshop', 1], ['small_residential', 2]], roll);
+        if (roadLvl === 1 && (town || zone === 'old_core' || zone === 'inner_city')) {
+          return pickWeighted([['shop', 5], ['large_residential', 4], ['workshop', 2], ['small_residential', 1]], roll);
         }
-        return wealth > .58
+        return wealth > .56
           ? pickWeighted([['large_residential', 5], ['small_residential', 3], ['shop', 1]], roll)
           : pickWeighted([['small_residential', 6], ['large_residential', 3], ['workshop', 1]], roll);
     }
   }
 
-  // ---- 2. Нарезка фасадных участков с разделением «дом у улицы + двор позади»
+  // ---- 2. Нарезка фасадных участков: сплошной фронт + задний двор + вторичные постройки
+  let rowCounter = 0;
+  let lastEdgeKey = '';
+
   for (const anchor of anchors) {
     if (!cellFreeForPlot(anchor.x, anchor.y)) continue;
-    const dIdx = districtAt[id(anchor.x, anchor.y)];
+    const cellIdx = id(anchor.x, anchor.y);
+    const dIdx = districtAt[cellIdx];
     if (dIdx < 0) continue;
     const district = districts[dIdx];
     const dDef = DISTRICTS[district.kind];
-    const age = GROWTH_STAGE_ORDER[growthStageAt[id(anchor.x, anchor.y)]] ?? 'first_expansion';
+    const zone = URBAN_ZONE_ORDER[skel.urbanZoneAt[cellIdx]] ?? 'residential';
+    const age = GROWTH_STAGE_ORDER[growthStageAt[cellIdx]] ?? 'first_expansion';
 
-    // В старом центре участки уже по фасаду, но глубже; в новых и богатых — шире.
-    const ageFrontScale = age === 'origin' || age === 'old_core' ? .86 : age === 'suburbs' ? 1.12 : 1.0;
-    const wealthScale = .88 + district.wealth * .28;
+    const edgeKey = `${anchor.blockId}:${anchor.orientation}`;
+    if (edgeKey !== lastEdgeKey) {
+      lastEdgeKey = edgeKey;
+      rowCounter = 0;
+    }
+
+    // Габариты участка зависят от исторической зоны (Section 7):
+    // старое ядро — узкий фасад (4–6) и глубокий двор; окраины — широкие усадьбы!
+    const zoneFrontScale = zone === 'old_core' ? .82 : zone === 'inner_city' ? .92 : zone === 'suburbs' ? 1.16 : 1.0;
+    const wealthScale = .9 + district.wealth * .22;
     const r1 = hash2(anchor.x, anchor.y, seed + 0x5101);
     const r2 = hash2(anchor.x, anchor.y, seed + 0x5102);
 
-    const targetFront = Math.max(
+    const targetFront = between(
+      Math.round((dDef.length[0] + r1 * (dDef.length[1] - dDef.length[0])) * zoneFrontScale * wealthScale),
       4,
-      Math.round((dDef.length[0] + r1 * (dDef.length[1] - dDef.length[0])) * ageFrontScale * wealthScale),
+      zone === 'old_core' ? 6 : 9,
     );
-    const buildDepth = Math.max(
-      4,
+    const buildDepth = between(
       Math.round(dDef.depth[0] + r2 * (dDef.depth[1] - dDef.depth[0])),
+      4,
+      zone === 'old_core' ? 6 : 7,
     );
-    // Дополнительная глубина под внутренний двор/сад позади дома!
-    const wantsYard = hash2(anchor.x, anchor.y, seed + 0x5103) < dDef.courtyardRate;
+
+    // Дворы позади фасадных домов — обязательный элемент средневекового квартала!
+    const courtyardChance = Math.min(.92, dDef.courtyardRate + (zone === 'old_core' || zone === 'inner_city' ? .22 : .12));
+    const wantsYard = hash2(anchor.x, anchor.y, seed + 0x5103) < courtyardChance;
     const yardExtra = wantsYard
-      ? (district.kind === 'noble' || district.kind === 'farms' ? 4 : district.kind === 'craft' ? 3 : 2)
+      ? (district.kind === 'noble' || district.kind === 'farms' || zone === 'suburbs'
+        ? 5
+        : district.kind === 'craft' || district.kind === 'docks' || hash2(anchor.x, anchor.y, seed + 0x5104) > .38
+        ? 4
+        : 3)
       : 0;
 
-    // Пробуем от полного участка с двором до компактного 4×4 в тесных кварталах.
     let placedPlot: UrbanPlot | undefined;
 
-    for (const [fTry, bDepthTry, yDepthTry] of [
+    const plotSizes: [number, number, number][] = [
       [targetFront, buildDepth, yardExtra],
-      [Math.max(4, targetFront - 1), buildDepth, Math.max(0, yardExtra - 1)],
-      [Math.max(4, dDef.length[0]), Math.max(4, dDef.depth[0]), 0],
+      [Math.max(4, targetFront - 1), buildDepth, yardExtra >= 3 ? 3 : yardExtra],
+      [5, 4, 3],
+      [4, 4, 3],
+      [targetFront, Math.max(4, buildDepth - 1), Math.max(0, yardExtra - 1)],
+      [5, 4, 2],
+      [4, 4, 2],
       [5, 4, 0],
       [4, 4, 0],
-    ]) {
+    ];
+    if (zone === 'old_core' || zone === 'inner_city') {
+      plotSizes.push([4, 3, 2], [4, 3, 0], [3, 4, 0]);
+    }
+
+    for (const [fTry, bDepthTry, yDepthTry] of plotSizes) {
       const totalDepth = bDepthTry + yDepthTry;
       const sideways = anchor.orientation === 90 || anchor.orientation === 270;
       const pw = sideways ? totalDepth : fTry;
       const ph = sideways ? fTry : totalDepth;
 
-      // Позиционируем участок так, чтобы его фасадная грань проходила через anchor и смотрела на roadPt.
-      const shiftAlong = Math.floor(fTry / 2);
-      const px = anchor.orientation === 90
-        ? anchor.x
-        : anchor.orientation === 270
-        ? anchor.x - pw + 1
-        : anchor.x - shiftAlong;
-      const py = anchor.orientation === 180
-        ? anchor.y
-        : anchor.orientation === 0
-        ? anchor.y - ph + 1
-        : anchor.y - shiftAlong;
+      // Пробуем привязку к переднему углу и небольшие сдвиги вдоль кривой улицы,
+      // чтобы на диагональных и кольцевых улицах участки вставали плотно без пропусков!
+      let baseX = anchor.x;
+      let baseY = anchor.y;
+      if (anchor.orientation === 0) baseY = anchor.y - ph + 1;
+      else if (anchor.orientation === 270) baseX = anchor.x - pw + 1;
 
-      const bounds: Selection = { x: px, y: py, w: pw, h: ph };
-      if (!rectFree(bounds)) continue;
+      let bounds: Selection | undefined;
+      let px = baseX;
+      let py = baseY;
+      for (const shift of [0, -1, 1, -Math.floor(fTry / 2)]) {
+        const tryX = sideways ? baseX : baseX + shift;
+        const tryY = sideways ? baseY + shift : baseY;
+        const candBounds = { x: tryX, y: tryY, w: pw, h: ph };
+        if (rectFree(candBounds)) {
+          bounds = candBounds;
+          px = tryX;
+          py = tryY;
+          break;
+        }
+      }
+      if (!bounds) continue;
 
-      // Проверяем, что выход перед центром фасада чист и выходит на улицу/проход.
-      const [fx, fy] = facingVector(anchor.orientation);
-      const doorFrontX = anchor.orientation === 90 ? px
-        : anchor.orientation === 270 ? px + pw - 1
-        : px + Math.floor(pw / 2);
-      const doorFrontY = anchor.orientation === 180 ? py
-        : anchor.orientation === 0 ? py + ph - 1
-        : py + Math.floor(ph / 2);
-      const accessPt = { x: doorFrontX + fx, y: doorFrontY + fy };
-      if (!exitClear(accessPt)) continue;
-      if (hasStreets && distanceToStreet[id(accessPt.x, accessPt.y)] > 1) continue;
-
-      // Разделяем участок на пятно застройки (у фасада или с отступом для усадьбы) и двор (в глубине).
       const fn = classifyPlot(
         district.kind,
+        zone,
         district.wealth,
         age,
         anchor.roadLvl,
@@ -323,33 +386,96 @@ export function subdivideIntoPlots(
         hash2(px, py, seed + 0x5202),
       );
 
+      const courtRoll = hash2(px, py, seed + 0x5209);
+      const canFitPassageHouse = (fTry >= 5 && bDepthTry >= 3) || (fTry === 4 && bDepthTry >= 4);
+      const wantsSecondary = yDepthTry >= 3
+        && canFitPassageHouse
+        && fn !== 'garden'
+        && fn !== 'courtyard'
+        && fn !== 'empty'
+        && courtRoll < (
+          district.kind === 'craft' || district.kind === 'docks' || district.kind === 'farms'
+            ? .82
+            : zone === 'old_core' || zone === 'inner_city'
+            ? .64
+            : .48
+        );
+
+      // Оставляем 1-клеточный арочный/боковой проход во двор с улицы, если во дворе стоит флигель/мастерская
+      // или каждые 3 сплошных дома в плотном ряду (тактические проходы D&D + 100% связность построек!).
+      const needsPassage = canFitPassageHouse && yDepthTry >= 2 && (wantsSecondary || rowCounter % 3 === 2);
+      const bFront = needsPassage ? fTry - 1 : fTry;
+
       let buildRect: Selection | undefined;
       let yardRect: Selection | undefined;
+      let secondaryRect: Selection | undefined;
+      let courtyardKind: CourtyardKind | undefined;
 
       if (fn !== 'garden' && fn !== 'courtyard' && fn !== 'empty') {
         if (yDepthTry > 0) {
+          courtyardKind = chooseCourtyardKind(fn, district.kind, zone, courtRoll);
           if (anchor.orientation === 0) {
-            // Улица на юге (y + ph): дом на юге, двор на севере.
-            buildRect = { x: px, y: py + yDepthTry, w: pw, h: bDepthTry };
+            buildRect = { x: px, y: py + yDepthTry, w: bFront, h: bDepthTry };
             yardRect = { x: px, y: py, w: pw, h: yDepthTry };
+            if (wantsSecondary && yDepthTry >= 3 && pw >= 4) {
+              const sw = Math.min(4, Math.max(3, pw - 1));
+              const sh = Math.min(3, yDepthTry);
+              secondaryRect = { x: px, y: py, w: Math.min(sw, pw - 1), h: sh };
+            }
           } else if (anchor.orientation === 180) {
-            // Улица на севере (y - 1): дом на севере, двор на юге.
-            buildRect = { x: px, y: py, w: pw, h: bDepthTry };
+            buildRect = { x: px, y: py, w: bFront, h: bDepthTry };
             yardRect = { x: px, y: py + bDepthTry, w: pw, h: yDepthTry };
+            if (wantsSecondary && yDepthTry >= 3 && pw >= 4) {
+              const sw = Math.min(4, Math.max(3, pw - 1));
+              const sh = Math.min(3, yDepthTry);
+              secondaryRect = { x: px, y: py + ph - sh, w: Math.min(sw, pw - 1), h: sh };
+            }
           } else if (anchor.orientation === 90) {
-            // Улица на западе (x - 1): дом на западе, двор на востоке.
-            buildRect = { x: px, y: py, w: bDepthTry, h: ph };
+            buildRect = { x: px, y: py, w: bDepthTry, h: bFront };
             yardRect = { x: px + bDepthTry, y: py, w: yDepthTry, h: ph };
+            if (wantsSecondary && yDepthTry >= 3 && ph >= 4) {
+              const sw = Math.min(3, yDepthTry);
+              const sh = Math.min(4, Math.max(3, ph - 1));
+              secondaryRect = { x: px + pw - sw, y: py, w: sw, h: Math.min(sh, ph - 1) };
+            }
           } else {
-            // Улица на востоке (x + pw): дом на востоке, двор на западе.
-            buildRect = { x: px + yDepthTry, y: py, w: bDepthTry, h: ph };
+            buildRect = { x: px + yDepthTry, y: py, w: bDepthTry, h: bFront };
             yardRect = { x: px, y: py, w: yDepthTry, h: ph };
+            if (wantsSecondary && yDepthTry >= 3 && ph >= 4) {
+              const sw = Math.min(3, yDepthTry);
+              const sh = Math.min(4, Math.max(3, ph - 1));
+              secondaryRect = { x: px, y: py, w: sw, h: Math.min(sh, ph - 1) };
+            }
           }
         } else {
           buildRect = { ...bounds };
         }
       } else {
         yardRect = { ...bounds };
+        courtyardKind = fn === 'garden' ? 'private_garden' : 'enclosed_courtyard';
+      }
+
+      // Проверяем чистый выход на улицу перед главным зданием И проходимость бокового прохода!
+      const [fx, fy] = facingVector(anchor.orientation);
+      const refBox = buildRect ?? bounds;
+      const doorFrontX = anchor.orientation === 90 ? refBox.x
+        : anchor.orientation === 270 ? refBox.x + refBox.w - 1
+        : refBox.x + Math.floor(refBox.w / 2);
+      const doorFrontY = anchor.orientation === 180 ? refBox.y
+        : anchor.orientation === 0 ? refBox.y + refBox.h - 1
+        : refBox.y + Math.floor(refBox.h / 2);
+      const accessPt = { x: doorFrontX + fx, y: doorFrontY + fy };
+      if (!exitClear(accessPt)) continue;
+      if (hasStreets && distanceToStreet[id(accessPt.x, accessPt.y)] > 1) continue;
+
+      if (needsPassage && secondaryRect) {
+        const passPt = anchor.orientation === 0 ? { x: px + pw - 1, y: py + ph }
+          : anchor.orientation === 180 ? { x: px + pw - 1, y: py - 1 }
+          : anchor.orientation === 90 ? { x: px - 1, y: py + ph - 1 }
+          : { x: px + pw, y: py + ph - 1 };
+        if (!exitClear(passPt) || (hasStreets && distanceToStreet[id(passPt.x, passPt.y)] > 2)) {
+          secondaryRect = undefined;
+        }
       }
 
       placedPlot = {
@@ -358,15 +484,19 @@ export function subdivideIntoPlots(
         bounds,
         buildRect,
         yardRect,
+        secondaryRect,
+        courtyardKind,
+        needsPassage,
         districtIndex: dIdx,
         districtType: district.kind,
+        zone,
         size: pw * ph,
         frontage: fTry,
         depth: totalDepth,
         orientation: anchor.orientation,
         roadAccess: accessPt,
         roadLevel: anchor.roadLvl,
-        wealth: between(district.wealth + (anchor.roadLvl === 1 ? .08 : anchor.roadLvl >= 4 ? -.08 : 0), .05, .98),
+        wealth: between(district.wealth + (anchor.roadLvl === 1 ? .08 : anchor.roadLvl >= 3 ? -.06 : 0), .05, .98),
         age,
         fn,
       };
@@ -375,94 +505,119 @@ export function subdivideIntoPlots(
 
     if (placedPlot) {
       const { x: bx, y: by, w: bw, h: bh } = placedPlot.bounds;
-      // Между участками знати и хуторов оставляем воздушный зазор (gap >= 2), в центре — плотнее.
-      const pad = dDef.gap >= 3 ? 1 : 0;
+      // В центре и внутреннем городе фронт сплошной (pad = 0); в знатных/пригородных усадьбах — разрыв 1–2 клетки!
+      const pad = placedPlot.zone === 'suburbs' || dDef.gap >= 4
+        ? 2
+        : placedPlot.zone === 'outer_city' && dDef.gap >= 2
+        ? 1
+        : district.kind === 'noble'
+        ? 1
+        : 0;
       for (let yy = Math.max(0, by - pad); yy < Math.min(h, by + bh + pad); yy++) {
         for (let xx = Math.max(0, bx - pad); xx < Math.min(w, bx + bw + pad); xx++) {
+          const cIdx = id(xx, yy);
           if (xx >= bx && xx < bx + bw && yy >= by && yy < by + bh) {
-            plotClaimed[id(xx, yy)] = 1;
-          } else if (pad > 0 && !streets[id(xx, yy)]) {
-            plotClaimed[id(xx, yy)] = 1;
+            plotClaimed[cIdx] = 1;
+            plotAt[cIdx] = placedPlot.id;
+          } else if (pad > 0 && !streets[cIdx]) {
+            plotClaimed[cIdx] = 1;
           }
         }
       }
       districts[placedPlot.districtIndex].plotCount++;
       plots.push(placedPlot);
+      rowCounter++;
     }
   }
 
-  // ---- 3. Вторая линия (внутриквартальная застройка бедных слобод + дворы) ---
-  // Бедные дома могут стоять глубже внутри квартала (dist 2..5 от улицы), а свободные
-  // ядра кварталов оформляются как внутренние сады/дворы.
+  // ---- 3. Внутренняя застройка глубоких кварталов и оформление дворов --------
+  // Оставшееся место внутри кварталов размечается под задние домики ремесленников/бедноты
+  // либо под осмысленные внутриквартальные дворы, сады и огороды — без «ничейной травы»!
   const maxSecondDepth = town ? 5 : 7;
-  for (let y = 2; y < h - 5; y += 2) {
-    for (let x = 2; x < w - 5; x += 2) {
+  for (let y = 2; y < h - 5; y++) {
+    for (let x = 2; x < w - 5; x++) {
       if (!cellFreeForPlot(x, y)) continue;
       const dIdx = districtAt[id(x, y)];
       if (dIdx < 0) continue;
       const district = districts[dIdx];
+      const zone = URBAN_ZONE_ORDER[skel.urbanZoneAt[id(x, y)]] ?? 'residential';
       const dist = distanceToStreet[id(x, y)];
       if (hasStreets && dist > maxSecondDepth) continue;
 
-      const isBackDwelling = district.kind === 'poor'
+      const isBackDwelling = (
+        district.kind === 'poor'
+        || district.kind === 'craft'
         || character.id === 'poor'
-        || (district.kind === 'residential' && growthStageAt[id(x, y)] <= 1 && hash2(x, y, seed + 0x611) < .45)
-        || !hasStreets;
+        || ((zone === 'old_core' || zone === 'inner_city') && dist <= 3 && hash2(x, y, seed + 0x611) < .58)
+        || !hasStreets
+      );
 
-      const pw = isBackDwelling ? (hash2(x, y, seed + 0x612) > .5 ? 5 : 4) : 5;
-      const ph = isBackDwelling ? 4 : 4;
-      const bounds: Selection = { x, y, w: pw, h: ph };
-      if (!rectFree(bounds)) continue;
+      let placedBack = false;
+      for (const [pw, ph] of [[5, 4], [4, 4]] as const) {
+        const bounds: Selection = { x, y, w: pw, h: ph };
+        if (!rectFree(bounds)) continue;
 
-      // Ориентируем вход в сторону уменьшения distanceToStreet!
-      const cx = x + Math.floor(pw / 2), cy = y + Math.floor(ph / 2);
-      const candidates = ([
-        { facing: 0 as ChestRotation, out: { x: cx, y: y + ph } },
-        { facing: 180 as ChestRotation, out: { x: cx, y: y - 1 } },
-        { facing: 90 as ChestRotation, out: { x: x - 1, y: cy } },
-        { facing: 270 as ChestRotation, out: { x: x + pw, y: cy } },
-      ]).filter((c) => exitClear(c.out) && !plotClaimed[id(c.out.x, c.out.y)]);
+        const cx = x + Math.floor(pw / 2), cy = y + Math.floor(ph / 2);
+        const candidates = ([
+          { facing: 0 as ChestRotation, out: { x: cx, y: y + ph } },
+          { facing: 180 as ChestRotation, out: { x: cx, y: y - 1 } },
+          { facing: 90 as ChestRotation, out: { x: x - 1, y: cy } },
+          { facing: 270 as ChestRotation, out: { x: x + pw, y: cy } },
+        ]).filter((c) => exitClear(c.out) && (!plotClaimed[id(c.out.x, c.out.y)] || streets[id(c.out.x, c.out.y)]));
 
-      candidates.sort((a, b) => distanceToStreet[id(a.out.x, a.out.y)] - distanceToStreet[id(b.out.x, b.out.y)]);
-      const bestDir = candidates[0];
-      if (!bestDir) continue;
-      if (hasStreets && distanceToStreet[id(bestDir.out.x, bestDir.out.y)] > maxSecondDepth) continue;
+        candidates.sort((a, b) => distanceToStreet[id(a.out.x, a.out.y)] - distanceToStreet[id(b.out.x, b.out.y)]);
+        const bestDir = candidates[0];
+        if (!bestDir) continue;
+        if (hasStreets && distanceToStreet[id(bestDir.out.x, bestDir.out.y)] > maxSecondDepth) continue;
 
-      const age = GROWTH_STAGE_ORDER[growthStageAt[id(x, y)]] ?? 'second_expansion';
-      const fn: PlotFunction = isBackDwelling
-        ? 'small_residential'
-        : district.kind === 'noble' || district.kind === 'farms' || district.kind === 'temple'
-        ? 'garden'
-        : hash2(x, y, seed + 0x615) > .45 ? 'courtyard' : 'empty';
+        const age = GROWTH_STAGE_ORDER[growthStageAt[id(x, y)]] ?? 'second_expansion';
+        const fn: PlotFunction = isBackDwelling
+          ? (district.kind === 'craft' && hash2(x, y, seed + 0x613) > .5 ? 'workshop' : 'small_residential')
+          : district.kind === 'noble' || district.kind === 'farms' || district.kind === 'temple' || zone === 'outer_city'
+          ? 'garden'
+          : 'courtyard';
 
-      for (let yy = y; yy < y + ph; yy++) {
-        for (let xx = x; xx < x + pw; xx++) plotClaimed[id(xx, yy)] = 1;
+        const pId = plots.length;
+        for (let yy = y; yy < y + ph; yy++) {
+          for (let xx = x; xx < x + pw; xx++) {
+            const cIdx = id(xx, yy);
+            plotClaimed[cIdx] = 1;
+            plotAt[cIdx] = pId;
+          }
+        }
+
+        const hasBuild = fn === 'small_residential' || fn === 'workshop';
+        plots.push({
+          id: pId,
+          polygon: rectPolygon(bounds),
+          bounds,
+          buildRect: hasBuild ? { ...bounds } : undefined,
+          yardRect: hasBuild ? undefined : { ...bounds },
+          courtyardKind: hasBuild ? undefined : (fn === 'garden' ? 'garden_yard' : 'enclosed_courtyard'),
+          districtIndex: dIdx,
+          districtType: district.kind,
+          zone,
+          size: pw * ph,
+          frontage: bestDir.facing % 180 === 0 ? pw : ph,
+          depth: bestDir.facing % 180 === 0 ? ph : pw,
+          orientation: bestDir.facing,
+          roadAccess: bestDir.out,
+          roadLevel: 3,
+          wealth: Math.max(.05, district.wealth - .1),
+          age,
+          fn,
+        });
+        district.plotCount++;
+        placedBack = true;
+        break;
       }
-
-      plots.push({
-        id: plots.length,
-        polygon: rectPolygon(bounds),
-        bounds,
-        buildRect: fn === 'small_residential' ? { ...bounds } : undefined,
-        yardRect: fn === 'small_residential' ? undefined : { ...bounds },
-        districtIndex: dIdx,
-        districtType: district.kind,
-        size: pw * ph,
-        frontage: bestDir.facing % 180 === 0 ? pw : ph,
-        depth: bestDir.facing % 180 === 0 ? ph : pw,
-        orientation: bestDir.facing,
-        roadAccess: bestDir.out,
-        roadLevel: 4,
-        wealth: Math.max(.05, district.wealth - .12),
-        age,
-        fn,
-      });
-      district.plotCount++;
+      void placedBack;
     }
   }
 
   return {
     plots,
+    plotAt,
     distanceToStreet,
     nearWall,
   };

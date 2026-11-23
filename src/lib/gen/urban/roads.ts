@@ -35,11 +35,13 @@ export interface UrbanRoadResult {
   bridges: number;
   plaza?: Selection;
   plazaOk: boolean;
+  subPlazas: Selection[];
   marketResolution?: MarketResolution;
   marketSite?: MarketSite;
   marketPrepaint: { i: number; terrain: Terrain }[];
   ringLaneIndex: number;
   quayPoints: Point[];
+  riverQuayPoints: Point[];
   paintCell: (x: number, y: number, surface: Terrain, level: UrbanRoadLevel, cross: boolean) => boolean;
   drawStroke: (stroke: RoadStroke) => void;
 }
@@ -351,82 +353,127 @@ export function buildUrbanRoadNetwork(
   };
 
   const buildGridStreets = (coreHole: number) => {
-    // Уровень 1: две главные исторические оси (Cardo и Decumanus), пересекающиеся у центра/площади.
+    // Уровень 1 (PRIMARY ROAD): две главные исторические оси (Cardo и Decumanus), связывающие ворота, ядро и площадь.
     strokes.push({
-      points: axisLine(0, -edgeReach, edgeReach, .04, 1),
-      radius: rArterial, surface: mainSurface, level: 1, canCrossWallWater: true, reason: 'главная продольная ось',
+      points: axisLine(0, -edgeReach, edgeReach, .045, 1),
+      radius: rArterial, surface: mainSurface, level: 1, canCrossWallWater: true, reason: 'главная продольная магистраль',
     });
     strokes.push({
-      points: crossLine(0, -edgeReach, edgeReach, .04, 2),
-      radius: rArterial * .94, surface: mainSurface, level: 1, canCrossWallWater: true, reason: 'главная поперечная ось',
+      points: crossLine(0, -edgeReach, edgeReach, .045, 2),
+      radius: rArterial * .94, surface: mainSurface, level: 1, canCrossWallWater: true, reason: 'главная поперечная магистраль',
     });
 
-    // Неравномерный шаг кварталов: ближе к центру уже, к окраинам — шире!
-    const baseAlong = (town ? 8.8 : 11) / (horizontal ? RX : RY);
-    const baseAcross = (town ? 7.8 : 10) / (horizontal ? RY : RX);
+    // Шаг кварталов компактнее в ядре и просторнее к окраинам; внутри стен не прижимаем улицы вплотную к стене!
+    const alongRadius = horizontal ? RX : RY;
+    const acrossRadius = horizontal ? RY : RX;
+    const baseAlong = (town ? 8.2 : 9.8) / alongRadius;
+    const baseAcross = (town ? 7.6 : 9.2) / acrossRadius;
+    const maxGridCursor = walls.walled ? .74 : .90;
 
     for (const sign of [-1, 1]) {
       let cursor = 0;
-      for (let k = 1; k <= 6; k++) {
-        cursor += baseAcross * (.88 + k * .08 + (hash2(k, sign + 5, seed + 0x61) - .5) * .16);
-        if (cursor >= 1.02) break;
+      for (let k = 1; k <= 5; k++) {
+        cursor += baseAcross * (.84 + k * .12 + (hash2(k, sign + 5, seed + 0x61) - .5) * .16);
+        if (cursor >= maxGridCursor) break;
         const o = sign * cursor;
         if (Math.abs(o) < coreHole) continue;
-        const ext = Math.sqrt(Math.max(.08, 1 - o * o * .92));
-        // Разрывы в сетке (T-образные перекрёстки вместо бесконечных линий под линейку).
-        const trimLeft = k >= 2 && hash2(k, 1, seed + 0x72 + sign) > .68 ? -.15 : -ext;
-        const trimRight = k >= 2 && hash2(k, 2, seed + 0x72 + sign) > .68 ? .15 : ext;
-        const lvl: UrbanRoadLevel = k === 1 ? 2 : 3;
-        strokes.push({
-          points: axisLine(o, trimLeft, trimRight, .035, 10 + k * sign),
-          radius: lvl === 2 ? rPrimary : rDistrict,
-          surface: lvl === 2 && town && character.id === 'noble' ? 'plaza' : 'road',
-          level: lvl,
-          canCrossWallWater: false,
-          reason: lvl === 2 ? 'опорная улица сетки' : 'районная улица сетки',
-        });
-      }
-    }
-
-    for (const sign of [-1, 1]) {
-      let cursor = 0;
-      for (let k = 1; k <= 6; k++) {
-        cursor += baseAlong * (.86 + k * .09 + (hash2(k, sign + 9, seed + 0x63) - .5) * .18);
-        if (cursor >= 1.02) break;
-        const o = sign * cursor;
-        if (Math.abs(o) < coreHole) continue;
-        const ext = Math.sqrt(Math.max(.08, 1 - o * o * .92));
-        const hasBreak = k >= 2 && hash2(k, 3, seed + 0x74 + sign) > .62;
-        if (hasBreak) {
-          // Разрыв квартала (площадка или смещённый перекрёсток).
+        const ext = Math.sqrt(Math.max(.12, .92 - o * o * .92));
+        const modeRoll = hash2(k, 11, seed + 0x72 + sign * 3);
+        const lvl: UrbanRoadLevel = k <= 2 ? 2 : 3;
+        if (k >= 2 && modeRoll < .38) {
+          // Т-образное соединение: улица идёт только в одном полушарии от главной оси!
+          const leftHalf = hash2(k, 12, seed + 0x73 + sign) > .5;
           strokes.push({
-            points: crossLine(o, -ext, -.08, .035, 30 + k * sign),
-            radius: rDistrict, surface: 'road', level: 3, canCrossWallWater: false, reason: 'прерванная поперечная улица',
+            points: axisLine(o, leftHalf ? -ext : 0, leftHalf ? 0 : ext, .04, 10 + k * sign),
+            radius: lvl === 2 ? rPrimary : rDistrict * .88,
+            surface: 'road',
+            level: lvl,
+            canCrossWallWater: false,
+            reason: 'Т-образная районная улица',
+          });
+        } else if (k >= 2 && modeRoll < .68) {
+          // Смещённый перекрёсток (staggered T-junctions через главную улицу) — ломает монотонную сетку!
+          const shift = sign * baseAcross * .22;
+          strokes.push({
+            points: axisLine(o, -ext * .9, 0, .04, 14 + k * sign),
+            radius: rDistrict, surface: 'road', level: lvl, canCrossWallWater: false, reason: 'смещённая улица сетки',
           });
           strokes.push({
-            points: crossLine(o + sign * baseAlong * .18, .08, ext, .035, 50 + k * sign),
-            radius: rDistrict, surface: 'road', level: 3, canCrossWallWater: false, reason: 'смещённая поперечная улица',
+            points: axisLine(o + shift, 0, ext * .88, .04, 18 + k * sign),
+            radius: rDistrict, surface: 'road', level: lvl, canCrossWallWater: false, reason: 'смещённое продолжение улицы',
           });
         } else {
-          const lvl: UrbanRoadLevel = k === 1 ? 2 : 3;
           strokes.push({
-            points: crossLine(o, -ext, ext, .035, 30 + k * sign),
-            radius: lvl === 2 ? rPrimary : rDistrict, surface: 'road', level: lvl, canCrossWallWater: false,
-            reason: 'поперечная улица сетки',
+            points: axisLine(o, -ext, ext, .038, 10 + k * sign),
+            radius: lvl === 2 ? rPrimary : rDistrict,
+            surface: lvl === 2 && town && character.id === 'noble' ? 'plaza' : 'road',
+            level: lvl,
+            canCrossWallWater: false,
+            reason: lvl === 2 ? 'районная улица' : 'квартальная улочка',
           });
         }
       }
     }
 
-    // Старая диагональная дорога в одном секторе сетки (след дорегулярного тракта).
-    if (!small && character.coreShare > .32 && coreHole === 0) {
+    for (const sign of [-1, 1]) {
+      let cursor = 0;
+      for (let k = 1; k <= 5; k++) {
+        cursor += baseAlong * (.84 + k * .12 + (hash2(k, sign + 9, seed + 0x63) - .5) * .18);
+        if (cursor >= maxGridCursor) break;
+        const o = sign * cursor;
+        if (Math.abs(o) < coreHole) continue;
+        const ext = Math.sqrt(Math.max(.12, .92 - o * o * .92));
+        const modeRoll = hash2(k, 3, seed + 0x74 + sign * 5);
+        const lvl: UrbanRoadLevel = k <= 2 ? 2 : 3;
+        if (k >= 2 && modeRoll < .42) {
+          // Т-образная поперечная улица или короткий тупик вглубь квартала.
+          const topHalf = hash2(k, 19, seed + 0x75 + sign) > .5;
+          const spanEnd = modeRoll < .18 ? ext * .55 : ext;
+          strokes.push({
+            points: crossLine(o, topHalf ? -spanEnd : 0, topHalf ? 0 : spanEnd, .04, 30 + k * sign),
+            radius: modeRoll < .18 ? .5 : rDistrict,
+            surface: 'road',
+            level: modeRoll < .18 ? 3 : lvl,
+            canCrossWallWater: false,
+            reason: modeRoll < .18 ? 'тупиковый переулок' : 'Т-образная поперечная улица',
+          });
+        } else if (k >= 2 && modeRoll < .72) {
+          // Смещённый разрыв с изломом вокруг квартала.
+          strokes.push({
+            points: crossLine(o, -ext, 0, .038, 30 + k * sign),
+            radius: rDistrict, surface: 'road', level: lvl, canCrossWallWater: false, reason: 'поперечная улица со смещением',
+          });
+          strokes.push({
+            points: crossLine(o + sign * baseAlong * .22, 0, ext * .9, .038, 50 + k * sign),
+            radius: rDistrict, surface: 'road', level: lvl, canCrossWallWater: false, reason: 'продолжение поперечной улицы',
+          });
+        } else {
+          strokes.push({
+            points: crossLine(o, -ext, ext, .038, 30 + k * sign),
+            radius: lvl === 2 ? rPrimary : rDistrict, surface: 'road', level: lvl, canCrossWallWater: false,
+            reason: 'поперечная районная улица',
+          });
+        }
+      }
+    }
+
+    // В старом ядре — изогнутое историческое полукольцо и косой дорегулярный тракт,
+    // чтобы центр города отличался геометрией от внешних регулярных кварталов!
+    if (!small && character.regularity < .78 && coreHole === 0) {
+      const coreArc = ellipseRing(.28, .22, 17).slice(0, 10);
+      strokes.push({
+        points: coreArc, radius: .54, surface: 'road', level: 3, canCrossWallWater: false,
+        reason: 'узкая дуга старого ядра',
+      });
+    }
+    if (!small && character.coreShare > .28 && coreHole === 0) {
       const diagAngle = entryAngles[0] ?? .55;
       const diagEnd = {
-        x: center.x + Math.cos(diagAngle) * RX * .85,
-        y: center.y + Math.sin(diagAngle) * RY * .85,
+        x: center.x + Math.cos(diagAngle) * RX * .82,
+        y: center.y + Math.sin(diagAngle) * RY * .82,
       };
       strokes.push({
-        points: terrainBend(origin, diagEnd, .14, 88),
+        points: terrainBend(origin, diagEnd, .16, 88),
         radius: rPrimary, surface: mainSurface, level: 2, canCrossWallWater: false, reason: 'старый дорегулярный тракт',
       });
     }
@@ -572,20 +619,20 @@ export function buildUrbanRoadNetwork(
           });
           edges.push({ from: 'center', to: `gate_${idx}`, level: 1, points: pts });
         });
-        // Уровень 2: внутреннее парадное кольцо и помериум вдоль стены.
-        strokes.push({
-          points: ellipseRing(.35, .09, 3), radius: rPrimary, surface: mainSurface, level: 2, canCrossWallWater: false,
-          reason: 'кольцо старого ядра',
-        });
-        strokes.push({
-          points: ellipseRing(.64, .08, 4), radius: rDistrict, surface: 'road', level: 3, canCrossWallWater: false,
-          reason: 'среднее кольцо расширения',
-        });
-        if (!small && (type.id === 'large_city' || type.extent > .85 || walls.walled)) {
+        // Соразмерные концентрические кольца: между кольцами и стеной всегда остаётся >= 7–9 клеток под застройку и дворы!
+        if (Math.min(RX, RY) >= 26) {
           strokes.push({
-            points: ellipseRing(walls.walled ? .81 : .92, .05, 5),
-            radius: rDistrict, surface: 'road', level: 3, canCrossWallWater: false,
-            reason: 'обходная улица у стены',
+            points: ellipseRing(.40, .08, 3), radius: rPrimary, surface: mainSurface, level: 2, canCrossWallWater: false,
+            reason: 'кольцо старого ядра',
+          });
+          strokes.push({
+            points: ellipseRing(walls.walled ? .70 : .78, .07, 4), radius: rDistrict, surface: 'road', level: 2, canCrossWallWater: false,
+            reason: 'внешнее кольцо кварталов',
+          });
+        } else if (Math.min(RX, RY) >= 14) {
+          strokes.push({
+            points: ellipseRing(walls.walled ? .52 : .58, .08, 3), radius: rPrimary, surface: mainSurface, level: 2, canCrossWallWater: false,
+            reason: 'опорное бульварное кольцо',
           });
         }
         break;
@@ -622,19 +669,22 @@ export function buildUrbanRoadNetwork(
           points: crossLine(0, -edgeReach, edgeReach, .06, 2),
           radius: rArterial * .9, surface: mainSurface, level: 1, canCrossWallWater: true, reason: 'поперечный тракт',
         });
-        strokes.push({
-          points: ellipseRing(.52, .15, 6),
-          radius: rPrimary * .85, surface: 'road', level: 2, canCrossWallWater: false, reason: 'внутренний обход',
-        });
-        for (let i = 0; i < (town ? 9 : 6); i++) {
-          const t = (hash2(i, 1, seed + 0xa3) - .5) * 1.25;
+        if (Math.min(RX, RY) >= 15) {
+          strokes.push({
+            points: ellipseRing(.54, .12, 6),
+            radius: rPrimary * .85, surface: 'road', level: 2, canCrossWallWater: false, reason: 'внутренний обход',
+          });
+        }
+        const sideBranches = Math.min(RX, RY) < 15 ? 2 : town ? 8 : 5;
+        for (let i = 0; i < sideBranches; i++) {
+          const t = (.28 + hash2(i, 1, seed + 0xa3) * .38) * (i % 2 === 0 ? 1 : -1);
           const sign = hash2(i, 2, seed + 0xa3) > .5 ? 1 : -1;
           const onAxis = i % 2 === 0;
           const start = onAxis ? gridPoint(t, 0) : gridPoint(0, t);
-          const len = .3 + hash2(i, 3, seed + 0xa3) * .28;
+          const len = .32 + hash2(i, 3, seed + 0xa3) * .24;
           const end = onAxis ? gridPoint(t, sign * len) : gridPoint(sign * len, t);
           strokes.push({
-            points: terrainBend(start, end, .15, 160 + i, false),
+            points: terrainBend(start, end, .12, 160 + i, false),
             radius: rDistrict * .9, surface: 'road', level: 3, canCrossWallWater: false, reason: 'короткая боковая улица',
           });
         }
@@ -791,6 +841,123 @@ export function buildUrbanRoadNetwork(
     }
   }
 
+  // ---- Речная интеграция: функциональная городская набережная и мостовой узел (Section 13)
+  const riverQuayPoints: Point[] = [];
+  if (geo.river.length > 0 && s.road && !small) {
+    // Строим набережную ТОЛЬКО вдоль активного городского участка реки (не вдоль всей реки через поля!).
+    const citySignX = Math.sign(center.x - geo.river[Math.floor(geo.river.length / 2)].x) || 1;
+    const citySignY = Math.sign(center.y - geo.river[Math.floor(geo.river.length / 2)].y) || 1;
+    for (let i = 0; i < geo.river.length; i += 2) {
+      const rp = geo.river[i];
+      if (skel.footprintAt(rp.x, rp.y) > .88) continue;
+      // Ищем сухую береговую клетку на стороне города в 2–4 клетках от воды.
+      for (let d = 2; d <= 5; d++) {
+        const candidates = [
+          { x: rp.x + citySignX * d, y: rp.y },
+          { x: rp.x, y: rp.y + citySignY * d },
+        ];
+        const found = candidates.find((q) =>
+          inside(q.x, q.y)
+          && usable(q.x, q.y)
+          && skel.walls.insideWalls(q.x, q.y)
+          && geo.waterDist[id(q.x, q.y)] >= 2
+          && geo.waterDist[id(q.x, q.y)] <= 4,
+        );
+        if (found) {
+          riverQuayPoints.push(found);
+          break;
+        }
+      }
+    }
+    if (riverQuayPoints.length >= 3 && (town || type.id === 'large_village')) {
+      const sampledRQuay = riverQuayPoints.filter((_, idx) => idx % 2 === 0);
+      if (sampledRQuay.length >= 2) {
+        drawStroke({
+          points: sampledRQuay,
+          radius: .62,
+          surface: town && character.id === 'trade' ? 'plaza' : 'road',
+          level: 2,
+          canCrossWallWater: false,
+          reason: 'городская речная набережная',
+        });
+        const midRQ = sampledRQuay[Math.floor(sampledRQuay.length / 2)];
+        drawStroke({
+          points: terrainBend(midRQ, hub, .1, 244, false),
+          radius: rPrimary * .9,
+          surface: 'road',
+          level: 2,
+          canCrossWallWater: false,
+          reason: 'связка речной набережной с центром',
+        });
+      }
+    }
+    // Мостовой узел: если река проходит рядом с пятном города, гарантируем полноценный мост,
+    // соединённый с обеих сторон с реальной уличной сетью.
+    const mainBridge = crossingCandidates[0];
+    if (mainBridge && skel.footprintAt(mainBridge.x, mainBridge.y) <= 1.28) {
+      const vx = mainBridge.x - hub.x;
+      const vy = mainBridge.y - hub.y;
+      const len = Math.max(1, Math.hypot(vx, vy));
+      const farBank = {
+        x: between(Math.round(mainBridge.x + (vx / len) * 9), 2, w - 3),
+        y: between(Math.round(mainBridge.y + (vy / len) * 9), 2, h - 3),
+      };
+      if (usable(farBank.x, farBank.y)) {
+        const bridgePts = [hub, mainBridge, farBank];
+        drawStroke({
+          points: bridgePts,
+          radius: rArterial * .92,
+          surface: mainSurface,
+          level: 1,
+          canCrossWallWater: true,
+          reason: 'мостовая магистраль через реку',
+        });
+        edges.push({ from: 'center', to: 'bridge_0', level: 1, points: [hub, mainBridge] });
+      }
+    }
+  }
+
+  // ---- Малые районные площади на узлах улиц (Section 14) --------------------
+  const subPlazas: Selection[] = [];
+  if (s.publicSpaces !== false && !small && !tight) {
+    const targetSubPlazas = type.id === 'large_city' ? 3 : town ? 2 : type.id === 'large_village' ? 1 : 0;
+    for (let y = 5; y < h - 6 && subPlazas.length < targetSubPlazas; y += 2) {
+      for (let x = 5; x < w - 6 && subPlazas.length < targetSubPlazas; x += 2) {
+        const idx = id(x, y);
+        if (!streets[idx] || streetLevel[idx] > 2) continue;
+        if (skel.footprintAt(x, y) > .82 || !skel.walls.insideWalls(x, y)) continue;
+        // Должен быть реальный перекрёсток (>= 3 направлений улиц на расстоянии 2 клеток).
+        let branches = 0;
+        for (const [dx, dy] of N4) {
+          if (inside(x + dx * 2, y + dy * 2) && streets[id(x + dx * 2, y + dy * 2)]) branches++;
+        }
+        if (branches < 3) continue;
+        if (plaza && Math.hypot(x - (plaza.x + plaza.w / 2), y - (plaza.y + plaza.h / 2)) < 11) continue;
+        if (keepBox && Math.hypot(x - (keepBox.x + keepBox.w / 2), y - (keepBox.y + keepBox.h / 2)) < 10) continue;
+        if (subPlazas.some((sp) => Math.hypot(x - (sp.x + sp.w / 2), y - (sp.y + sp.h / 2)) < 12)) continue;
+
+        const sw = hash2(x, y, seed + 0x5b1) > .5 ? 4 : 3;
+        const sh = 3;
+        const box: Selection = { x: x - 1, y: y - 1, w: sw, h: sh };
+        let ok = true;
+        for (let yy = box.y; yy < box.y + box.h && ok; yy++) {
+          for (let xx = box.x; xx < box.x + box.w; xx++) {
+            const tr = terrain(xx, yy);
+            if (wet(tr) || tr === 'wall' || tr === 'rock' || reserved[id(xx, yy)]) { ok = false; break; }
+            if (geo.waterDist[id(xx, yy)] < 2) { ok = false; break; }
+          }
+        }
+        if (!ok) continue;
+        for (let yy = box.y; yy < box.y + box.h; yy++) {
+          for (let xx = box.x; xx < box.x + box.w; xx++) {
+            paintCell(xx, yy, town ? 'plaza' : 'road', 2, false);
+          }
+        }
+        subPlazas.push(box);
+      }
+    }
+  }
+
   // Если поселение укреплённое, но ни одна улица ещё не пробила внешнюю стену (например, при выключенной дороге),
   // прокладываем короткий выезд от центра через ближайшую сухую точку стены, чтобы город не был замурован.
   if (walls.walled && gates.size === 0 && s.road) {
@@ -802,6 +969,30 @@ export function buildUrbanRoadNetwork(
         points: [hub, target], radius: rArterial, surface: mainSurface, level: 1, canCrossWallWater: true,
         reason: 'гарантированный выезд через ворота',
       });
+    }
+  }
+
+  // Убираем 1–2-клеточные тупиковые обрубки дороги, упирающиеся прямо в воду без моста!
+  for (let pass = 0; pass < 2; pass++) {
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const idx = id(x, y);
+        if (!streets[idx] || terrain(x, y) === 'bridge' || gates.has(idx)) continue;
+        let streetN = 0;
+        let touchesRawWater = false;
+        let touchesBridge = false;
+        for (const [dx, dy] of N4) {
+          const tr = terrain(x + dx, y + dy);
+          if (streets[id(x + dx, y + dy)]) streetN++;
+          if (waterOnly(tr)) touchesRawWater = true;
+          if (tr === 'bridge') touchesBridge = true;
+        }
+        if (touchesRawWater && !touchesBridge && streetN <= 1) {
+          streets[idx] = 0;
+          streetLevel[idx] = 0;
+          cells[y][x].terrain = 'grass';
+        }
+      }
     }
   }
 
@@ -889,11 +1080,13 @@ export function buildUrbanRoadNetwork(
     bridges,
     plaza,
     plazaOk,
+    subPlazas,
     marketResolution,
     marketSite,
     marketPrepaint,
     ringLaneIndex,
     quayPoints,
+    riverQuayPoints,
     paintCell,
     drawStroke,
   };

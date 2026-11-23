@@ -9,6 +9,7 @@ import type { UrbanSkeleton } from './nodes';
 import type { UrbanRoadResult } from './roads';
 import {
   N4,
+  URBAN_ZONE_ORDER,
   between,
   wet,
   type UrbanBlock,
@@ -19,6 +20,7 @@ import {
 export interface DistrictLayoutResult {
   districts: UrbanDistrict[];
   districtAt: Int16Array;
+  blockAt: Int16Array;
   growthStageAt: Uint8Array;
   blocks: UrbanBlock[];
   alleyCount: number;
@@ -149,7 +151,7 @@ export function buildDistrictsAndBlocks(
   const candidatePts: Point[] = [];
   for (let y = 2; y < h - 2; y += 2) {
     for (let x = 2; x < w - 2; x += 2) {
-      if (usableLand(x, y) && !streets[id(x, y)] && reach(x, y) < 1.36) candidatePts.push({ x, y });
+      if (usableLand(x, y) && !streets[id(x, y)] && skel.footprintAt(x, y) < 1.28) candidatePts.push({ x, y });
     }
   }
 
@@ -255,8 +257,8 @@ export function buildDistrictsAndBlocks(
     }
   }
 
-  // Ограничиваем застройку внешней границей города и предместий.
-  const suburbBonus = character.suburbSpread * .18;
+  // Ограничиваем застройку контуром City Footprint и переходной зоной предместий!
+  const suburbBonus = character.suburbSpread * .14;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const idx = id(x, y);
@@ -266,12 +268,13 @@ export function buildDistrictsAndBlocks(
         continue;
       }
       const dKind = districts[dIdx].kind;
-      const limit = dKind === 'farms' ? 1.48 + suburbBonus
-        : dKind === 'poor' || dKind === 'craft' ? 1.26 + suburbBonus
-        : 1.12 + suburbBonus * .5;
-      // Вдоль выездных дорог за воротами допускаются ленточные предместья!
-      const ribbonBoost = toArterial[idx] <= 4 ? .16 : 0;
-      if (reach(x, y) > limit + ribbonBoost) {
+      const fp = skel.footprintAt(x, y);
+      const limit = dKind === 'farms' ? 1.34 + suburbBonus
+        : dKind === 'poor' || dKind === 'craft' ? 1.12 + suburbBonus * .8
+        : .98 + suburbBonus * .4;
+      // Вдоль главных выездных дорог (Уровень 1) разрешаем ленточные предместья!
+      const ribbonBoost = toArterial[idx] <= 4 ? .22 : 0;
+      if (fp > limit + ribbonBoost) {
         districtAt[idx] = -1;
       } else {
         districts[dIdx].area++;
@@ -279,116 +282,206 @@ export function buildDistrictsAndBlocks(
     }
   }
 
-  // ---- 5. Выделение городских кварталов (Blocks) и пробивка переулков (Level 4)
+  // ---- 5. Разбиение слишком крупных кварталов сквозными и Т-образными переулками (Level 3 — ALLEY)
+  // Старый центр получает мелкие неправильные кварталы, жилые районы — средние, окраины — просторные!
   let alleyCount = 0;
-  const carveAlleysInDeepBlocks = () => {
-    const distToStreet = new Uint16Array(w * h).fill(999);
-    const q: number[] = [];
-    for (let i = 0; i < w * h; i++) {
-      if (streets[i]) {
-        distToStreet[i] = 0;
-        q.push(i);
-      }
-    }
-    for (let head = 0; head < q.length; head++) {
-      const c = q[head];
-      const x = c % w, y = (c - x) / w;
-      for (const [dx, dy] of N4) {
-        const nx = x + dx, ny = y + dy;
-        if (!inside(nx, ny)) continue;
-        const n = id(nx, ny);
-        if (distToStreet[n] <= distToStreet[c] + 1 || !usableLand(nx, ny)) continue;
-        distToStreet[n] = distToStreet[c] + 1;
-        q.push(n);
-      }
-    }
-
-    const seen = new Uint8Array(w * h);
-    const maxInteriorDepth = ctx.tight ? 6 : Math.round(6.5 - character.alleyDensity * 2.2);
-
-    for (let i = 0; i < w * h; i++) {
-      if (seen[i] || streets[i] || reserved[i] || marketArea?.[i] || districtAt[i] < 0) continue;
-      const x0 = i % w, y0 = (i - x0) / w;
-      if (!usableLand(x0, y0)) continue;
-
-      const stack = [i];
-      seen[i] = 1;
-      const comp: number[] = [];
-      let deepest = i;
-      let maxD = 0;
-
-      while (stack.length) {
-        const c = stack.pop()!;
-        comp.push(c);
-        if (distToStreet[c] > maxD && distToStreet[c] < 999) {
-          maxD = distToStreet[c];
-          deepest = c;
+  const splitOversizedBlocks = () => {
+    for (let pass = 0; pass < 2; pass++) {
+      const distToStreet = new Uint16Array(w * h).fill(999);
+      const q: number[] = [];
+      for (let i = 0; i < w * h; i++) {
+        if (streets[i]) {
+          distToStreet[i] = 0;
+          q.push(i);
         }
+      }
+      for (let head = 0; head < q.length; head++) {
+        const c = q[head];
         const x = c % w, y = (c - x) / w;
         for (const [dx, dy] of N4) {
           const nx = x + dx, ny = y + dy;
           if (!inside(nx, ny)) continue;
           const n = id(nx, ny);
-          if (seen[n] || streets[n] || reserved[n] || marketArea?.[n] || districtAt[n] < 0 || !usableLand(nx, ny)) continue;
-          seen[n] = 1;
-          stack.push(n);
+          if (distToStreet[n] <= distToStreet[c] + 1 || !usableLand(nx, ny)) continue;
+          distToStreet[n] = distToStreet[c] + 1;
+          q.push(n);
         }
       }
 
-      // Если квартал глубокий и крупный, прокладываем узкий переулок (Level 4) от улицы вглубь квартала!
-      const dKind = districts[districtAt[deepest]]?.kind ?? 'residential';
-      if (comp.length >= 46 && maxD >= maxInteriorDepth && dKind !== 'farms') {
-        const path: Point[] = [];
-        let cur = deepest;
-        let guard = 0;
-        while (distToStreet[cur] > 0 && guard++ < 30) {
-          const cx = cur % w, cy = (cur - cx) / w;
-          path.push({ x: cx, y: cy });
-          let next = -1;
-          let bestNextD = distToStreet[cur];
+      const seen = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; i++) {
+        if (seen[i] || streets[i] || reserved[i] || marketArea?.[i] || districtAt[i] < 0) continue;
+        const x0 = i % w, y0 = (i - x0) / w;
+        if (!usableLand(x0, y0)) continue;
+
+        const stack = [i];
+        seen[i] = 1;
+        const comp: number[] = [];
+        let deepest = i;
+        let maxD = 0;
+        let minX = x0, maxX = x0, minY = y0, maxY = y0;
+
+        while (stack.length) {
+          const c = stack.pop()!;
+          comp.push(c);
+          const x = c % w, y = (c - x) / w;
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+          if (distToStreet[c] > maxD && distToStreet[c] < 999) {
+            maxD = distToStreet[c];
+            deepest = c;
+          }
           for (const [dx, dy] of N4) {
-            const nx = cx + dx, ny = cy + dy;
+            const nx = x + dx, ny = y + dy;
             if (!inside(nx, ny)) continue;
             const n = id(nx, ny);
-            if (reserved[n] || marketArea?.[n]) continue;
-            if (distToStreet[n] < bestNextD && (streets[n] || usableLand(nx, ny))) {
-              bestNextD = distToStreet[n];
-              next = n;
-            }
-          }
-          if (next < 0) break;
-          cur = next;
-          if (streets[cur]) {
-            path.push({ x: cur % w, y: Math.floor(cur / w) });
-            break;
+            if (seen[n] || streets[n] || reserved[n] || marketArea?.[n] || districtAt[n] < 0 || !usableLand(nx, ny)) continue;
+            seen[n] = 1;
+            stack.push(n);
           }
         }
 
-        if (path.length >= 3 && streets[id(path[path.length - 1].x, path[path.length - 1].y)]) {
-          path.reverse();
-          // В бедных/старых районах иногда продолжаем переулок насквозь как проход между улицами.
-          for (const pt of path) {
-            roadNet.paintCell(pt.x, pt.y, 'road', 4, false);
+        const dKind = districts[districtAt[deepest]]?.kind ?? 'residential';
+        if (dKind === 'farms') continue;
+        const zone = URBAN_ZONE_ORDER[skel.urbanZoneAt[deepest]] ?? 'residential';
+        const maxBlockArea = zone === 'old_core' ? 68 : zone === 'inner_city' ? 98 : zone === 'residential' ? 138 : 195;
+        const maxDepth = zone === 'old_core' ? 4 : zone === 'inner_city' ? 5 : 6;
+        const bw = maxX - minX + 1;
+        const bh = maxY - minY + 1;
+
+        // 1) Сквозное деление длинного или слишком крупного квартала поперечным переулком!
+        if (comp.length > maxBlockArea && Math.max(bw, bh) >= 12 && Math.min(bw, bh) >= 6) {
+          const splitVert = bw >= bh;
+          const midCoord = splitVert
+            ? Math.round((minX + maxX) / 2 + (hash2(minX, minY, seed + 0xb10 + pass) - .5) * 2.2)
+            : Math.round((minY + maxY) / 2 + (hash2(minX, minY, seed + 0xb20 + pass) - .5) * 2.2);
+
+          const alleyPts: Point[] = [];
+          let touchesStart = false;
+          let touchesEnd = false;
+
+          if (splitVert) {
+            const wobble = zone === 'old_core' && hash2(minX, maxY, seed + 0xb30) > .45 ? 1 : 0;
+            const midY = Math.floor((minY + maxY) / 2);
+            for (let yy = minY - 1; yy <= maxY + 1; yy++) {
+              const xx = between(midCoord + (yy > midY ? wobble : 0), 1, w - 2);
+              if (!inside(xx, yy)) continue;
+              const n = id(xx, yy);
+              if (reserved[n] || marketArea?.[n]) { alleyPts.length = 0; break; }
+              if (streets[n]) {
+                if (yy <= minY + 1) touchesStart = true;
+                if (yy >= maxY - 1) touchesEnd = true;
+                alleyPts.push({ x: xx, y: yy });
+              } else if (usableLand(xx, yy) && slope[n] < .22) {
+                if (wobble && yy === midY + 1) {
+                  const prevX = between(midCoord, 1, w - 2);
+                  if (usableLand(prevX, yy)) alleyPts.push({ x: prevX, y: yy });
+                }
+                alleyPts.push({ x: xx, y: yy });
+              } else {
+                break;
+              }
+            }
+          } else {
+            const wobble = zone === 'old_core' && hash2(maxX, minY, seed + 0xb40) > .45 ? 1 : 0;
+            const midX = Math.floor((minX + maxX) / 2);
+            for (let xx = minX - 1; xx <= maxX + 1; xx++) {
+              const yy = between(midCoord + (xx > midX ? wobble : 0), 1, h - 2);
+              if (!inside(xx, yy)) continue;
+              const n = id(xx, yy);
+              if (reserved[n] || marketArea?.[n]) { alleyPts.length = 0; break; }
+              if (streets[n]) {
+                if (xx <= minX + 1) touchesStart = true;
+                if (xx >= maxX - 1) touchesEnd = true;
+                alleyPts.push({ x: xx, y: yy });
+              } else if (usableLand(xx, yy) && slope[n] < .22) {
+                if (wobble && xx === midX + 1) {
+                  const prevY = between(midCoord, 1, h - 2);
+                  if (usableLand(xx, prevY)) alleyPts.push({ x: xx, y: prevY });
+                }
+                alleyPts.push({ x: xx, y: yy });
+              } else {
+                break;
+              }
+            }
           }
-          roadNet.lanes.push({
-            points: path,
-            width: 1,
-            surface: 'road',
-            level: 4,
-            reason: 'внутриквартальный переулок',
-          });
-          alleyCount++;
+
+          if (alleyPts.length >= 4 && (touchesStart || touchesEnd)) {
+            // Если это Т-образный тупиковый переулок (не сквозной), обрезаем на 70%, чтобы оставить двор в конце!
+            const finalPts = touchesStart && touchesEnd
+              ? alleyPts
+              : touchesStart
+              ? alleyPts.slice(0, Math.max(4, Math.round(alleyPts.length * .72)))
+              : alleyPts.slice(Math.floor(alleyPts.length * .28));
+            if (finalPts.some((pt) => streets[id(pt.x, pt.y)])) {
+              for (const pt of finalPts) roadNet.paintCell(pt.x, pt.y, 'road', 3, false);
+              roadNet.lanes.push({
+                points: finalPts,
+                width: 1,
+                surface: 'road',
+                level: 3,
+                reason: touchesStart && touchesEnd ? 'сквозной переулок квартала' : 'тупиковый переулок двора',
+              });
+              alleyCount++;
+              continue;
+            }
+          }
+        }
+
+        // 2) Если квартал глубокий внутри, пробиваем короткий переулок от ближайшей улицы к ядру квартала.
+        if (comp.length >= 42 && maxD >= maxDepth) {
+          const path: Point[] = [];
+          let cur = deepest;
+          let guard = 0;
+          while (distToStreet[cur] > 0 && guard++ < 30) {
+            const cx = cur % w, cy = (cur - cx) / w;
+            path.push({ x: cx, y: cy });
+            let next = -1;
+            let bestNextD = distToStreet[cur];
+            for (const [dx, dy] of N4) {
+              const nx = cx + dx, ny = cy + dy;
+              if (!inside(nx, ny)) continue;
+              const n = id(nx, ny);
+              if (reserved[n] || marketArea?.[n]) continue;
+              if (distToStreet[n] < bestNextD && (streets[n] || usableLand(nx, ny))) {
+                bestNextD = distToStreet[n];
+                next = n;
+              }
+            }
+            if (next < 0) break;
+            cur = next;
+            if (streets[cur]) {
+              path.push({ x: cur % w, y: Math.floor(cur / w) });
+              break;
+            }
+          }
+
+          if (path.length >= 3 && streets[id(path[path.length - 1].x, path[path.length - 1].y)]) {
+            path.reverse();
+            for (const pt of path) roadNet.paintCell(pt.x, pt.y, 'road', 3, false);
+            roadNet.lanes.push({
+              points: path,
+              width: 1,
+              surface: 'road',
+              level: 3,
+              reason: 'внутриквартальный переулок',
+            });
+            alleyCount++;
+          }
         }
       }
     }
   };
 
-  if (ctx.geo.width >= 28 && roadNet.lanes.length > 0) {
-    carveAlleysInDeepBlocks();
+  if (ctx.geo.width >= 26 && roadNet.lanes.length > 0) {
+    splitOversizedBlocks();
   }
 
-  // ---- 6. Финальная сборка кварталов (UrbanBlock[]) и исторических аномалий -
+  // ---- 6. Финальная сборка кварталов (UrbanBlock[]), их форм и исторических аномалий
   const blocks: UrbanBlock[] = [];
+  const blockAt = new Int16Array(w * h).fill(-1);
   {
     const seen = new Uint8Array(w * h);
     for (let i = 0; i < w * h; i++) {
@@ -423,7 +516,7 @@ export function buildDistrictsAndBlocks(
         }
       }
 
-      if (bCells.length < 12) continue;
+      if (bCells.length < 9) continue;
 
       let dominantDistrict = districtAt[i];
       let bestCnt = 0;
@@ -436,17 +529,30 @@ export function buildDistrictsAndBlocks(
 
       const bw = maxX - minX + 1;
       const bh = maxY - minY + 1;
+      const aspect = Math.max(bw, bh) / Math.max(1, Math.min(bw, bh));
       const fillRatio = bCells.length / Math.max(1, bw * bh);
       const irregularity = between(1 - fillRatio, 0, 1);
       const midCell = bCells[Math.floor(bCells.length / 2)];
       const age = GROWTH_STAGE_ORDER[growthStageAt[midCell]] ?? 'first_expansion';
+      const zone = URBAN_ZONE_ORDER[skel.urbanZoneAt[midCell]] ?? 'residential';
       const roll = hash2(minX + blocks.length, minY, seed + 0xa401);
+
+      const shape: UrbanBlock['shape'] = bCells.length <= 32 && fillRatio < .62
+        ? 'triangular'
+        : bCells.length <= 42 && aspect < 1.5
+        ? 'corner'
+        : aspect >= 2.15
+        ? 'elongated'
+        : fillRatio >= .84
+        ? 'rectangular'
+        : fillRatio >= .66
+        ? 'trapezoid'
+        : 'irregular';
 
       let anomaly: UrbanBlock['anomaly'];
       if (ctx.geo.geography === 'mountain' && slope[midCell] > .06) {
         anomaly = 'terrace';
-      } else if (bCells.length >= 16 && bCells.length <= 36 && irregularity > .38 && roll < .45) {
-        // Треугольный или клиновидный островок между сходящимися улицами → сквер / малая площадь!
+      } else if (shape === 'triangular' && bCells.length >= 14 && roll < .55) {
         anomaly = 'pocket_green';
       } else if ((age === 'origin' || age === 'old_core') && roll < character.anomalyRate * .35) {
         anomaly = 'old_enclave';
@@ -454,12 +560,17 @@ export function buildDistrictsAndBlocks(
         anomaly = 'ruined_lot';
       }
 
+      const bId = blocks.length;
+      for (const c of bCells) blockAt[c] = bId;
+
       blocks.push({
-        id: blocks.length,
+        id: bId,
         cells: bCells,
         bounds: { x: minX, y: minY, w: bw, h: bh },
         districtIndex: dominantDistrict,
         districtKind: districts[dominantDistrict].kind,
+        zone,
+        shape,
         wealth: districts[dominantDistrict].wealth,
         age,
         irregularity,
@@ -471,6 +582,7 @@ export function buildDistrictsAndBlocks(
   return {
     districts,
     districtAt,
+    blockAt,
     growthStageAt,
     blocks,
     alleyCount,

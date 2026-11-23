@@ -67,6 +67,7 @@ import {
   type UrbanContext,
   type UrbanLandmark,
   type UrbanNode,
+  type UrbanPlot,
   type UrbanRouteEdge,
 } from './urban/types';
 
@@ -137,6 +138,12 @@ export interface TypedSettlementPlan {
   plots: Building[];
   /** Индекс квартала для каждого участка (в districts). */
   plotDistrict: number[];
+  /** Привязка каждой постройки к её земельному участку (для покрытия дворов по активной плотности). */
+  placedPlots: (UrbanPlot | undefined)[];
+  /** Зона плотности каждой клетки карты (0=old_core..5=wilderness). */
+  urbanZoneAt: Uint8Array;
+  /** Расстояние до открытой воды (для безопасной покраски дворов в 'dirt'). */
+  waterDist: Uint16Array;
   civic: CivicObject[];
   /** Ранжированные объекты дворов/улиц для монотонной плотности. */
   rankedCivic: RankedCivic[];
@@ -389,7 +396,15 @@ export function buildTypedPlan(s: GenSettings, style: SettlementStyle): TypedSet
   );
 
   // ---- Шаги 17–18: Пост-валидация, локальная починка и Quality Score -------
-  const quality = validateAndRepairUrbanPlan(urbanCtx, skel, roadNet, distLayout, plotSub, built, marketArea);
+  const { quality, emptyGrid } = validateAndRepairUrbanPlan(
+    urbanCtx,
+    skel,
+    roadNet,
+    distLayout,
+    plotSub,
+    built,
+    marketArea,
+  );
 
   // ---- Подсчёт мостов (связные группы bridge за вычетом причалов) ----------
   let bridges = 0;
@@ -432,7 +447,7 @@ export function buildTypedPlan(s: GenSettings, style: SettlementStyle): TypedSet
     if (tr === 'road' || tr === 'plaza' || tr === 'bridge') totalStreetCells++;
   }
 
-  const debug = buildSettlementDebugData(urbanCtx, distLayout, roadNet, plotSub.plots);
+  const debug = buildSettlementDebugData(urbanCtx, skel, distLayout, roadNet, plotSub.plots, emptyGrid);
   const originNode = skel.nodes.find((n) => n.kind === 'origin');
 
   const report: TypedSettlementPlan['report'] = {
@@ -481,9 +496,9 @@ export function buildTypedPlan(s: GenSettings, style: SettlementStyle): TypedSet
     chains: built.chains,
     roads: {
       totalCells: totalStreetCells,
-      primaryLanes: roadNet.lanes.filter((l) => l.level <= 2).length,
-      secondaryLanes: roadNet.lanes.filter((l) => l.level === 3).length,
-      alleys: roadNet.lanes.filter((l) => l.level >= 4).length,
+      primaryLanes: roadNet.lanes.filter((l) => l.level === 1).length,
+      secondaryLanes: roadNet.lanes.filter((l) => l.level === 2).length,
+      alleys: roadNet.lanes.filter((l) => l.level >= 3).length,
       bridges,
     },
     plots: {
@@ -501,6 +516,9 @@ export function buildTypedPlan(s: GenSettings, style: SettlementStyle): TypedSet
     cells,
     plots: built.buildings,
     plotDistrict: built.plotDistrict,
+    placedPlots: built.placedPlots,
+    urbanZoneAt: skel.urbanZoneAt,
+    waterDist: geo.waterDist,
     civic: allCivic,
     rankedCivic: built.rankedCivic,
     urbanTrees: urbanCtx.trees,

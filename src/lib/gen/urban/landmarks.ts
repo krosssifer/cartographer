@@ -1,6 +1,6 @@
 import { hash2 } from '../../random';
 import { CIVIC_KIT, contains, intersects } from '../../settlementKit';
-import { DISTRICTS, type DistrictKind } from '../settlementTypes';
+import { DISTRICTS } from '../settlementTypes';
 import { facesMarket, type MarketOutcome } from '../marketLayout';
 import type {
   Building,
@@ -21,6 +21,7 @@ import type { PlotSubdivisionResult } from './plots';
 import type { UrbanRoadResult } from './roads';
 import {
   N4,
+  URBAN_ZONE_ORDER,
   between,
   facingVector,
   pickWeighted,
@@ -31,11 +32,15 @@ import {
   type UrbanContext,
   type UrbanLandmark,
   type UrbanPlot,
+  type UrbanZone,
 } from './types';
 
 export interface BuildingsAndLandmarksResult {
   buildings: Building[];
   plotDistrict: number[];
+  placedPlots: (UrbanPlot | undefined)[];
+  secondaryFlags: boolean[];
+  passageMask: Uint8Array;
   rankedCivic: RankedCivic[];
   landmarks: UrbanLandmark[];
   chains: AdventureChain[];
@@ -60,8 +65,8 @@ export function placeBuildingsLandmarksAndDetails(
 ): BuildingsAndLandmarksResult {
   const { width: w, height: h, seed, type, character, town, geo } = ctx;
   const { cells, waterDist, geography, length, span, at } = geo;
-  const { RX, RY, reach, walls, keepBox, keepFree, reserved } = skel;
-  const { streets, gates, gatePoints, plaza, plazaOk, marketResolution } = roadNet;
+  const { RX, RY, walls, keepBox, keepFree, reserved } = skel;
+  const { streets, gates, gatePoints, plaza, plazaOk, subPlazas, riverQuayPoints, marketResolution } = roadNet;
   const { districts, districtAt, blocks } = distLayout;
   const { plots: urbanPlots, distanceToStreet, nearWall } = plotSub;
 
@@ -74,6 +79,7 @@ export function placeBuildingsLandmarksAndDetails(
   const rankedCivic: RankedCivic[] = baseCivic.map((item) => ({ item, plotRank: -1 }));
   const landmarks: UrbanLandmark[] = [];
   const chains: AdventureChain[] = [];
+  const passageMask = new Uint8Array(w * h);
 
   function canAddCivic(
     kind: CivicKind,
@@ -89,6 +95,7 @@ export function placeBuildingsLandmarksAndDetails(
         const tr = terrain(xx, yy);
         if (wet(tr) || tr === 'rock' || tr === 'wall') return false;
         if (!allowOnStreet && streets[id(xx, yy)]) return false;
+        if (passageMask[id(xx, yy)]) return false;
         if (kind !== 'square' && reserved[id(xx, yy)]) return false;
       }
     }
@@ -118,7 +125,7 @@ export function placeBuildingsLandmarksAndDetails(
     for (let yy = y; yy < y + h1; yy++) {
       for (let xx = x; xx < x + w1; xx++) {
         reserved[id(xx, yy)] = 1;
-        if (kind === 'garden' && plotRank < 0 && !streets[id(xx, yy)]) {
+        if (kind === 'garden' && plotRank < 0 && !streets[id(xx, yy)] && waterDist[id(xx, yy)] >= 2) {
           cells[yy][xx].terrain = 'dirt';
         }
       }
@@ -126,7 +133,7 @@ export function placeBuildingsLandmarksAndDetails(
     return true;
   }
 
-  // ---- 1. Портовые причалы и набережные грузы -------------------------------
+  // ---- 1. Морские и речные причалы, набережные грузы (Section 13) -----------
   let piers = marketPiers;
   const pierHeads: Point[] = [];
   if (geography === 'coast' && districts.some((d) => d.kind === 'docks')) {
@@ -141,7 +148,7 @@ export function placeBuildingsLandmarksAndDetails(
       }
       if (landD < 2) continue;
       const head = at(a, landD);
-      if (!dockDistricts.some((d) => Math.hypot(d.x - head.x, d.y - head.y) < Math.max(RX, RY) * .78)) continue;
+      if (!dockDistricts.some((d) => Math.hypot(d.x - head.x, d.y - head.y) < Math.max(RX, RY) * .88)) continue;
       const len = between(Math.round(landD * .62), 2, 7);
       let builtCells = 0;
       for (let k = 1; k <= len; k++) {
@@ -153,7 +160,6 @@ export function placeBuildingsLandmarksAndDetails(
         builtCells++;
       }
       if (!builtCells) continue;
-      // Соединяем причал с набережной 4-связной дорожкой!
       for (let k = 0; k <= 3; k++) {
         const p = at(a, landD + k);
         if (inside(p.x, p.y) && usable(p.x, p.y)) {
@@ -167,7 +173,59 @@ export function placeBuildingsLandmarksAndDetails(
     }
   }
 
-  // ---- 2. Малые скверы, колодцы на развилках и телеги у ворот ---------------
+  // Речной причал на активной городской набережной (только в пределах города!).
+  if (geo.river.length > 0 && riverQuayPoints.length >= 2 && (town || type.districts.docks || character.id === 'trade')) {
+    const rq = riverQuayPoints[Math.floor(riverQuayPoints.length / 2)];
+    for (const [dx, dy] of N4) {
+      let waterStep: Point | undefined;
+      const pathToWater: Point[] = [];
+      for (let step = 1; step <= 4; step++) {
+        const tx = rq.x + dx * step, ty = rq.y + dy * step;
+        if (!inside(tx, ty)) break;
+        if (wet(terrain(tx, ty))) {
+          waterStep = { x: tx, y: ty };
+          break;
+        }
+        if (!usable(tx, ty)) break;
+        pathToWater.push({ x: tx, y: ty });
+      }
+      if (waterStep && streets[id(rq.x, rq.y)]) {
+        for (const pt of pathToWater) roadNet.paintCell(pt.x, pt.y, 'road', 2, false);
+        cells[waterStep.y][waterStep.x].terrain = 'bridge';
+        streets[id(waterStep.x, waterStep.y)] = 1;
+        roadNet.streetLevel[id(waterStep.x, waterStep.y)] = 2;
+        pierHeads.push(rq);
+        addRankedCivic(-1, 'marketBarrels', rq.x + (dy !== 0 ? 1 : 0), rq.y + (dx !== 0 ? 1 : 0), 1, 1, 0);
+        piers++;
+        break;
+      }
+    }
+  }
+
+  // ---- 2. Районные площади, малые скверы, колодцы и телеги у ворот (Section 14)
+  subPlazas.forEach((sp, spIdx) => {
+    const cx = sp.x + Math.floor(sp.w / 2);
+    const cy = sp.y + Math.floor(sp.h / 2);
+    const dIdx = districtAt[id(between(cx, 0, w - 1), between(cy, 0, h - 1))];
+    const dKind = dIdx >= 0 ? districts[dIdx].kind : 'residential';
+    const focal: CivicKind = dKind === 'noble' || dKind === 'temple'
+      ? 'fountain'
+      : spIdx % 2 === 0 ? 'well' : 'marketNoticeBoard';
+    const fSpec = CIVIC_KIT[focal];
+    if (addRankedCivic(-1, focal, cx, cy, fSpec.w, fSpec.h, spIdx, 0, true)) {
+      landmarks.push({
+        id: `subplaza_${spIdx}`,
+        kind: focal === 'fountain' ? 'fountain' : focal === 'well' ? 'well' : 'plaza',
+        label: `Малая площадь (${dKind})`,
+        x: cx,
+        y: cy,
+        bounds: { ...sp },
+        district: dKind,
+        accessible: true,
+      });
+    }
+  });
+
   for (const block of blocks) {
     if (block.anomaly === 'pocket_green' && block.bounds.w >= 3 && block.bounds.h >= 3) {
       const cx = block.bounds.x + Math.floor(block.bounds.w / 2);
@@ -179,7 +237,8 @@ export function placeBuildingsLandmarksAndDetails(
           id: `pocket_${block.id}`,
           kind: kind === 'fountain' ? 'fountain' : 'well',
           label: kind === 'fountain' ? 'Малый фонтан' : 'Квартальный колодец',
-          x: cx, y: cy,
+          x: cx,
+          y: cy,
           bounds: { x: cx, y: cy, w: sz, h: sz },
           district: block.districtKind,
           accessible: true,
@@ -188,14 +247,14 @@ export function placeBuildingsLandmarksAndDetails(
     }
   }
 
-  // Регистрируем ворота и главную площадь как landmarks.
   gatePoints.forEach((gp, idx) => {
     const dIdx = districtAt[id(between(gp.x, 0, w - 1), between(gp.y, 0, h - 1))];
     landmarks.push({
       id: `gate_${idx}`,
       kind: 'gate',
       label: `Городские ворота ${idx + 1}`,
-      x: gp.x, y: gp.y,
+      x: gp.x,
+      y: gp.y,
       bounds: { x: gp.x, y: gp.y, w: 1, h: 1 },
       district: dIdx >= 0 ? districts[dIdx].kind : 'garrison',
       accessible: true,
@@ -215,7 +274,6 @@ export function placeBuildingsLandmarksAndDetails(
     });
   }
 
-  // Телеги у ворот.
   {
     let carts = 0;
     for (const g of gates) {
@@ -233,7 +291,7 @@ export function placeBuildingsLandmarksAndDetails(
     }
   }
 
-  // ---- 3. Подготовка кандидатов зданий из участков (Plots) + Infill ---------
+  // ---- 3. Кандидаты основных зданий по участкам + точечный Infill -----------
   const onMarket = (p: Point) => market !== undefined && facesMarket(market.plan, p.x, p.y, streets);
   const fitsBuilding = (r: Selection): boolean => {
     if (r.x < 1 || r.y < 1 || r.x + r.w > w - 1 || r.y + r.h > h - 1) return false;
@@ -256,6 +314,7 @@ export function placeBuildingsLandmarksAndDetails(
     lot: Building;
     out: Point;
     district: number;
+    zone: UrbanZone;
     score: number;
     plot?: UrbanPlot;
     roadLvl: number;
@@ -273,17 +332,17 @@ export function placeBuildingsLandmarksAndDetails(
   ): BuildingAnnex | undefined {
     if (kind === 'tower') return role === 'citadel' || role === 'barracks' ? 'battlement' : undefined;
     if (kind === 'shop' || role === 'smithy' || role === 'workshop') {
-      return roll < .58 ? 'awning' : undefined;
+      return roll < .62 ? 'awning' : undefined;
     }
-    if (kind === 'hall' || role === 'town_hall' || role === 'temple' || role === 'manor') {
-      return roll < .52 ? 'porch' : bRect.w >= 7 && bRect.h >= 5 && roll < .82 ? 'wing' : undefined;
+    if (kind === 'hall' || role === 'town_hall' || role === 'guildhall' || role === 'temple' || role === 'manor') {
+      return roll < .52 ? 'porch' : bRect.w >= 7 && bRect.h >= 5 && roll < .84 ? 'wing' : undefined;
     }
     if (wealth > .62 && bRect.w >= 6 && roll < .42) return 'dormer';
-    if (roll > .84 && bRect.w >= 6 && bRect.h >= 5) return 'wing';
+    if (roll > .82 && bRect.w >= 6 && bRect.h >= 5) return 'wing';
     return undefined;
   }
 
-  // 3A. Здания непосредственно по размеченным участкам (UrbanPlot).
+  // 3A. Фасадные и внутриквартальные здания по нарезанным участкам (UrbanPlot).
   for (const plot of urbanPlots) {
     if (!plot.buildRect) continue;
     const bRect = plot.buildRect;
@@ -329,13 +388,17 @@ export function placeBuildingsLandmarksAndDetails(
       : dDef.shapes[Math.floor(hash2(bRect.x, bRect.y, seed + 2611) * dDef.shapes.length)];
     const annex = chooseAnnex(kind, role, bRect, plot.wealth, hash2(bRect.x, bRect.y, seed + 0x733));
 
+    const cx = Math.round(bRect.x + bRect.w / 2);
+    const cy = Math.round(bRect.y + bRect.h / 2);
+    const dens = skel.densityField[id(between(cx, 0, w - 1), between(cy, 0, h - 1))];
     const dist = distanceToStreet[id(out.x, out.y)];
-    const score = (marketFront ? 2.4 : 0)
-      + (5 - plot.roadLevel) * .55
-      + dDef.appeal * 1.8
-      - reach(bRect.x + bRect.w / 2, bRect.y + bRect.h / 2) * (town ? 1.15 : 2.1)
+    // Сортируем строго по градиенту плотности от исторического ядра к пригородам!
+    const score = dens * 5.4
+      + (marketFront ? 2.8 : 0)
+      + (5 - plot.roadLevel) * .68
+      + dDef.appeal * 1.35
       - (streets.some(Boolean) ? dist * .42 : 0)
-      + hash2(bRect.x, bRect.y, seed + 6501) * 1.4;
+      + hash2(bRect.x, bRect.y, seed + 6501) * .85;
 
     candidates.push({
       lot: {
@@ -352,6 +415,7 @@ export function placeBuildingsLandmarksAndDetails(
       },
       out,
       district: plot.districtIndex,
+      zone: plot.zone,
       score,
       plot,
       roadLvl: plot.roadLevel,
@@ -359,19 +423,21 @@ export function placeBuildingsLandmarksAndDetails(
     });
   }
 
-  // 3B. Запасные кандидаты для узких/клиновидных кварталов и малых карт,
-  // чтобы кривые улицы никогда не оставляли кварталы пустыми.
-  const maxFallbackDist = town ? 6 : 8;
+  // 3B. Точечные кандидаты для клиновидных/узких кварталов и малых карт.
+  const maxFallbackDist = town ? 5 : 7;
   const hasAnyRoad = roadNet.lanes.length > 0;
-  const scanStep = ctx.tight || type.extent < .65 ? 1 : 2;
+  const scanStep = 1;
   for (let y = 1; y < h - 4; y += scanStep) {
     for (let x = 1; x < w - 4; x += scanStep) {
       const home = districtAt[id(x, y)];
       if (home < 0) continue;
+      const zone = URBAN_ZONE_ORDER[skel.urbanZoneAt[id(x, y)]] ?? 'residential';
       const dDef = DISTRICTS[districts[home].kind];
-      for (let option = 0; option < 2; option++) {
-        const len = option === 0 ? Math.max(4, dDef.length[0]) : 4;
-        const dep = option === 0 ? Math.max(4, dDef.depth[0]) : 4;
+      const fallbackDims: [number, number][] = zone === 'old_core' || zone === 'inner_city'
+        ? [[Math.max(4, dDef.length[0]), Math.max(4, dDef.depth[0])], [4, 4], [4, 3]]
+        : [[Math.max(4, dDef.length[0]), Math.max(4, dDef.depth[0])], [4, 4]];
+      for (let option = 0; option < fallbackDims.length; option++) {
+        const [len, dep] = fallbackDims[option];
         const turn = hash2(x, y, seed + 3421 + option * 74) > .5;
         const plan: Selection = { x, y, w: turn ? dep : len, h: turn ? len : dep };
         if (!fitsBuilding(plan)) continue;
@@ -407,11 +473,19 @@ export function placeBuildingsLandmarksAndDetails(
           source: 'layout',
           door: entry.door,
           facing: entry.facing,
+          role: kind === 'shop' ? 'shop' : 'house',
         };
-        const score = (mFront ? 2.0 : 0) + dDef.appeal * 1.2 - reach(hx, hy) * 1.6 - (hasAnyRoad ? dist * .48 : 0)
-          + hash2(x, y, seed + 6509 + option) * .9 - .8; // Чуть ниже приоритет, чем у межевых участков.
+        const dens = skel.densityField[id(between(hx, 0, w - 1), between(hy, 0, h - 1))];
+        const score = dens * 4.8 + (mFront ? 2.2 : 0) + dDef.appeal * 1.1 - (hasAnyRoad ? dist * .52 : 0)
+          + hash2(x, y, seed + 6509 + option) * .7 - 1.1;
         candidates.push({
-          lot, out: entry.out, district: home, score, roadLvl: dist <= 1 ? 3 : 4, marketFront: mFront,
+          lot,
+          out: entry.out,
+          district: home,
+          zone,
+          score,
+          roadLvl: dist <= 1 ? 3 : 4,
+          marketFront: mFront,
         });
       }
     }
@@ -419,20 +493,37 @@ export function placeBuildingsLandmarksAndDetails(
 
   candidates.sort((a, b) => b.score - a.score || a.lot.y - b.lot.y || a.lot.x - b.lot.x);
 
-  // ---- 4. Размещение городских ЛАНДМАРКОВ по условиям (Section 12) ----------
+  // ---- 4. Размещение городских ЛАНДМАРКОВ (Section 12) ----------------------
   const placed: Building[] = [];
   const placedOut: Point[] = [];
   const plotDistrict: number[] = [];
   const placedPlots: (UrbanPlot | undefined)[] = [];
+  const secondaryFlags: boolean[] = [];
+  const builtCellMask = new Uint8Array(w * h);
 
-  const canAcceptBuilding = (lot: Building, out: Point, gap: number): boolean =>
-    !placed.some((other) => intersects(lot, other, gap) || contains(other, out.x, out.y))
-    && !placedOut.some((p) => contains(lot, p.x, p.y));
+  const markBuiltRect = (r: Selection) => {
+    for (let yy = r.y; yy < r.y + r.h; yy++) {
+      for (let xx = r.x; xx < r.x + r.w; xx++) {
+        if (inside(xx, yy)) builtCellMask[id(xx, yy)] = 1;
+      }
+    }
+  };
+
+  const canAcceptBuilding = (lot: Building, out: Point, gap: number): boolean => {
+    for (let yy = lot.y; yy < lot.y + lot.h; yy++) {
+      for (let xx = lot.x; xx < lot.x + lot.w; xx++) {
+        if (passageMask[id(xx, yy)]) return false;
+      }
+    }
+    return !placed.some((other) => intersects(lot, other, gap) || contains(other, out.x, out.y))
+      && !placedOut.some((p) => contains(lot, p.x, p.y));
+  };
 
   const commitBuilding = (
     cand: Candidate,
     override: Partial<Building>,
     landmarkInfo?: { kind: LandmarkKind; label: string },
+    isSecondary = false,
   ): number => {
     const finalLot: Building = { ...cand.lot, ...override };
     const idx = placed.length;
@@ -440,6 +531,8 @@ export function placeBuildingsLandmarksAndDetails(
     placedOut.push(cand.out);
     plotDistrict.push(cand.district);
     placedPlots.push(cand.plot);
+    secondaryFlags.push(isSecondary);
+    markBuiltRect(finalLot);
     if (landmarkInfo) {
       landmarks.push({
         id: `${landmarkInfo.kind}_${landmarks.length}`,
@@ -455,12 +548,12 @@ export function placeBuildingsLandmarksAndDetails(
     return idx;
   };
 
-  // 4.1 Цитадель крепости (всегда первая!).
+  // 4.1 Цитадель крепости.
   if (keepBox && keepFree) {
     const door = { x: keepBox.x + Math.floor(keepBox.w / 2), y: keepBox.y + keepBox.h - 1 };
     const out = { x: door.x, y: door.y + 1 };
     const dIdx = Math.max(0, districtAt[id(door.x, door.y)]);
-    placed.push({
+    const keepLot: Building = {
       ...keepBox,
       style,
       kind: 'tower',
@@ -471,26 +564,34 @@ export function placeBuildingsLandmarksAndDetails(
       facing: 0,
       annex: 'battlement',
       role: 'citadel',
-    });
+    };
+    placed.push(keepLot);
     placedOut.push(out);
     plotDistrict.push(dIdx);
     placedPlots.push(undefined);
+    secondaryFlags.push(false);
+    markBuiltRect(keepLot);
     landmarks.push({
-      id: 'citadel_0', kind: 'citadel', label: 'Цитадель',
-      x: keepBox.x + Math.floor(keepBox.w / 2), y: keepBox.y + Math.floor(keepBox.h / 2),
-      bounds: { ...keepBox }, district: districts[dIdx]?.kind ?? 'garrison', accessible: true,
+      id: 'citadel_0',
+      kind: 'citadel',
+      label: 'Цитадель',
+      x: keepBox.x + Math.floor(keepBox.w / 2),
+      y: keepBox.y + Math.floor(keepBox.h / 2),
+      bounds: { ...keepBox },
+      district: districts[dIdx]?.kind ?? 'garrison',
+      accessible: true,
     });
   } else if (type.keep) {
     ctx.notes.push('цитадель не поместилась');
   }
 
-  // 4.2 Главная таверна / постоялый двор (на площади, главной дороге или набережной).
+  // 4.2 Главная таверна / постоялый двор.
   let tavernIdx = -1;
   if (type.style === 'town' || type.id === 'large_village') {
     const tavernFits = (c: Candidate) =>
-      c.lot.w * c.lot.h >= 28 && Math.min(c.lot.w, c.lot.h) >= 5
+      c.lot.w * c.lot.h >= 24 && Math.min(c.lot.w, c.lot.h) >= 4
       && ['centre', 'market', 'residential', 'docks'].includes(districts[c.district].kind)
-      && canAcceptBuilding(c.lot, c.out, 1);
+      && canAcceptBuilding(c.lot, c.out, 0);
     const tavernCand = (market ? candidates.find((c) => tavernFits(c) && c.marketFront) : undefined)
       ?? candidates.find((c) => tavernFits(c) && c.roadLvl <= 2)
       ?? candidates.find(tavernFits);
@@ -503,10 +604,10 @@ export function placeBuildingsLandmarksAndDetails(
     }
   }
 
-  // 4.3 Ратуша (Town Hall) — в центральном районе или у площади для городов.
+  // 4.3 Ратуша (Town Hall).
   if (town && !type.keep && ['trade_town', 'fortified_town', 'small_city', 'large_city', 'port', 'craft_town'].includes(type.id)) {
     const hallCand = candidates.find((c) =>
-      c.lot.w * c.lot.h >= 30
+      c.lot.w * c.lot.h >= 25
       && ['centre', 'market', 'noble'].includes(districts[c.district].kind)
       && c.roadLvl <= 2
       && canAcceptBuilding(c.lot, c.out, 1),
@@ -520,12 +621,29 @@ export function placeBuildingsLandmarksAndDetails(
     }
   }
 
-  // 4.4 Главный храм (Main Temple) — в храмовом или центральном квартале, на возвышении/площади.
+  // 4.4 Дом гильдий (Guildhall — Section 7).
+  if (town && ['trade_town', 'craft_town', 'small_city', 'large_city', 'port'].includes(type.id)) {
+    const guildCand = candidates.find((c) =>
+      c.lot.w * c.lot.h >= 24
+      && ['market', 'centre', 'craft', 'docks'].includes(districts[c.district].kind)
+      && c.roadLvl <= 2
+      && canAcceptBuilding(c.lot, c.out, 0),
+    );
+    if (guildCand) {
+      commitBuilding(
+        guildCand,
+        { kind: 'hall', roof: 2, shape: 'cross', role: 'guildhall', annex: 'porch' },
+        { kind: 'town_hall', label: 'Дом гильдий' },
+      );
+    }
+  }
+
+  // 4.5 Главный храм (Main Temple).
   if (type.districts.temple || character.id === 'religious' || type.id === 'large_city' || type.id === 'small_city') {
     const templeCand = candidates.find((c) =>
-      c.lot.w * c.lot.h >= 28
+      c.lot.w * c.lot.h >= 24
       && ['temple', 'centre', 'noble'].includes(districts[c.district].kind)
-      && canAcceptBuilding(c.lot, c.out, 2),
+      && canAcceptBuilding(c.lot, c.out, 1),
     );
     if (templeCand) {
       commitBuilding(
@@ -536,10 +654,10 @@ export function placeBuildingsLandmarksAndDetails(
     }
   }
 
-  // 4.5 Казармы и тюрьма — рядом с крепостью, воротами или стеной.
+  // 4.6 Казармы и тюрьма.
   if (type.districts.garrison || walls.walled || character.id === 'military') {
     const barrackCand = candidates.find((c) =>
-      c.lot.w * c.lot.h >= 24
+      c.lot.w * c.lot.h >= 22
       && ['garrison', 'centre', 'craft'].includes(districts[c.district].kind)
       && canAcceptBuilding(c.lot, c.out, 1),
     );
@@ -566,13 +684,13 @@ export function placeBuildingsLandmarksAndDetails(
     }
   }
 
-  // 4.6 Большой склад (Warehouse) — у порта или торгового квартала.
+  // 4.7 Большой склад (Warehouse).
   let warehouseIdx = -1;
   if (type.districts.docks || type.districts.market || character.id === 'trade' || character.id === 'port') {
     const whCand = candidates.find((c) =>
-      c.lot.w * c.lot.h >= 24
+      c.lot.w * c.lot.h >= 22
       && ['docks', 'market', 'craft'].includes(districts[c.district].kind)
-      && canAcceptBuilding(c.lot, c.out, 1),
+      && canAcceptBuilding(c.lot, c.out, 0),
     );
     if (whCand) {
       warehouseIdx = commitBuilding(
@@ -583,12 +701,12 @@ export function placeBuildingsLandmarksAndDetails(
     }
   }
 
-  // 4.7 Кузница (Smithy) — в ремесленном районе или гарнизоне.
+  // 4.8 Кузница (Smithy).
   if (type.districts.craft || type.districts.garrison || type.id === 'mountain') {
     const smithCand = candidates.find((c) =>
-      c.lot.w * c.lot.h >= 20
+      c.lot.w * c.lot.h >= 18
       && ['craft', 'garrison', 'residential'].includes(districts[c.district].kind)
-      && canAcceptBuilding(c.lot, c.out, 1),
+      && canAcceptBuilding(c.lot, c.out, 0),
     );
     if (smithCand) {
       commitBuilding(
@@ -599,12 +717,13 @@ export function placeBuildingsLandmarksAndDetails(
     }
   }
 
-  // 4.8 Мельница (Mill) — у реки или на открытой окраине/полях.
+  // 4.9 Водяная или ветряная мельница (Section 12 & 13).
   if ((geo.river.length || type.districts.farms || type.id === 'large_village') && !ctx.small) {
     const millCand = candidates.find((c) => {
-      if (c.lot.w > 6 || c.lot.h > 6 || !canAcceptBuilding(c.lot, c.out, 2)) return false;
+      if (c.lot.w > 6 || c.lot.h > 6 || !canAcceptBuilding(c.lot, c.out, 1)) return false;
       const wd = waterDist[id(c.lot.x, c.lot.y)];
-      const onOutskirt = ['farms', 'craft', 'poor'].includes(districts[c.district].kind) || reach(c.lot.x, c.lot.y) > .72;
+      const onOutskirt = ['farms', 'craft', 'poor'].includes(districts[c.district].kind)
+        || skel.footprintAt(c.lot.x, c.lot.y) > .78;
       return (geo.river.length && wd >= 2 && wd <= 6) || onOutskirt;
     });
     if (millCand) {
@@ -620,7 +739,7 @@ export function placeBuildingsLandmarksAndDetails(
           ? { x: mRect.x, y: mRect.y + Math.floor(mSize / 2) }
           : { x: mRect.x + mSize - 1, y: mRect.y + Math.floor(mSize / 2) };
         const out = { x: door.x + fx, y: door.y + fy };
-        if (doorClear(out) && canAcceptBuilding({ ...millCand.lot, ...mRect, door }, out, 2)) {
+        if (doorClear(out) && canAcceptBuilding({ ...millCand.lot, ...mRect, door }, out, 1)) {
           commitBuilding(
             { ...millCand, lot: { ...millCand.lot, ...mRect, door }, out },
             { kind: 'tower', roof: style === 'town' ? 1 : 0, shape: 'hip', role: 'mill' },
@@ -631,10 +750,10 @@ export function placeBuildingsLandmarksAndDetails(
     }
   }
 
-  // 4.9 Общественные бани (в крупных/средних городах у воды или центра).
+  // 4.10 Общественные бани.
   if ((type.id === 'large_city' || type.id === 'small_city' || character.id === 'noble') && !ctx.small) {
     const bathCand = candidates.find((c) =>
-      c.lot.w * c.lot.h >= 24
+      c.lot.w * c.lot.h >= 22
       && ['centre', 'noble', 'residential'].includes(districts[c.district].kind)
       && canAcceptBuilding(c.lot, c.out, 1),
     );
@@ -647,13 +766,17 @@ export function placeBuildingsLandmarksAndDetails(
     }
   }
 
-  // ---- 5. Заполнение участков по бюджету кварталов (не на 100%!) ------------
+  // ---- 5. Заполнение уличного фронта по градиенту плотности + вторичные постройки дворов!
   const totalDistrictWeight = Object.values(type.districts).reduce((s, v) => s + (v ?? 0), 0) || 1;
   let usableLandCount = 0;
   for (let y = 2; y < h - 2; y++) for (let x = 2; x < w - 2; x++) if (usable(x, y)) usableLandCount++;
   const usableShare = usableLandCount / Math.max(1, (w - 4) * (h - 4));
-  // Бюджет площади под крышами не превышает разумный предел: дворы, сады и проходы сохраняются!
-  const cap = Math.max(ctx.small ? 80 : 235, Math.floor(w * h * type.fill * between(usableShare, .68, 1)));
+
+  // Калиброванный бюджет застройки: старое ядро и внутренний город плотные, пригороды свободные!
+  const cap = Math.max(
+    ctx.small ? 95 : 265,
+    Math.floor(w * h * type.fill * 1.56 * between(usableShare, .72, 1)),
+  );
   const budgets = new Array<number>(districts.length).fill(0);
   placed.forEach((b, i) => {
     if (plotDistrict[i] >= 0) budgets[plotDistrict[i]] += b.w * b.h;
@@ -665,24 +788,221 @@ export function placeBuildingsLandmarksAndDetails(
     return ((type.districts[kind] ?? 1) / totalDistrictWeight) / siblings;
   };
 
+  // Функция допустимого зазора: в старом центре и на уличном фронте участки идут стена-к-стене (gap = 0)!
+  const gapFor = (cand: Candidate, round: number): number => {
+    const dKind = districts[cand.district].kind;
+    if (cand.plot) {
+      if (dKind === 'farms') return 2;
+      if (dKind === 'noble' || dKind === 'temple') return 1;
+      if (cand.zone === 'old_core' || cand.zone === 'inner_city') return 0;
+      if (cand.zone === 'residential') return cand.roadLvl <= 2 ? 0 : 1;
+      if (cand.zone === 'outer_city') return 1;
+      return 1;
+    }
+    if ((cand.zone === 'old_core' || cand.zone === 'inner_city') && cand.roadLvl <= 3 && dKind !== 'noble') {
+      return 0;
+    }
+    if (round === 1 && (ctx.tight || type.extent < .65)) return 1;
+    return cand.zone === 'old_core' || cand.zone === 'inner_city' || cand.zone === 'residential'
+      ? 1
+      : Math.min(2, DISTRICTS[dKind].gap);
+  };
+
+  // Вспомогательная проверка и фиксация прохода от дворовой постройки до уличной сети!
+  const findWalkablePassageToStreet = (start: Point): Point[] | undefined => {
+    if (!inside(start.x, start.y) || !usable(start.x, start.y) || builtCellMask[id(start.x, start.y)]) {
+      return undefined;
+    }
+    if (streets[id(start.x, start.y)]) return [start];
+
+    const startIdx = id(start.x, start.y);
+    const parent = new Int32Array(w * h).fill(-2);
+    parent[startIdx] = -1;
+    const bfs: number[] = [startIdx];
+    let hit = -1;
+
+    for (let head = 0; head < bfs.length && head < 140; head++) {
+      const c = bfs[head];
+      if (streets[c]) {
+        hit = c;
+        break;
+      }
+      const cx = c % w, cy = (c - cx) / w;
+      for (const [dx, dy] of N4) {
+        const nx = cx + dx, ny = cy + dy;
+        if (!inside(nx, ny)) continue;
+        const n = id(nx, ny);
+        if (parent[n] !== -2) continue;
+        if (!usable(nx, ny) || builtCellMask[n]) continue;
+        if (rankedCivic.some(({ item }) => item.kind !== 'square' && contains(item, nx, ny))) continue;
+        if (market && market.occupied[n] && !streets[n]) continue;
+        parent[n] = c;
+        bfs.push(n);
+      }
+    }
+
+    if (hit < 0) return undefined;
+    const path: Point[] = [];
+    let cur = hit;
+    while (cur >= 0) {
+      path.push({ x: cur % w, y: Math.floor(cur / w) });
+      cur = parent[cur];
+    }
+    return path;
+  };
+
+  // Пытаемся поставить вторичную дворовую постройку (сарай, мастерскую, склад, конюшню, амбар — Section 9)
+  // сразу за главным домом, чтобы при любом значении ползунка плотности флигель шёл после своего главного дома!
+  const tryPlaceSecondaryStructure = (parentIdx: number): number => {
+    const plot = placedPlots[parentIdx];
+    const sec = plot?.secondaryRect;
+    if (!plot || !sec || sec.w < 3 || sec.h < 3) return 0;
+    if (!fitsBuilding(sec)) return 0;
+
+    // Ориентируем вход флигеля внутрь двора (в сторону бокового прохода!).
+    const secDoorOptions: { door: Point; out: Point; facing: ChestRotation }[] = [
+      {
+        door: { x: sec.x + sec.w - 1, y: sec.y + Math.floor(sec.h / 2) },
+        out: { x: sec.x + sec.w, y: sec.y + Math.floor(sec.h / 2) },
+        facing: 270,
+      },
+      {
+        door: { x: sec.x + Math.floor(sec.w / 2), y: sec.y + sec.h - 1 },
+        out: { x: sec.x + Math.floor(sec.w / 2), y: sec.y + sec.h },
+        facing: 0,
+      },
+      {
+        door: { x: sec.x, y: sec.y + Math.floor(sec.h / 2) },
+        out: { x: sec.x - 1, y: sec.y + Math.floor(sec.h / 2) },
+        facing: 90,
+      },
+      {
+        door: { x: sec.x + Math.floor(sec.w / 2), y: sec.y },
+        out: { x: sec.x + Math.floor(sec.w / 2), y: sec.y - 1 },
+        facing: 180,
+      },
+    ];
+
+    const parentB = placed[parentIdx];
+    const dKind = districts[plot.districtIndex].kind;
+    const secRole: BuildingRole = parentB.role === 'tavern' || plot.fn === 'noble_villa' || dKind === 'garrison'
+      ? 'stable'
+      : dKind === 'craft' || parentB.role === 'workshop' || parentB.role === 'smithy'
+      ? 'workshop'
+      : dKind === 'docks' || parentB.role === 'warehouse' || dKind === 'market'
+      ? 'warehouse'
+      : dKind === 'farms' || plot.zone === 'suburbs'
+      ? 'barn'
+      : 'shed';
+    const secKind: Building['kind'] = secRole === 'workshop' ? 'shop' : 'house';
+    const secRoof: RoofMaterial = style === 'town'
+      ? (secRole === 'shed' || secRole === 'barn' ? 0 : parentB.roof)
+      : 0;
+
+    for (const opt of secDoorOptions) {
+      if (!doorClear(opt.out)) continue;
+      const secLot: Building = {
+        ...sec,
+        style,
+        kind: secKind,
+        roof: secRoof,
+        shape: 'gable',
+        source: 'layout',
+        door: opt.door,
+        facing: opt.facing,
+        role: secRole,
+      };
+      if (!canAcceptBuilding(secLot, opt.out, 0)) continue;
+      const passage = findWalkablePassageToStreet(opt.out);
+      if (!passage) continue;
+
+      for (const p of passage) {
+        if (!streets[id(p.x, p.y)]) passageMask[id(p.x, p.y)] = 1;
+      }
+      commitBuilding(
+        {
+          lot: secLot,
+          out: opt.out,
+          district: plot.districtIndex,
+          zone: plot.zone,
+          score: 0,
+          plot,
+          roadLvl: 4,
+          marketFront: false,
+        },
+        {},
+        undefined,
+        true,
+      );
+      return sec.w * sec.h;
+    }
+    return 0;
+  };
+
   let usedArea = placed.reduce((sum, b) => sum + b.w * b.h, 0);
+
+  // Сначала проверяем дворовые пристройки для уже поставленных главных ориентиров (таверна, гильдия, склад!).
+  const initialCount = placed.length;
+  for (let i = 0; i < initialCount; i++) {
+    const added = tryPlaceSecondaryStructure(i);
+    if (added > 0) {
+      usedArea += added;
+      budgets[plotDistrict[i]] += added;
+    }
+  }
+
   for (let round = 0; round < 2; round++) {
     for (const cand of candidates) {
       const { lot, out, district } = cand;
       if (usedArea + lot.w * lot.h > cap) continue;
-      if (round === 0 && budgets[district] > cap * shareOf(district) * 1.08) continue;
-      const gap = round === 1 && (ctx.tight || type.extent < .65) ? 1 : DISTRICTS[districts[district].kind].gap;
+      if (round === 0 && budgets[district] > cap * shareOf(district) * 1.18) continue;
+      const gap = gapFor(cand, round);
       if (!canAcceptBuilding(lot, out, gap)) continue;
 
-      commitBuilding(cand, {});
+      const bIdx = commitBuilding(cand, {});
       usedArea += lot.w * lot.h;
       budgets[district] += lot.w * lot.h;
+
+      // В плотных и ремесленных кварталах сразу добавляем дворовый флигель/сарай/мастерскую,
+      // чтобы на средней плотности (0.55–0.65) дворы центра уже имели живую вторичную застройку!
+      if (usedArea + 12 <= cap && (cand.zone === 'old_core' || cand.zone === 'inner_city' || round === 1)) {
+        const secArea = tryPlaceSecondaryStructure(bIdx);
+        if (secArea > 0) {
+          usedArea += secArea;
+          budgets[district] += secArea;
+        }
+      }
     }
   }
 
-  // ---- 6. Внутренние дворы, мастерские, конюшни и окраины (Sections 11, 19, 25)
-  // Все дворовые объекты привязаны к индексу своего дома (plotRank = idx), чтобы при низкой
-  // плотности на месте ещё не построенного дома не оставались сиротливые бочки!
+  // ---- 6. Тропинки 4-го уровня (FOOTPATH) к удалённым хуторам/мельницам окраин (Section 10 & 12)
+  if (roadNet.lanes.length > 0) {
+    for (let i = 0; i < placed.length; i++) {
+      const out = placedOut[i];
+      const b = placed[i];
+      if (secondaryFlags[i]) continue;
+      if (streets[id(out.x, out.y)]) continue;
+      const fp = skel.footprintAt(b.x + b.w / 2, b.y + b.h / 2);
+      if (fp < .85 && b.role !== 'mill') continue;
+      const path = findWalkablePassageToStreet(out);
+      if (path && path.length >= 2 && path.length <= 10 && streets[id(path[0].x, path[0].y)]) {
+        for (const pt of path) {
+          if (!builtCellMask[id(pt.x, pt.y)]) {
+            roadNet.paintCell(pt.x, pt.y, 'road', 4, false);
+          }
+        }
+        roadNet.lanes.push({
+          points: path,
+          width: 1,
+          surface: 'road',
+          level: 4,
+          reason: 'тропа к окраинной усадьбе',
+        });
+      }
+    }
+  }
+
+  // ---- 7. Оформление 7 типов дворов (Section 8): ограды, навесы, колодцы, сады, поклажа
   const allDoors = new Set<number>();
   for (let i = 0; i < placed.length; i++) {
     allDoors.add(id(placed[i].door.x, placed[i].door.y));
@@ -696,73 +1016,104 @@ export function placeBuildingsLandmarksAndDetails(
     }
     return true;
   };
-  const notInsideAnyHouse = (x: number, y: number, w1: number, h1: number) =>
-    !placed.some((b) => intersects(b, { x, y, w: w1, h: h1 }));
+  const notInsideAnyHouse = (x: number, y: number, w1: number, h1: number) => {
+    for (let yy = y; yy < y + h1; yy++) {
+      for (let xx = x; xx < x + w1; xx++) {
+        if (!inside(xx, yy) || builtCellMask[id(xx, yy)] || passageMask[id(xx, yy)]) return false;
+      }
+    }
+    return true;
+  };
 
   let courtyardCount = 0;
+  const dressedPlotIds = new Set<number>();
 
   for (let idx = 0; idx < placed.length; idx++) {
+    if (secondaryFlags[idx]) continue;
     const b = placed[idx];
     const plot = placedPlots[idx];
+    if (plot && dressedPlotIds.has(plot.id)) continue;
     const yard = plot?.yardRect;
     if (!yard || yard.w < 2 || yard.h < 2) continue;
-    if (!notInsideAnyHouse(yard.x, yard.y, yard.w, yard.h)) continue;
+    if (plot) dressedPlotIds.add(plot.id);
+
+    // Находим свободную от флигеля часть двора для реквизита и ограды!
+    let freeSpot: Selection | undefined;
+    for (const [sw, sh] of [[3, 2], [2, 2], [2, 1], [1, 1]] as const) {
+      for (let yy = yard.y; yy <= yard.y + yard.h - sh && !freeSpot; yy++) {
+        for (let xx = yard.x; xx <= yard.x + yard.w - sw; xx++) {
+          if (notInsideAnyHouse(xx, yy, sw, sh) && notNearAnyDoor(xx, yy, sw, sh)) {
+            freeSpot = { x: xx, y: yy, w: sw, h: sh };
+            break;
+          }
+        }
+      }
+    }
+    if (!freeSpot) continue;
 
     courtyardCount++;
-    const dKind: DistrictKind = districts[plotDistrict[idx]]?.kind ?? 'residential';
+    const cKind = plot?.courtyardKind ?? 'enclosed_courtyard';
     const roll = hash2(yard.x, yard.y, seed + 0x8801 + idx);
 
-    if (b.kind === 'tavern' || b.role === 'tavern') {
-      // Двор постоялого двора: стол со скамьёй, конюшня/телега и сено.
-      if (yard.w >= 3 && yard.h >= 2 && notNearAnyDoor(yard.x, yard.y, 3, 2)) {
-        addRankedCivic(idx, 'marketWagon', yard.x, yard.y, 3, 2, idx);
-      } else if (yard.w >= 2 && yard.h >= 2 && notNearAnyDoor(yard.x, yard.y, 2, 2)) {
-        addRankedCivic(idx, 'marketHay', yard.x, yard.y, 2, 2, idx);
+    // Небольшой участок ограды по задней кромке двора (не перекрывая проход!).
+    if (yard.w >= 4 && cKind !== 'trade_courtyard') {
+      const fy = plot!.orientation === 180 ? yard.y + yard.h - 1 : yard.y;
+      const fx = yard.x + 1;
+      if (notInsideAnyHouse(fx, fy, 2, 1) && notNearAnyDoor(fx, fy, 2, 1)) {
+        addRankedCivic(idx, 'marketFence', fx, fy, 2, 1, idx);
       }
-      if (yard.w >= 5 && yard.h >= 2 && notNearAnyDoor(yard.x + yard.w - 2, yard.y, 2, 1)) {
-        addRankedCivic(idx, 'marketBench', yard.x + yard.w - 2, yard.y, 2, 1, idx);
+    }
+
+    if (b.kind === 'tavern' || b.role === 'tavern' || cKind === 'inn_yard') {
+      if (freeSpot.w >= 3 && freeSpot.h >= 2) {
+        addRankedCivic(idx, 'marketWagon', freeSpot.x, freeSpot.y, 3, 2, idx);
+      } else if (freeSpot.w >= 2 && freeSpot.h >= 2) {
+        addRankedCivic(idx, 'marketHay', freeSpot.x, freeSpot.y, 2, 2, idx);
+      } else {
+        addRankedCivic(idx, 'marketBarrels', freeSpot.x, freeSpot.y, 1, 1, idx);
       }
-    } else if (dKind === 'noble' || b.role === 'manor') {
-      // Усадьба знати: ухоженный сад, фонтан или скамья, ограда.
-      if (yard.w >= 3 && yard.h >= 2 && notNearAnyDoor(yard.x, yard.y, 3, 2)) {
-        addRankedCivic(idx, 'garden', yard.x, yard.y, 3, 2, idx);
+    } else if (cKind === 'private_garden' || b.role === 'manor') {
+      if (freeSpot.w >= 3 && freeSpot.h >= 2) {
+        addRankedCivic(idx, 'garden', freeSpot.x, freeSpot.y, 3, 2, idx);
+      } else if (freeSpot.w >= 2 && freeSpot.h >= 2) {
+        addRankedCivic(idx, 'fountain', freeSpot.x, freeSpot.y, 2, 2, idx);
       }
-      if (yard.w >= 5 && yard.h >= 3 && roll > .45 && notNearAnyDoor(yard.x + yard.w - 2, yard.y, 2, 2)) {
-        addRankedCivic(idx, 'fountain', yard.x + yard.w - 2, yard.y, 2, 2, idx);
+    } else if (cKind === 'temple_courtyard' || b.role === 'temple') {
+      if (freeSpot.w >= 2 && freeSpot.h >= 2) {
+        addRankedCivic(idx, roll > .5 ? 'fountain' : 'marketWell', freeSpot.x, freeSpot.y, 2, 2, idx);
+      } else {
+        addRankedCivic(idx, 'well', freeSpot.x, freeSpot.y, 1, 1, idx);
       }
-    } else if (dKind === 'craft' || b.role === 'workshop' || b.role === 'smithy') {
-      // Двор мастерской: навес, бочки, ящики, тачка с рудой/камнем.
+    } else if (cKind === 'workshop_yard' || b.role === 'workshop' || b.role === 'smithy') {
       const toolKind: CivicKind = b.role === 'smithy'
         ? 'marketWheelbarrowStone'
-        : roll < .35 ? 'marketBarrels' : roll < .7 ? 'marketCrates' : 'marketTentCanopy';
+        : roll < .38 ? 'marketBarrels' : roll < .75 ? 'marketCrates' : 'marketTentCanopy';
       const spec = CIVIC_KIT[toolKind];
-      if (yard.w >= spec.w && yard.h >= spec.h && notNearAnyDoor(yard.x, yard.y, spec.w, spec.h)) {
-        addRankedCivic(idx, toolKind, yard.x, yard.y, spec.w, spec.h, idx);
+      if (freeSpot.w >= spec.w && freeSpot.h >= spec.h) {
+        addRankedCivic(idx, toolKind, freeSpot.x, freeSpot.y, spec.w, spec.h, idx);
+      } else {
+        addRankedCivic(idx, 'marketCrates', freeSpot.x, freeSpot.y, 1, 1, idx);
       }
-    } else if (dKind === 'docks' || b.role === 'warehouse') {
-      // Двор склада: мешки, ящики, канаты.
+    } else if (cKind === 'trade_courtyard' || b.role === 'warehouse') {
       const cargo: CivicKind = roll < .4 ? 'marketSacks' : roll < .8 ? 'marketCrates' : 'marketRope';
       const spec = CIVIC_KIT[cargo];
-      if (yard.w >= spec.w && yard.h >= spec.h && notNearAnyDoor(yard.x, yard.y, spec.w, spec.h)) {
-        addRankedCivic(idx, cargo, yard.x, yard.y, spec.w, spec.h, idx);
+      if (freeSpot.w >= spec.w && freeSpot.h >= spec.h) {
+        addRankedCivic(idx, cargo, freeSpot.x, freeSpot.y, spec.w, spec.h, idx);
       }
-    } else if (dKind === 'farms') {
-      // Хуторской двор: огород и стог сена.
-      if (yard.w >= 3 && yard.h >= 2 && notNearAnyDoor(yard.x, yard.y, 3, 2)) {
-        addRankedCivic(idx, 'garden', yard.x, yard.y, 3, 2, idx);
-      } else if (yard.w >= 2 && yard.h >= 2 && notNearAnyDoor(yard.x, yard.y, 2, 2)) {
-        addRankedCivic(idx, 'marketHayLarge', yard.x, yard.y, 2, 2, idx);
+    } else if (cKind === 'garden_yard') {
+      if (freeSpot.w >= 3 && freeSpot.h >= 2) {
+        addRankedCivic(idx, 'garden', freeSpot.x, freeSpot.y, 3, 2, idx);
+      } else if (freeSpot.w >= 2 && freeSpot.h >= 2) {
+        addRankedCivic(idx, 'marketHayLarge', freeSpot.x, freeSpot.y, 2, 2, idx);
       }
-    } else if (roll < .38 && yard.w >= 3 && yard.h >= 2 && notNearAnyDoor(yard.x, yard.y, 3, 2)) {
-      // Обычный жилой дворик: небольшой огород или пара бочек/колодец.
-      addRankedCivic(idx, 'garden', yard.x, yard.y, 3, 2, idx);
-    } else if (roll > .78 && notNearAnyDoor(yard.x, yard.y, 1, 1)) {
-      addRankedCivic(idx, 'well', yard.x, yard.y, 1, 1, idx);
+    } else {
+      // Закрытый городской двор (enclosed_courtyard): колодец, бочки или скамья.
+      const prop: CivicKind = roll < .35 ? 'well' : roll < .72 ? 'marketBarrels' : 'marketCrates';
+      addRankedCivic(idx, prop, freeSpot.x, freeSpot.y, 1, 1, idx);
     }
   }
 
-  // ---- 7. Окраины: огороды, кладбище, горные штольни/руда, караванная стоянка
-  // 7.1 Огороды на свободных садовых участках окраин и усадеб.
+  // ---- 8. Окраины: садовые участки, кладбище, горные штольни, караванная стоянка
   for (const plot of urbanPlots) {
     if (plot.fn !== 'garden' || !plot.yardRect) continue;
     const yr = plot.yardRect;
@@ -771,18 +1122,16 @@ export function placeBuildingsLandmarksAndDetails(
     }
   }
 
-  // 7.2 Кладбище на окраине или рядом с храмовым кварталом (Section 12 & 19).
   if (!ctx.small && (town || type.id === 'large_village' || character.id === 'religious')) {
     const cemPlot = urbanPlots.find((p) =>
       (p.fn === 'empty' || p.fn === 'courtyard' || p.fn === 'garden')
       && p.bounds.w >= 5 && p.bounds.h >= 4
-      && (p.age === 'suburbs' || p.age === 'outer_city' || p.districtType === 'temple')
+      && (p.zone === 'suburbs' || p.zone === 'outer_city' || p.districtType === 'temple')
       && notInsideAnyHouse(p.bounds.x, p.bounds.y, p.bounds.w, p.bounds.h)
       && notNearAnyDoor(p.bounds.x, p.bounds.y, p.bounds.w, p.bounds.h),
     );
     if (cemPlot) {
       const { x: cx, y: cy, w: cw, h: ch } = cemPlot.bounds;
-      // Ограда погоста + сухое дерево + аккуратные ряды надгробных камней.
       addRankedCivic(-1, 'marketFence', cx, cy, 2, 1, 0);
       ctx.trees.push({ x: cx + cw - 1.2, y: cy + 1.2, r: .38, kind: 'dead', v: .5 });
       for (let gy = cy + 1; gy < cy + ch - 0.5; gy += 1.4) {
@@ -791,21 +1140,28 @@ export function placeBuildingsLandmarksAndDetails(
           if (inside(rx, ry) && usable(rx, ry) && !streets[id(rx, ry)]) {
             const r = .16;
             ctx.rocks.push({
-              x: gx, y: gy, r, v: .8,
+              x: gx,
+              y: gy,
+              r,
+              v: .8,
               pts: [[-r, -r * .6], [r, -r * .6], [r, r * .7], [-r, r * .7]],
             });
           }
         }
       }
       landmarks.push({
-        id: 'cemetery_0', kind: 'cemetery', label: 'Старое кладбище',
-        x: cx + Math.floor(cw / 2), y: cy + Math.floor(ch / 2),
-        bounds: { ...cemPlot.bounds }, district: cemPlot.districtType, accessible: true,
+        id: 'cemetery_0',
+        kind: 'cemetery',
+        label: 'Старое кладбище',
+        x: cx + Math.floor(cw / 2),
+        y: cy + Math.floor(ch / 2),
+        bounds: { ...cemPlot.bounds },
+        district: cemPlot.districtType,
+        accessible: true,
       });
     }
   }
 
-  // 7.3 Горный город: склады руды и тачки с породой у скального склона (Section 24).
   if (geography === 'mountain') {
     let oreSpots = 0;
     for (const rc of geo.retainingCells) {
@@ -819,7 +1175,6 @@ export function placeBuildingsLandmarksAndDetails(
     }
   }
 
-  // 7.4 Караванная стоянка за воротами для торговых и больших городов (Section 19).
   if ((character.id === 'trade' || type.id === 'trade_town' || type.id === 'large_city') && gatePoints.length > 0) {
     const gp = gatePoints[0];
     for (let dy = -5; dy <= 5; dy++) {
@@ -838,7 +1193,7 @@ export function placeBuildingsLandmarksAndDetails(
     }
   }
 
-  // ---- 8. Приключенческие узлы для D&D (Section 27) -------------------------
+  // ---- 9. Тактические и приключенческие цепочки D&D (Section 15) ------------
   if (plaza && plazaOk && warehouseIdx >= 0) {
     const wh = placed[warehouseIdx];
     const mid = {
@@ -897,6 +1252,9 @@ export function placeBuildingsLandmarksAndDetails(
   return {
     buildings: placed,
     plotDistrict,
+    placedPlots,
+    secondaryFlags,
+    passageMask,
     rankedCivic,
     landmarks,
     chains,

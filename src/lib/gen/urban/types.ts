@@ -10,7 +10,56 @@ import type {
   UrbanCharacterId,
 } from '../settlementTypes';
 
+/** 4 основных уровня уличной иерархии (+ 5 для внутренних проходов дворов):
+ * 1 = PRIMARY ROAD, 2 = SECONDARY ROAD, 3 = ALLEY, 4 = FOOTPATH, 5 = COURTYARD PASSAGE
+ */
 export type UrbanRoadLevel = 1 | 2 | 3 | 4 | 5;
+
+/** Пространственные зоны градиента плотности (от старого ядра до дикой природы). */
+export type UrbanZone =
+  | 'old_core'
+  | 'inner_city'
+  | 'residential'
+  | 'outer_city'
+  | 'suburbs'
+  | 'wilderness';
+
+export const URBAN_ZONE_ORDER: readonly UrbanZone[] = [
+  'old_core',
+  'inner_city',
+  'residential',
+  'outer_city',
+  'suburbs',
+  'wilderness',
+];
+
+export type CourtyardKind =
+  | 'enclosed_courtyard'
+  | 'garden_yard'
+  | 'workshop_yard'
+  | 'inn_yard'
+  | 'trade_courtyard'
+  | 'private_garden'
+  | 'temple_courtyard';
+
+export type EmptySpaceKind =
+  | 'street'
+  | 'plaza'
+  | 'courtyard'
+  | 'garden'
+  | 'pocket_green'
+  | 'vacant_lot'
+  | 'wilderness';
+
+export const EMPTY_SPACE_ORDER: readonly EmptySpaceKind[] = [
+  'street',
+  'plaza',
+  'courtyard',
+  'garden',
+  'pocket_green',
+  'vacant_lot',
+  'wilderness',
+];
 
 export type UrbanNodeKind =
   | 'origin'
@@ -108,6 +157,7 @@ export interface AdventureChain {
 
 export interface UrbanPlot {
   id: number;
+  blockId?: number;
   /** Контур участка в клетках (углы полигона). */
   polygon: Point[];
   bounds: Selection;
@@ -115,14 +165,20 @@ export interface UrbanPlot {
   buildRect?: Selection;
   /** Внутренний двор / сад / хозяйственная зона участка. */
   yardRect?: Selection;
+  /** Слот под вторичную постройку в глубине двора (сарай, мастерская, конюшня, склад). */
+  secondaryRect?: Selection;
+  courtyardKind?: CourtyardKind;
   districtIndex: number;
   districtType: DistrictKind;
+  zone: UrbanZone;
   size: number;
   frontage: number;
   depth: number;
   orientation: ChestRotation;
-  roadAccess: Point;
+  roadAccess?: Point;
   roadLevel: UrbanRoadLevel;
+  /** Нужен ли явный 1-клеточный проход сбоку от дома к двору/вторичной постройке. */
+  needsPassage?: boolean;
   wealth: number;
   age: GrowthStage;
   fn: PlotFunction;
@@ -147,6 +203,8 @@ export interface UrbanBlock {
   bounds: Selection;
   districtIndex: number;
   districtKind: DistrictKind;
+  zone: UrbanZone;
+  shape: 'rectangular' | 'elongated' | 'trapezoid' | 'irregular' | 'corner' | 'triangular';
   wealth: number;
   age: GrowthStage;
   irregularity: number;
@@ -162,20 +220,28 @@ export interface RankedCivic {
 export interface SettlementQualityReport {
   /** Итоговая оценка 0..100. */
   score: number;
-  roadConnectivity: number;    // 0..20
-  districtCoherence: number;   // 0..15
-  landmarkPlacement: number;   // 0..15
-  terrainAdaptation: number;   // 0..15
-  plotQuality: number;         // 0..10
+  roadConnectivity: number;      // 0..20
+  districtCoherence: number;     // 0..15
+  landmarkPlacement: number;     // 0..15
+  terrainAdaptation: number;     // 0..15
+  plotQuality: number;           // 0..10
   buildingAccessibility: number; // 0..10
-  urbanHierarchy: number;      // 0..10
-  visualVariation: number;     // 0..5
+  urbanHierarchy: number;        // 0..10
+  visualVariation: number;       // 0..5
   /** Доля уличных клеток в главной связной компоненте (0..1). */
   connectivity: number;
   /** Доля доступных зданий и ключевых точек (0..1). */
   accessibility: number;
   /** Приспособленность к рельефу и воде (0..1). */
   terrainFit: number;
+  /** Доля крыш в старом ядре/внутреннем городе (0..1). */
+  coreDensity: number;
+  /** Доля крыш на окраинах/пригородах (0..1). */
+  fringeDensity: number;
+  /** Количество размещённых вторичных дворовых построек. */
+  secondaryBuildings: number;
+  /** Доля случайной незанятой травы внутри центральных кварталов (0..1, чем меньше — тем лучше). */
+  unaccountedGreenShare: number;
   repairs: string[];
 }
 
@@ -183,20 +249,38 @@ export interface SettlementDebugData {
   step: number;
   gw: number;
   gh: number;
+  zoneGrid: number[];
+  densityGrid: number[];
   districtGrid: number[];
+  blockGrid: number[];
   ageGrid: number[];
   terrainGrid: number[];
+  riverGrid: number[];
+  emptyGrid: number[];
+  blocks: {
+    id: number;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    zone: UrbanZone;
+    shape: UrbanBlock['shape'];
+    district?: DistrictKind;
+  }[];
   lanes: { level: UrbanRoadLevel; width: number; pts: Point[] }[];
   plots: {
     x: number;
     y: number;
     w: number;
     h: number;
+    zone?: UrbanZone;
     yard?: Selection;
+    secondary?: Selection;
+    courtyardKind?: CourtyardKind;
     fn: PlotFunction;
     wealth: number;
     orientation: ChestRotation;
-    roadAccess: Point;
+    roadAccess?: Point;
   }[];
 }
 
@@ -277,9 +361,9 @@ export const facingVector = (facing: ChestRotation): readonly [number, number] =
 export function rectPolygon(r: Selection): Point[] {
   return [
     { x: r.x, y: r.y },
-    { x: r.x + r.w, y: r.y },
-    { x: r.x + r.w, y: r.y + r.h },
-    { x: r.x, y: r.y + r.h },
+    { x: r.w + r.x, y: r.y },
+    { x: r.w + r.x, y: r.h + r.y },
+    { x: r.x, y: r.h + r.y },
   ];
 }
 

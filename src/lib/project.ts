@@ -82,7 +82,12 @@ export function validateProject(v: unknown): v is ImportProject {
   if (![r.showGrid, r.shading, r.texture, r.showTrees, r.showRocks, r.showStructures, r.vignette].every(bool)) return false;
   if (![r.showChests, r.showCivic, r.showRoofs, r.showCrypt, r.showSecrets, r.showDebug, r.showDecor].every((value) => value === undefined || bool(value))) return false;
   if (r.settlementDebug !== undefined && (!record(r.settlementDebug) || !Object.entries(r.settlementDebug).every(([k, v]) =>
-    ['terrainInfluence', 'districts', 'districtLabels', 'primaryRoads', 'secondaryRoads', 'plots', 'footprints', 'landmarks', 'accessibility', 'roadHierarchy', 'urbanAge'].includes(k)
+    [
+      'footprint', 'density', 'districts', 'blocks', 'plots', 'roadHierarchy',
+      'frontage', 'courtyards', 'emptyAreas', 'accessibility', 'riverInfluence',
+      'terrainInfluence', 'districtLabels', 'primaryRoads', 'secondaryRoads',
+      'footprints', 'landmarks', 'urbanAge',
+    ].includes(k)
     && (v === undefined || bool(v))))) return false;
   if (r.wallThickness !== undefined && !finite(r.wallThickness, 0.15, 1.2)) return false;
   if (v.map !== null) {
@@ -113,7 +118,11 @@ export function validateProject(v: unknown): v is ImportProject {
       && integer(b.roof, 0, ROOF_KIT.length - 1) && (b.shape === undefined || shape(b.shape)) && (b.source === undefined || b.source === 'layout' || b.source === 'manual')
       && (b.facing === undefined || CHEST_ROTATIONS.includes(b.facing as ChestRotation))
       && (b.annex === undefined || ['porch', 'wing', 'awning', 'dormer', 'battlement'].includes(String(b.annex)))
-      && (b.role === undefined || ['house', 'workshop', 'shop', 'warehouse', 'tavern', 'town_hall', 'temple', 'minor_temple', 'citadel', 'barracks', 'prison', 'smithy', 'mill', 'baths', 'stable', 'manor'].includes(String(b.role)))
+      && (b.role === undefined || [
+        'house', 'workshop', 'shop', 'warehouse', 'tavern', 'town_hall', 'temple',
+        'minor_temple', 'citadel', 'barracks', 'prison', 'smithy', 'mill', 'baths',
+        'stable', 'manor', 'shed', 'barn', 'guildhall', 'shrine',
+      ].includes(String(b.role)))
       && (b.furniture === undefined || Array.isArray(b.furniture) && b.furniture.length <= 4000 && b.furniture.every((f: unknown) => record(f)
         && optionalSize(f) && FURNITURE_KINDS.includes(f.kind as EditorSettings['furnitureKind']) && finite(f.x, 0, Number(b.w)) && finite(f.y, 0, Number(b.h))
         && CHEST_ROTATIONS.includes(f.rotation as ChestRotation) && (f.finish === undefined || FURNITURE_FINISH_KEYS.includes(f.finish as EditorSettings['furnitureFinish']))

@@ -128,7 +128,8 @@ export type BuildingAnnex = 'porch' | 'wing' | 'awning' | 'dormer' | 'battlement
 export type BuildingRole =
   | 'house' | 'workshop' | 'shop' | 'warehouse' | 'tavern'
   | 'town_hall' | 'temple' | 'minor_temple' | 'citadel' | 'barracks'
-  | 'prison' | 'smithy' | 'mill' | 'baths' | 'stable' | 'manor';
+  | 'prison' | 'smithy' | 'mill' | 'baths' | 'stable' | 'manor'
+  | 'shed' | 'barn' | 'guildhall' | 'shrine';
 
 export interface Building {
   x: number;
@@ -339,16 +340,24 @@ export interface EditorSettings {
 }
 
 export interface SettlementDebugLayers {
-  terrainInfluence?: boolean;
+  footprint?: boolean;
+  density?: boolean;
   districts?: boolean;
+  blocks?: boolean;
+  plots?: boolean;
+  roadHierarchy?: boolean;
+  frontage?: boolean;
+  courtyards?: boolean;
+  emptyAreas?: boolean;
+  accessibility?: boolean;
+  riverInfluence?: boolean;
+  // Совместимость с дополнительными переключателями:
+  terrainInfluence?: boolean;
   districtLabels?: boolean;
   primaryRoads?: boolean;
   secondaryRoads?: boolean;
-  plots?: boolean;
   footprints?: boolean;
   landmarks?: boolean;
-  accessibility?: boolean;
-  roadHierarchy?: boolean;
   urbanAge?: boolean;
 }
 

@@ -421,6 +421,7 @@ function settlementComposition(
   s: GenSettings,
   layout: Plan,
   buildings: Building[],
+  urbanZoneAt?: Uint8Array,
 ): { trees: Tree[]; rocks: MapData['rocks']; plan: GenerationPlan } {
   const { width: w, height: h } = s;
   const rng = new SeededRandom(s.seed, 3301);
@@ -461,6 +462,12 @@ function settlementComposition(
   }
 
   const zoneOf = (x: number, y: number): ZoneType => {
+    if (urbanZoneAt) {
+      const uZone = urbanZoneAt[y * w + x] ?? 5;
+      if (uZone >= 5) return streetDist[y * w + x] <= 1 ? 'roadside' : 'sparse_forest';
+      if (streetDist[y * w + x] <= 2 && uZone >= 2) return 'roadside';
+      return 'meadow';
+    }
     const edge = Math.min(y, x, w - x - 1, h - y - 1);
     if (streetDist[y * w + x] <= 2) return 'roadside';
     if (edge <= 3) return 'sparse_forest';
@@ -582,9 +589,11 @@ function settlementComposition(
     groupPlan('forest_cluster', poi.x, poi.y, placed);
   }
 
-  // ---- Кусты вдоль улиц ----
+  // ---- Кусты вдоль улиц (в старом каменном ядре дикие кусты не растут!) ----
   const streetCells: number[] = [];
-  for (let at = 0; at < w * h; at += 1) if (streetDist[at] === 1) streetCells.push(at);
+  for (let at = 0; at < w * h; at += 1) {
+    if (streetDist[at] === 1 && (!urbanZoneAt || urbanZoneAt[at] >= 2)) streetCells.push(at);
+  }
   for (let i = 0; i < 4 && streetCells.length; i += 1) {
     const at = streetCells[Math.floor(rng.next() * streetCells.length)];
     const x = at % w;
@@ -600,9 +609,11 @@ function settlementComposition(
   for (let y = 1; y < h - 1; y += 1) {
     for (let x = 1; x < w - 1; x += 1) {
       if (occupied(x, y)) continue;
+      if (urbanZoneAt && urbanZoneAt[y * w + x] <= 1) continue;
       const type = zoneList[zoneAt[y * w + x]];
       const base = DENSITY[type] ?? 0;
-      const chance = base * (0.35 + s.vegetation * 0.9);
+      const zoneScale = urbanZoneAt && urbanZoneAt[y * w + x] === 2 ? 0.45 : 1;
+      const chance = base * zoneScale * (0.35 + s.vegetation * 0.9);
       if (!rng.chance(chance * 0.55)) continue;
       const kind: Tree['kind'] = rng.chance(0.55) ? 'bush' : rng.chance(0.7) ? 'oak' : 'pine';
       plant(kind, x + 0.5 + rng.range(-0.35, 0.35), y + 0.5 + rng.range(-0.35, 0.35), false);
@@ -661,11 +672,48 @@ export function generateSettlement(s: GenSettings): MapData {
     ? { ...typed, cells: typed.cells.map((row) => row.map((c) => ({ ...c }))), civic: activeCivic }
     : rawPlan;
   const { width, height, seed } = s;
+
+  // Оформление мощения и утоптанного грунта активных городских дворов (Section 4 & 8):
+  // В плотном центре и рабочих/постоялых дворах не должно быть «дикого газона»!
+  if (typed && count > 0) {
+    const builtMask = new Uint8Array(width * height);
+    for (const b of buildings) {
+      for (let yy = b.y; yy < b.y + b.h; yy++) {
+        for (let xx = b.x; xx < b.x + b.w; xx++) builtMask[yy * width + xx] = 1;
+      }
+    }
+    for (let i = 0; i < count; i++) {
+      const plot = typed.placedPlots[i];
+      if (!plot) continue;
+      const ck = plot.courtyardKind;
+      const box = plot.bounds;
+      const isTrodden = plot.zone === 'old_core'
+        || plot.zone === 'inner_city'
+        || ck === 'temple_courtyard'
+        || ck === 'enclosed_courtyard'
+        || ck === 'workshop_yard'
+        || ck === 'trade_courtyard'
+        || ck === 'inn_yard';
+      if (!isTrodden) continue;
+
+      for (let yy = box.y; yy < box.y + box.h; yy++) {
+        for (let xx = box.x; xx < box.x + box.w; xx++) {
+          const idx = yy * width + xx;
+          if (builtMask[idx] || typed.waterDist[idx] < 2) continue;
+          const tr = plan.cells[yy][xx].terrain;
+          if (tr === 'grass' || tr === 'darkGrass') {
+            plan.cells[yy][xx].terrain = 'dirt';
+          }
+        }
+      }
+    }
+  }
+
   let trees: Tree[] = [];
   let rocks: MapData['rocks'] = [];
   let generationPlan: GenerationPlan | undefined;
   if ((s.generationEngine ?? 'structured') === 'structured') {
-    const composition = settlementComposition(s, plan, buildings);
+    const composition = settlementComposition(s, plan, buildings, typed?.urbanZoneAt);
     trees = composition.trees;
     rocks = composition.rocks;
     generationPlan = composition.plan;

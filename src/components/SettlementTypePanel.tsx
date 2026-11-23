@@ -38,7 +38,7 @@ export function SettlementTypeOptions({ gen, map, onGen }: Props) {
         const next = getSettlementType(e.target.value);
         onGen(next
           ? { settlementType: next.id, settlementLayout: undefined, settlementCharacter: undefined, biome: next.style, settlement: next.style }
-          : { settlementType: undefined, settlementLayout: undefined, settlementCharacter: undefined });
+          : { settlementType: 'classic', settlementLayout: undefined, settlementCharacter: undefined });
       }}>
       <option value="classic">Классическое — деревня или город</option>
       {SETTLEMENT_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
@@ -58,6 +58,8 @@ export function SettlementTypeOptions({ gen, map, onGen }: Props) {
       {report && report.type === type.id && report.layout === layout && <p className="scene-report">
         {GEOGRAPHY_LABELS[report.geography]}{report.river ? ', река' : ''} · {WALL_LABELS[report.walls]}{report.walls !== 'none' ? `, ворот ${report.gates}, башен ${report.towers}` : ''}<br />
         Улиц {report.streets}{report.bridges ? ` · мостов ${report.bridges}` : ''}{report.piers ? ` · причалов ${report.piers}` : ''}
+        {report.plots?.courtyards ? ` · дворов ${report.plots.courtyards}` : ''}
+        {report.quality?.secondaryBuildings ? ` · флигелей ${report.quality.secondaryBuildings}` : ''}
         {report.landmarks?.length ? ` · ориентиров ${report.landmarks.length}` : ''}
         {report.quality ? ` · качество ${report.quality.score}/100` : ''}<br />
         Кварталы: {summarizeDistricts(report.districts)}

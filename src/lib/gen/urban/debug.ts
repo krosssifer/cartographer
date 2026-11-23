@@ -1,25 +1,34 @@
 import { DISTRICTS, type DistrictKind } from '../settlementTypes';
 import type { MapData, SettlementDebugLayers } from '../../types';
 import type { DistrictLayoutResult } from './districts';
+import type { UrbanSkeleton } from './nodes';
 import type { UrbanRoadResult } from './roads';
 import {
   facingVector,
+  type CourtyardKind,
   type SettlementDebugData,
   type UrbanContext,
   type UrbanPlot,
 } from './types';
 
 export const DEFAULT_SETTLEMENT_DEBUG: Required<SettlementDebugLayers> = {
-  terrainInfluence: false,
+  footprint: true,
+  density: false,
   districts: true,
+  blocks: true,
+  plots: false,
+  roadHierarchy: true,
+  frontage: false,
+  courtyards: false,
+  emptyAreas: false,
+  accessibility: false,
+  riverInfluence: false,
+  terrainInfluence: false,
   districtLabels: true,
   primaryRoads: false,
   secondaryRoads: false,
-  plots: false,
   footprints: false,
   landmarks: true,
-  accessibility: false,
-  roadHierarchy: true,
   urbanAge: false,
 };
 
@@ -36,28 +45,69 @@ const DISTRICT_COLORS: Record<DistrictKind, string> = {
   farms: 'rgba(167, 201, 87, 0.22)',
 };
 
+const ZONE_COLORS: readonly string[] = [
+  'rgba(220, 48, 68, 0.28)',   // 0: old_core
+  'rgba(246, 138, 52, 0.24)',  // 1: inner_city
+  'rgba(245, 208, 76, 0.20)',  // 2: residential
+  'rgba(104, 198, 132, 0.18)', // 3: outer_city
+  'rgba(92, 168, 232, 0.16)',  // 4: suburbs
+  'rgba(0, 0, 0, 0)',          // 5: wilderness
+];
+
 const AGE_COLORS: readonly string[] = [
-  'rgba(220, 56, 72, 0.30)',   // 0: origin
-  'rgba(244, 124, 56, 0.26)',  // 1: early_settlement
-  'rgba(246, 196, 69, 0.24)',  // 2: market_growth
-  'rgba(114, 200, 120, 0.22)', // 3: wall_expansion
-  'rgba(78, 168, 222, 0.22)',  // 4: outer_city
-  'rgba(155, 135, 245, 0.20)', // 5: suburbs
+  'rgba(220, 56, 72, 0.30)',
+  'rgba(244, 124, 56, 0.26)',
+  'rgba(246, 196, 69, 0.24)',
+  'rgba(114, 200, 120, 0.22)',
+  'rgba(78, 168, 222, 0.22)',
+  'rgba(155, 135, 245, 0.20)',
+];
+
+const COURTYARD_COLORS: Record<CourtyardKind, string> = {
+  enclosed_courtyard: 'rgba(235, 192, 122, 0.42)',
+  garden_yard: 'rgba(116, 214, 112, 0.42)',
+  workshop_yard: 'rgba(244, 140, 82, 0.44)',
+  inn_yard: 'rgba(255, 186, 73, 0.46)',
+  trade_courtyard: 'rgba(92, 204, 236, 0.44)',
+  private_garden: 'rgba(182, 128, 255, 0.42)',
+  temple_courtyard: 'rgba(255, 244, 168, 0.46)',
+};
+
+// 1=street, 2=plaza, 3=courtyard, 4=garden, 5=vegetable_garden, 6=park, 7=empty_plot, 8=nature
+const EMPTY_AREA_COLORS: readonly string[] = [
+  'rgba(0, 0, 0, 0)',
+  'rgba(180, 174, 162, 0.28)', // 1: street
+  'rgba(255, 212, 96, 0.34)',  // 2: plaza
+  'rgba(224, 172, 112, 0.36)', // 3: courtyard
+  'rgba(164, 122, 246, 0.34)', // 4: garden
+  'rgba(124, 212, 92, 0.36)',  // 5: vegetable_garden
+  'rgba(64, 214, 172, 0.38)',  // 6: park
+  'rgba(255, 76, 98, 0.44)',   // 7: empty_plot (подсветка незанятых пятен!)
+  'rgba(58, 128, 76, 0.16)',   // 8: nature
 ];
 
 export function buildSettlementDebugData(
   ctx: UrbanContext,
+  skel: UrbanSkeleton,
   distLayout: DistrictLayoutResult,
   roadNet: UrbanRoadResult,
   plots: UrbanPlot[],
+  emptyFullGrid: Uint8Array,
 ): SettlementDebugData {
   const { width: w, height: h, geo } = ctx;
   const step = Math.max(1, Math.ceil(Math.max(w, h) / 64));
   const gw = Math.ceil(w / step);
   const gh = Math.ceil(h / step);
-  const districtGrid = new Array<number>(gw * gh);
-  const ageGrid = new Array<number>(gw * gh);
-  const terrainGrid = new Array<number>(gw * gh);
+  const total = gw * gh;
+
+  const districtGrid = new Array<number>(total);
+  const zoneGrid = new Array<number>(total);
+  const densityGrid = new Array<number>(total);
+  const blockGrid = new Array<number>(total);
+  const emptyGrid = new Array<number>(total);
+  const riverGrid = new Array<number>(total);
+  const ageGrid = new Array<number>(total);
+  const terrainGrid = new Array<number>(total);
 
   for (let gy = 0; gy < gh; gy++) {
     const y = Math.min(h - 1, gy * step);
@@ -66,6 +116,12 @@ export function buildSettlementDebugData(
       const idx = y * w + x;
       const gi = gy * gw + gx;
       districtGrid[gi] = distLayout.districtAt[idx];
+      zoneGrid[gi] = skel.urbanZoneAt[idx];
+      densityGrid[gi] = Math.round(skel.densityField[idx] * 100);
+      blockGrid[gi] = distLayout.blockAt[idx];
+      emptyGrid[gi] = emptyFullGrid[idx];
+      const wd = geo.waterDist[idx];
+      riverGrid[gi] = wd >= 20 ? 0 : Math.round(((20 - wd) / 20) * 100);
       ageGrid[gi] = distLayout.growthStageAt[idx];
       terrainGrid[gi] = Math.round(geo.terrainInfluence[idx] * 100);
     }
@@ -76,19 +132,37 @@ export function buildSettlementDebugData(
     gw,
     gh,
     districtGrid,
+    zoneGrid,
+    densityGrid,
+    blockGrid,
+    emptyGrid,
+    riverGrid,
     ageGrid,
     terrainGrid,
+    blocks: distLayout.blocks.slice(0, 180).map((b) => ({
+      id: b.id,
+      x: b.bounds.x,
+      y: b.bounds.y,
+      w: b.bounds.w,
+      h: b.bounds.h,
+      zone: b.zone,
+      shape: b.shape,
+      district: b.districtKind,
+    })),
     lanes: roadNet.lanes.map((l) => ({ level: l.level, width: l.width, pts: l.points })),
-    plots: plots.slice(0, 260).map((p) => ({
+    plots: plots.slice(0, 320).map((p) => ({
       x: p.bounds.x,
       y: p.bounds.y,
       w: p.bounds.w,
       h: p.bounds.h,
       fn: p.fn,
+      zone: p.zone,
       wealth: Math.round(p.wealth * 100) / 100,
       roadAccess: p.roadAccess,
       orientation: p.orientation,
+      ...(p.courtyardKind ? { courtyardKind: p.courtyardKind } : {}),
       ...(p.yardRect ? { yard: p.yardRect } : {}),
+      ...(p.secondaryRect ? { secondary: p.secondaryRect } : {}),
     })),
   };
 }
@@ -111,20 +185,73 @@ export function drawSettlementDebugOverlay(
 
   ctx.save();
 
-  // 1. Terrain Influence (тепловая карта пригодности рельефа).
-  if (cfg.terrainInfluence) {
+  // 1. City Footprint (граница пятна города и зоны old_core -> suburbs).
+  if (cfg.footprint && dbg.zoneGrid?.length) {
     for (let gy = 0; gy < dbg.gh; gy++) {
       for (let gx = 0; gx < dbg.gw; gx++) {
-        const val = dbg.terrainGrid[gy * dbg.gw + gx];
-        if (val <= 2) continue;
-        const hue = Math.round((val / 100) * 120); // 0=красный -> 120=зелёный
-        ctx.fillStyle = `hsla(${hue}, 80%, 50%, 0.24)`;
+        const gi = gy * dbg.gw + gx;
+        const z = dbg.zoneGrid[gi] ?? 5;
+        if (z >= 5) continue;
+        ctx.fillStyle = ZONE_COLORS[z] ?? ZONE_COLORS[2];
+        ctx.fillRect(gx * cellPx, gy * cellPx, cellPx, cellPx);
+
+        // Контур границы компактного города (между outer_city<=3 и suburbs/wilderness>=4).
+        if (z <= 3) {
+          ctx.fillStyle = 'rgba(255, 240, 150, 0.88)';
+          if (gx + 1 < dbg.gw && (dbg.zoneGrid[gi + 1] ?? 5) >= 4) {
+            ctx.fillRect((gx + 1) * cellPx - 1.5, gy * cellPx, 2, cellPx);
+          }
+          if (gx > 0 && (dbg.zoneGrid[gi - 1] ?? 5) >= 4) {
+            ctx.fillRect(gx * cellPx - 0.5, gy * cellPx, 2, cellPx);
+          }
+          if (gy + 1 < dbg.gh && (dbg.zoneGrid[gi + dbg.gw] ?? 5) >= 4) {
+            ctx.fillRect(gx * cellPx, (gy + 1) * cellPx - 1.5, cellPx, 2);
+          }
+          if (gy > 0 && (dbg.zoneGrid[gi - dbg.gw] ?? 5) >= 4) {
+            ctx.fillRect(gx * cellPx, gy * cellPx - 0.5, cellPx, 2);
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Urban Density (непрерывный градиент плотности 0..100).
+  if (cfg.density && dbg.densityGrid?.length) {
+    for (let gy = 0; gy < dbg.gh; gy++) {
+      for (let gx = 0; gx < dbg.gw; gx++) {
+        const val = dbg.densityGrid[gy * dbg.gw + gx] ?? 0;
+        if (val <= 4) continue;
+        const hue = Math.round((1 - val / 100) * 210); // 0=горячий красный центр -> 210=синяя периферия
+        ctx.fillStyle = `hsla(${hue}, 88%, 52%, 0.28)`;
         ctx.fillRect(gx * cellPx, gy * cellPx, cellPx, cellPx);
       }
     }
   }
 
-  // 2. Urban Age (исторические кольца роста).
+  // 11. River Influence (гидрологическое влияние реки/берега).
+  if (cfg.riverInfluence && dbg.riverGrid?.length) {
+    for (let gy = 0; gy < dbg.gh; gy++) {
+      for (let gx = 0; gx < dbg.gw; gx++) {
+        const val = dbg.riverGrid[gy * dbg.gw + gx] ?? 0;
+        if (val <= 0) continue;
+        ctx.fillStyle = `rgba(56, 189, 248, ${(val / 100) * 0.36})`;
+        ctx.fillRect(gx * cellPx, gy * cellPx, cellPx, cellPx);
+      }
+    }
+  }
+
+  // Доп.: Terrain Influence / Urban Age (обратная совместимость).
+  if (cfg.terrainInfluence) {
+    for (let gy = 0; gy < dbg.gh; gy++) {
+      for (let gx = 0; gx < dbg.gw; gx++) {
+        const val = dbg.terrainGrid[gy * dbg.gw + gx];
+        if (val <= 2) continue;
+        const hue = Math.round((val / 100) * 120);
+        ctx.fillStyle = `hsla(${hue}, 80%, 50%, 0.24)`;
+        ctx.fillRect(gx * cellPx, gy * cellPx, cellPx, cellPx);
+      }
+    }
+  }
   if (cfg.urbanAge) {
     for (let gy = 0; gy < dbg.gh; gy++) {
       for (let gx = 0; gx < dbg.gw; gx++) {
@@ -150,14 +277,72 @@ export function drawSettlementDebugOverlay(
     }
   }
 
-  // 4. Plots (границы земельных участков и внутренних дворов).
+  // 9. Empty Areas (классификация открытых пространств — Section 17).
+  if (cfg.emptyAreas && dbg.emptyGrid?.length) {
+    for (let gy = 0; gy < dbg.gh; gy++) {
+      for (let gx = 0; gx < dbg.gw; gx++) {
+        const ek = dbg.emptyGrid[gy * dbg.gw + gx] ?? 0;
+        if (ek <= 0 || ek >= EMPTY_AREA_COLORS.length) continue;
+        ctx.fillStyle = EMPTY_AREA_COLORS[ek];
+        ctx.fillRect(gx * cellPx, gy * cellPx, cellPx, cellPx);
+      }
+    }
+  }
+
+  // 4. Blocks (контуры городских кварталов между улицами — Section 6).
+  if (cfg.blocks && dbg.blockGrid?.length) {
+    for (let gy = 0; gy < dbg.gh; gy++) {
+      for (let gx = 0; gx < dbg.gw; gx++) {
+        const gi = gy * dbg.gw + gx;
+        const bId = dbg.blockGrid[gi] ?? -1;
+        if (bId < 0) continue;
+        const hue = (bId * 47) % 360;
+        ctx.fillStyle = `hsla(${hue}, 65%, 58%, 0.14)`;
+        ctx.fillRect(gx * cellPx, gy * cellPx, cellPx, cellPx);
+
+        ctx.fillStyle = `hsla(${hue}, 85%, 68%, 0.78)`;
+        if (gx + 1 < dbg.gw && dbg.blockGrid[gi + 1] !== bId) {
+          ctx.fillRect((gx + 1) * cellPx - 1, gy * cellPx, 1.4, cellPx);
+        }
+        if (gy + 1 < dbg.gh && dbg.blockGrid[gi + dbg.gw] !== bId) {
+          ctx.fillRect(gx * cellPx, (gy + 1) * cellPx - 1, cellPx, 1.4);
+        }
+      }
+    }
+  }
+
+  // 8. Courtyards (типизированные дворы и вторичные пятна застройки — Section 8 & 9).
+  if (cfg.courtyards) {
+    for (const p of dbg.plots) {
+      if (!p.yard) continue;
+      const ck = p.courtyardKind ?? 'enclosed_courtyard';
+      ctx.fillStyle = COURTYARD_COLORS[ck] ?? COURTYARD_COLORS.enclosed_courtyard;
+      ctx.fillRect(p.yard.x * tile, p.yard.y * tile, p.yard.w * tile, p.yard.h * tile);
+      ctx.strokeStyle = 'rgba(255, 245, 200, 0.75)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(p.yard.x * tile + 0.5, p.yard.y * tile + 0.5, p.yard.w * tile - 1, p.yard.h * tile - 1);
+
+      if (p.secondary) {
+        ctx.strokeStyle = 'rgba(86, 226, 255, 0.92)';
+        ctx.lineWidth = 1.4;
+        ctx.strokeRect(
+          p.secondary.x * tile + 1,
+          p.secondary.y * tile + 1,
+          p.secondary.w * tile - 2,
+          p.secondary.h * tile - 2,
+        );
+      }
+    }
+  }
+
+  // 5. Plots (границы земельных участков).
   if (cfg.plots) {
     for (const p of dbg.plots) {
-      ctx.strokeStyle = p.roadAccess ? 'rgba(255, 232, 140, 0.62)' : 'rgba(255, 140, 110, 0.62)';
+      ctx.strokeStyle = p.roadAccess ? 'rgba(255, 232, 140, 0.65)' : 'rgba(180, 220, 155, 0.58)';
       ctx.lineWidth = 1;
       ctx.strokeRect(p.x * tile + 0.5, p.y * tile + 0.5, p.w * tile - 1, p.h * tile - 1);
       if (p.yard) {
-        ctx.strokeStyle = 'rgba(130, 235, 165, 0.65)';
+        ctx.strokeStyle = 'rgba(130, 235, 165, 0.68)';
         ctx.setLineDash([2, 2]);
         ctx.strokeRect(p.yard.x * tile + 1, p.yard.y * tile + 1, p.yard.w * tile - 2, p.yard.h * tile - 2);
         ctx.setLineDash([]);
@@ -165,7 +350,7 @@ export function drawSettlementDebugOverlay(
     }
   }
 
-  // 5 & 6 & 10. Primary Roads / Secondary Roads / Road Hierarchy + Urban Nodes.
+  // 6. Road Hierarchy (4 уровня: PRIMARY=1, SECONDARY=2, ALLEY=3, FOOTPATH=4).
   if (cfg.primaryRoads || cfg.secondaryRoads || cfg.roadHierarchy) {
     for (const lane of dbg.lanes) {
       const isPrimary = lane.level <= 2;
@@ -179,20 +364,21 @@ export function drawSettlementDebugOverlay(
         ctx.lineTo((lane.pts[i].x + 0.5) * tile, (lane.pts[i].y + 0.5) * tile);
       }
       ctx.strokeStyle = lane.level === 1
-        ? 'rgba(255, 170, 55, 0.92)'
+        ? 'rgba(255, 158, 44, 0.94)'
         : lane.level === 2
-        ? 'rgba(255, 220, 115, 0.85)'
+        ? 'rgba(255, 218, 102, 0.88)'
         : lane.level === 3
-        ? 'rgba(105, 205, 255, 0.80)'
-        : 'rgba(198, 145, 255, 0.82)';
-      ctx.lineWidth = Math.max(1.5, (5 - lane.level) * 1.15);
+        ? 'rgba(98, 206, 255, 0.84)'
+        : 'rgba(204, 150, 255, 0.84)';
+      if (lane.level >= 4) ctx.setLineDash([3, 3]);
+      ctx.lineWidth = Math.max(1.4, (5 - Math.min(4, lane.level)) * 1.15);
       ctx.stroke();
+      ctx.setLineDash([]);
     }
 
     if (cfg.roadHierarchy && report.nodes) {
-      // Граф городских узлов (скелет).
       if (report.routeEdges) {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.34)';
         ctx.setLineDash([4, 4]);
         ctx.lineWidth = 1;
         const byId = new Map(report.nodes.map((n) => [n.id, n]));
@@ -221,17 +407,39 @@ export function drawSettlementDebugOverlay(
     }
   }
 
-  // 7. Building Footprints + векторы фасадов.
-  if (cfg.footprints) {
+  // 7. Building Frontage (линии уличного фронта + стрелки входов + флигели).
+  if (cfg.frontage || cfg.footprints) {
     for (const b of map.buildings ?? []) {
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.78)';
+      const isSec = b.role === 'shed' || b.role === 'barn' || (b.w <= 4 && b.h <= 4 && (b.role === 'stable' || b.role === 'workshop' || b.role === 'warehouse'));
+      ctx.strokeStyle = isSec ? 'rgba(92, 225, 230, 0.85)' : 'rgba(255, 255, 255, 0.78)';
       ctx.lineWidth = 1.2;
       ctx.strokeRect(b.x * tile, b.y * tile, b.w * tile, b.h * tile);
 
-      const [fx, fy] = facingVector(b.facing ?? 0);
+      // Выделяем фасадную грань здания яркой полосой!
+      const facing = b.facing ?? 0;
+      ctx.strokeStyle = isSec ? '#48cae4' : '#ff9f1c';
+      ctx.lineWidth = Math.max(2.2, tile * 0.16);
+      ctx.beginPath();
+      if (facing === 0) {
+        ctx.moveTo(b.x * tile, (b.y + b.h) * tile);
+        ctx.lineTo((b.x + b.w) * tile, (b.y + b.h) * tile);
+      } else if (facing === 180) {
+        ctx.moveTo(b.x * tile, b.y * tile);
+        ctx.lineTo((b.x + b.w) * tile, b.y * tile);
+      } else if (facing === 90) {
+        ctx.moveTo(b.x * tile, b.y * tile);
+        ctx.lineTo(b.x * tile, (b.y + b.h) * tile);
+      } else {
+        ctx.moveTo((b.x + b.w) * tile, b.y * tile);
+        ctx.lineTo((b.x + b.w) * tile, (b.y + b.h) * tile);
+      }
+      ctx.stroke();
+
+      const [fx, fy] = facingVector(facing);
       const dx = (b.door.x + 0.5) * tile;
       const dy = (b.door.y + 0.5) * tile;
       ctx.strokeStyle = '#ffd166';
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(dx, dy);
       ctx.lineTo(dx + fx * tile * 0.85, dy + fy * tile * 0.85);
@@ -239,7 +447,7 @@ export function drawSettlementDebugOverlay(
     }
   }
 
-  // 8. Landmarks & D&D Adventure Chains.
+  // Landmarks & D&D Adventure Chains.
   if (cfg.landmarks && report.landmarks) {
     if (report.chains) {
       ctx.strokeStyle = 'rgba(255, 120, 180, 0.78)';
@@ -278,7 +486,7 @@ export function drawSettlementDebugOverlay(
     }
   }
 
-  // 9. Accessibility (доступность дверей и плашка качества генерации).
+  // 10. Accessibility (пешая доступность дверей и сводка качества).
   if (cfg.accessibility) {
     for (const b of map.buildings ?? []) {
       const [fx, fy] = facingVector(b.facing ?? 0);
@@ -294,12 +502,12 @@ export function drawSettlementDebugOverlay(
 
     if (report.quality) {
       const q = report.quality;
-      const hud = `Качество: ${q.score}/100 | Дороги: ${Math.round(q.connectivity * 100)}% | Доступ: ${Math.round(q.accessibility * 100)}%`;
+      const hud = `Качество: ${q.score}/100 | Ядро: ${Math.round(q.coreDensity * 100)}% | Дороги: ${Math.round(q.connectivity * 100)}% | Доступ: ${Math.round(q.accessibility * 100)}%`;
       drawPillLabel(ctx, hud, 12, 18, 'rgba(14, 18, 24, 0.88)', '#a8f0c6', true);
     }
   }
 
-  // 11. District Labels (подписи районов).
+  // Подписи районов.
   if (cfg.districtLabels) {
     ctx.font = `bold ${Math.max(10, Math.round(tile * 0.62))}px sans-serif`;
     for (const d of report.districts) {

@@ -50,7 +50,16 @@ export const DEFAULT_GEN: GenSettings = {
   sceneArchetype: 'auto',
 };
 
-export const STARTER_SETTLEMENT: GenSettings = { ...DEFAULT_GEN, biome: 'town', settlement: 'town', width: 48, height: 32, density: 0.58, vegetation: 0.65 };
+export const STARTER_SETTLEMENT: GenSettings = {
+  ...DEFAULT_GEN,
+  biome: 'town',
+  settlement: 'town',
+  settlementType: 'trade_town',
+  width: 64,
+  height: 44,
+  density: 0.65,
+  vegetation: 0.6,
+};
 export const STARTER_CRYPT: GenSettings = { ...DEFAULT_GEN, biome: 'dungeon', width: 44, height: 30, rooms: 8, cryptDetail: .72, rocks: .22 };
 
 export const DEFAULT_RENDER: RenderSettings = {
@@ -111,10 +120,30 @@ export const PRESETS: Preset[] = [
   },
   {
     name: 'Деревня у брода',
-    gen: { biome: 'village', settlement: 'village', width: 44, height: 30, density: 0.34, vegetation: 0.7, rocks: 0.25, river: true, road: true, publicSpaces: true },
+    gen: {
+      biome: 'village',
+      settlement: 'village',
+      settlementType: 'river_village',
+      width: 56,
+      height: 38,
+      density: 0.62,
+      vegetation: 0.65,
+      rocks: 0.25,
+      river: true,
+      road: true,
+      publicSpaces: true,
+    },
   },
   {
     name: 'Торговый город',
-    gen: { ...STARTER_SETTLEMENT, width: 56, height: 38, density: 0.48 },
+    gen: { ...STARTER_SETTLEMENT, settlementType: 'trade_town', width: 72, height: 50, density: 0.68 },
+  },
+  {
+    name: 'Портовый город',
+    gen: { ...STARTER_SETTLEMENT, settlementType: 'port', width: 76, height: 52, density: 0.68 },
+  },
+  {
+    name: 'Укреплённый город',
+    gen: { ...STARTER_SETTLEMENT, settlementType: 'fortified_town', width: 76, height: 52, density: 0.7 },
   },
 ];
