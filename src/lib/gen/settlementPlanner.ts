@@ -131,6 +131,9 @@ export interface SettlementReport {
     propsPlaced: number;
     litterPlaced: number;
     treesPlaced: number;
+    fencesPlaced?: number;
+    scenesPlaced?: number;
+    bedsPlaced?: number;
   };
   debug?: SettlementDebugData;
 }

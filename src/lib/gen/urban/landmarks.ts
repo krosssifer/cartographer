@@ -67,6 +67,9 @@ export interface BuildingsAndLandmarksResult {
     propsPlaced: number;
     litterPlaced: number;
     treesPlaced: number;
+    fencesPlaced?: number;
+    scenesPlaced?: number;
+    bedsPlaced?: number;
     doorClearance?: number;
   };
 }
@@ -80,6 +83,20 @@ export interface UrbanDressingSettings {
   /** Насыщенность 0..1 из настроек генерации. */
   density: number;
   condition: CityCondition;
+}
+
+function pickWeightedPropDeep(
+  list: readonly [CivicKind, number][],
+  roll: number,
+): { kind: CivicKind; w: number; h: number } {
+  const total = list.reduce((sum, [, weight]) => sum + weight, 0);
+  let target = roll * total;
+  for (const [kind, weight] of list) {
+    target -= weight;
+    if (target <= 0) return { kind, w: CIVIC_KIT[kind].w, h: CIVIC_KIT[kind].h };
+  }
+  const last = list[list.length - 1][0];
+  return { kind: last, w: CIVIC_KIT[last].w, h: CIVIC_KIT[last].h };
 }
 
 export function placeBuildingsLandmarksAndDetails(
@@ -1378,7 +1395,138 @@ export function placeBuildingsLandmarksAndDetails(
       }
     }
 
-    dressingStats = { materialCells, propsPlaced, litterPlaced, treesPlaced };
+    // (ж) Ограды участков: низкие заборы по кромке двора с разрывами у входа.
+    let fencesPlaced = 0;
+    for (const plot of urbanPlots) {
+      if (!plot.bounds) continue;
+      const bounds = plot.bounds;
+      if (bounds.w < 3 || bounds.h < 3) continue;
+      const rank = rankOf(plot);
+      const wanted =
+        plot.courtyardKind === 'private_garden' ||
+        plot.courtyardKind === 'garden_yard' ||
+        plot.fn === 'noble_villa' ||
+        plot.fn === 'farm' ||
+        plot.fn === 'stable' ||
+        plot.fn === 'garden';
+      const chance = wanted ? 0.9 : 0.45;
+      if (hash2(bounds.x, bounds.y, seed + 0x7760) > chance * dressingDensity) continue;
+      const candidates: { x: number; y: number; vertical: boolean }[] = [];
+      const insets = [0, 1];
+      for (const inset of insets) {
+        for (let x = bounds.x + inset; x <= bounds.x + bounds.w - 2; x += 2) {
+          candidates.push({ x, y: bounds.y + inset, vertical: false });
+          candidates.push({ x, y: bounds.y + bounds.h - 1 - inset, vertical: false });
+        }
+        for (let y = bounds.y + 1 + inset; y <= bounds.y + bounds.h - 3; y += 2) {
+          candidates.push({ x: bounds.x + inset, y, vertical: true });
+          candidates.push({ x: bounds.x + bounds.w - 1 - inset, y, vertical: true });
+        }
+      }
+      let placedHere = 0;
+      for (const candidate of candidates) {
+        if (placedHere >= 8) break;
+        // Ворота/проход: часть кромки остаётся открытой.
+        if (hash2(candidate.x, candidate.y, seed + 0x7761) < 0.32) continue;
+        const shapes: { fw: number; fh: number; rotation: ChestRotation }[] = candidate.vertical
+          ? [{ fw: 1, fh: 2, rotation: 90 }, { fw: 2, fh: 1, rotation: 0 }]
+          : [{ fw: 2, fh: 1, rotation: 0 }, { fw: 1, fh: 2, rotation: 90 }];
+        for (const shape of shapes) {
+          if (!freeBox(candidate.x, candidate.y, shape.fw, shape.fh)) continue;
+          if (!notNearAnyDoor(candidate.x - 1, candidate.y - 1, shape.fw + 2, shape.fh + 2)) continue;
+          if (addRankedCivic(rank, 'marketFence', candidate.x, candidate.y, shape.fw, shape.fh, 0, shape.rotation)) {
+            placedHere += 1;
+            fencesPlaced += 1;
+            break;
+          }
+        }
+      }
+    }
+
+    // (з) Микросцены по назначению участка: мастерская, лавка, таверна, склад, конюшня.
+    const FUNCTION_SCENES: Record<string, readonly [CivicKind, number][]> = {
+      workshop: [['urbanAnvil', 3], ['urbanForge', 2], ['urbanCoal', 2], ['urbanWorkbench', 2], ['urbanPlanks', 2], ['urbanWoodpile', 2]],
+      shop: [['marketCrates', 3], ['marketBarrels', 3], ['urbanSign', 2], ['urbanTrough', 1], ['marketBaskets', 2]],
+      tavern: [['marketBarrels', 3], ['marketBench', 2], ['urbanSign', 2], ['marketTable', 1], ['urbanTrough', 1]],
+      warehouse: [['marketCrates', 4], ['marketSacks', 3], ['urbanPlanks', 3], ['urbanHides', 2], ['marketRope', 2]],
+      stable: [['marketHayLarge', 3], ['urbanTrough', 2], ['cart', 1], ['marketBarrels', 2]],
+      temple: [['marketBench', 2], ['urbanPots', 2], ['urbanLamp', 1]],
+      noble_villa: [['urbanPots', 2], ['urbanLamp', 2], ['garden', 1]],
+      farm: [['marketHay', 3], ['marketSacks', 2], ['urbanPots', 1]],
+      garrison: [['marketBarrels', 2], ['urbanTrough', 1], ['marketCrates', 1]],
+      courtyard: [['marketBench', 1], ['garden', 1]],
+    };
+    let scenesPlaced = 0;
+    for (const plot of urbanPlots) {
+      if (!plot.bounds) continue;
+      const scene = FUNCTION_SCENES[plot.fn];
+      if (!scene) continue;
+      const profile = profileOf(plot);
+      const budget = Math.max(0, Math.min(5, Math.round(3 * dressingDensity * (0.7 + profile.objectDensity * 0.6))));
+      if (budget === 0) continue;
+      const bounds = plot.bounds;
+      const rank = rankOf(plot);
+      for (let n = 0; n < budget; n += 1) {
+        const item = pickWeightedPropDeep(scene, hash2(bounds.x + n * 7, bounds.y + n * 13, seed + 0x7770));
+        if (item.w > bounds.w || item.h > bounds.h) continue;
+        for (let attempt = 0; attempt < 28; attempt += 1) {
+          const rollX = hash2(bounds.x + attempt * 19 + n * 3, bounds.y + attempt * 5, seed + 0x7771);
+          const rollY = hash2(bounds.y + attempt * 23 + n * 5, bounds.x + attempt * 11, seed + 0x7772);
+          const px = bounds.x + Math.floor(rollX * Math.max(1, bounds.w - item.w));
+          const py = bounds.y + Math.floor(rollY * Math.max(1, bounds.h - item.h));
+          if (!freeBox(px, py, item.w, item.h)) continue;
+          if (!notNearAnyDoor(px - 1, py - 1, item.w + 2, item.h + 2)) continue;
+          if (addRankedCivic(rank, item.kind, px, py, item.w, item.h, n)) {
+            propsPlaced += 1;
+            scenesPlaced += 1;
+            break;
+          }
+        }
+      }
+    }
+
+    // (и) Огороды и сады: грядки утоптанной земли внутри двора.
+    let bedsPlaced = 0;
+    for (const plot of urbanPlots) {
+      if (!plot.bounds) continue;
+      const bounds = plot.bounds;
+      if (bounds.w < 4 || bounds.h < 3) continue;
+      const farm = plot.fn === 'farm' || plot.fn === 'garden';
+      const garden = plot.courtyardKind === 'private_garden' || plot.courtyardKind === 'garden_yard';
+      if (!farm && !garden) continue;
+      if (hash2(bounds.x, bounds.y, seed + 0x7780) > 0.85 * dressingDensity) continue;
+      const rows = farm ? 3 : 2;
+      for (let row = 0; row < rows; row += 1) {
+        let painted = 0;
+        for (let attempt = 0; attempt < 14; attempt += 1) {
+          const rollX = hash2(bounds.x + attempt * 13 + row * 3, bounds.y + row * 5, seed + 0x7781);
+          const rollY = hash2(bounds.y + attempt * 17 + row * 7, bounds.x + attempt * 5, seed + 0x7782);
+          const bx = bounds.x + Math.floor(rollX * Math.max(1, bounds.w - 3));
+          const by = bounds.y + Math.floor(rollY * Math.max(1, bounds.h - 1));
+          if (!freeBox(bx, by, 3, 1)) continue;
+          let ok = true;
+          for (let x = bx; x < bx + 3; x += 1) {
+            if (!isDressableGround(terrain(x, by))) {
+              ok = false;
+              break;
+            }
+          }
+          if (!ok) continue;
+          for (let x = bx; x < bx + 3; x += 1) {
+            cells[by][x].terrain = 'dirt';
+            dressedCells[id(x, by)] = 1;
+            painted += 1;
+          }
+          break;
+        }
+        if (painted > 0) {
+          materialCells += painted;
+          bedsPlaced += 1;
+        }
+      }
+    }
+
+    dressingStats = { materialCells, propsPlaced, litterPlaced, treesPlaced, fencesPlaced, scenesPlaced, bedsPlaced };
   }
 
   for (const plot of urbanPlots) {

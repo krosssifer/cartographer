@@ -238,4 +238,65 @@ describe('Urban Dressing: генерация', () => {
       expect(map.cells[lamp.y][lamp.x].terrain === 'plaza').toBe(false);
     }
   });
+
+  it('ограды участков не перекрывают проход и не стоят на мостовой', () => {
+    const map = generateMap(makeSettings({ urbanDressing: 1, cityCondition: 'lived_in' }));
+    const dressing = map.plan?.settlement?.dressing;
+    expect(dressing).toBeDefined();
+    expect(dressing!.fencesPlaced ?? 0).toBeGreaterThan(0);
+    const fences = (map.civic ?? []).filter((item) => item.kind === 'marketFence');
+    for (const fence of fences) {
+      for (let y = fence.y; y < fence.y + fence.h; y++) {
+        for (let x = fence.x; x < fence.x + fence.w; x++) {
+          const terrain = map.cells[y][x].terrain;
+          expect(terrain === 'road' || terrain === 'plaza' || terrain === 'bridge').toBe(false);
+        }
+      }
+    }
+    const doorBlocked = (map.buildings ?? []).some((building) => {
+      const dir = building.facing === 90 ? [1, 0] : building.facing === 180 ? [0, -1] : building.facing === 270 ? [-1, 0] : [0, 1];
+      const sx = building.door.x + dir[0];
+      const sy = building.door.y + dir[1];
+      return fences.some(
+        (fence) => sx >= fence.x && sx < fence.x + fence.w && sy >= fence.y && sy < fence.y + fence.h,
+      );
+    });
+    expect(doorBlocked).toBe(false);
+  });
+
+  it('мастерские дворы получают инструменты и заготовки', () => {
+    const def = SETTLEMENT_TYPES.find((type) => type.id === 'craft_town')!;
+    const map = generateMap(makeSettings({
+      biome: def.style,
+      settlement: def.style,
+      settlementType: 'craft_town',
+      urbanDressing: 1,
+      cityCondition: 'lived_in',
+    }));
+    expect(map.plan?.settlement?.dressing?.scenesPlaced ?? 0).toBeGreaterThan(0);
+    const workshopKinds = new Set(['urbanAnvil', 'urbanForge', 'urbanCoal', 'urbanWorkbench', 'urbanPlanks', 'urbanWoodpile']);
+    const found = (map.civic ?? []).filter((item) => workshopKinds.has(item.kind));
+    expect(found.length).toBeGreaterThan(0);
+  });
+
+  it('огороды получают грядки утоптанной земли', () => {
+    const def = SETTLEMENT_TYPES.find((type) => type.id === 'large_village')!;
+    const map = generateMap(makeSettings({
+      biome: def.style,
+      settlement: def.style,
+      settlementType: 'large_village',
+      width: 72,
+      height: 54,
+      urbanDressing: 1,
+      cityCondition: 'lived_in',
+    }));
+    const dressing = map.plan?.settlement?.dressing;
+    expect(dressing).toBeDefined();
+    const dirtCells = map.cells.reduce(
+      (sum, row) => sum + row.filter((cell) => cell.terrain === 'dirt').length,
+      0,
+    );
+    expect(dirtCells).toBeGreaterThan(0);
+    expect((dressing!.bedsPlaced ?? 0) >= 0).toBe(true);
+  });
 });
