@@ -145,6 +145,33 @@ export function settlementPainter(ctx: CanvasRenderingContext2D, settings: Rende
           ctx.fillRect(x1 - .11, my, .14, .26); ctx.strokeRect(x1 - .11, my, .14, .26);
         }
       }
+      // Изношенный город: выбитые заплатки черепицы и трещины по скату.
+      if (b.cityCondition === 'worn') {
+        const wearSeed = hash2(b.x, b.y, seed + 0x2103);
+        const span = x1 - x0;
+        ctx.save();
+        ctx.beginPath();
+        trace(ctx, base);
+        ctx.clip();
+        ctx.fillStyle = 'rgba(26,20,14,0.62)';
+        for (let index = 0; index < 3; index += 1) {
+          const k = (wearSeed * 7.3 + index * 0.37) % 1;
+          const px = x0 + span * (0.12 + k * 0.68);
+          const py = ridge + (y1 - ridge) * (0.18 + ((k * 3.1) % 1) * 0.58);
+          ctx.fillRect(px, py, 0.32, 0.24);
+        }
+        ctx.strokeStyle = 'rgba(24,18,12,0.72)';
+        ctx.lineWidth = 0.03;
+        for (let index = 0; index < 2; index += 1) {
+          const k = (wearSeed * 5.1 + index * 0.53) % 1;
+          const sx = x0 + span * (0.15 + k * 0.6);
+          ctx.beginPath();
+          ctx.moveTo(sx, ridge + 0.05);
+          ctx.lineTo(sx + 0.18 - k * 0.3, y1 - 0.08);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
       ctx.restore();
     }
     if (settings.showRoofs && (b.annex === 'porch' || b.annex === 'awning')) {

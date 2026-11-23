@@ -155,6 +155,8 @@ export interface Building {
   annex?: BuildingAnnex;
   /** Городское назначение здания (склад, кузница, ратуша, храм, казарма…). */
   role?: BuildingRole;
+  /** Визуальное состояние дома в рамках состояния города (износ крыши, трещины). */
+  cityCondition?: CityCondition;
 }
 
 export interface Point {

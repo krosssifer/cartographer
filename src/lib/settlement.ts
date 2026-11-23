@@ -666,8 +666,20 @@ export function generateSettlement(s: GenSettings): MapData {
   const rawPlan: Plan = typed ?? buildPlan(s, style);
   const density = between(s.density ?? .42, 0, 1);
   const count = density === 0 ? 0 : Math.min(rawPlan.plots.length, Math.max(1, Math.round(rawPlan.plots.length * density ** 1.18)));
-  const buildings = rawPlan.plots.slice(0, count);
   const activeCivic = typed ? typed.rankedCivic.filter((rc) => rc.plotRank < count).map((rc) => rc.item) : rawPlan.civic;
+  // Состояние города: изношенные дома получают дешёвую или мшистую крышу и метку износа.
+  // Клонируем объекты — массив приходит из кэша buildTypedPlan и общий для всех генераций.
+  const cityCondition = s.cityCondition ?? 'lived_in';
+  let buildings = rawPlan.plots.slice(0, count);
+  if (cityCondition === 'worn') {
+    buildings = buildings.map((building) => {
+      if (hash2(building.x, building.y, s.seed + 0x2101) < 0.55) return building;
+      const cheap: RoofMaterial = hash2(building.x, building.y, s.seed + 0x2102) > 0.7 ? 7 : 0;
+      return { ...building, roof: building.roof > 1 ? cheap : building.roof, cityCondition: 'worn' as const };
+    });
+  } else if (cityCondition === 'pristine') {
+    buildings = buildings.map((building) => ({ ...building, cityCondition: 'pristine' as const }));
+  }
   const plan: Plan = typed
     ? { ...typed, cells: typed.cells.map((row) => row.map((c) => ({ ...c }))), civic: activeCivic }
     : rawPlan;

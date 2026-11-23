@@ -116,10 +116,10 @@ export function districtProfile(
 }
 
 /** Множители от состояния города. */
-export function conditionFactors(condition: CityCondition): { objects: number; litter: number } {
-  if (condition === 'pristine') return { objects: 0.85, litter: 0.15 };
-  if (condition === 'worn') return { objects: 1.05, litter: 1.8 };
-  return { objects: 1, litter: 1 };
+export function conditionFactors(condition: CityCondition): { objects: number; litter: number; weeds: number } {
+  if (condition === 'pristine') return { objects: 0.85, litter: 0.15, weeds: 0.55 };
+  if (condition === 'worn') return { objects: 1.05, litter: 1.8, weeds: 1.7 };
+  return { objects: 1, litter: 1, weeds: 1 };
 }
 
 /** Материал двора по его типу и профилю района. */

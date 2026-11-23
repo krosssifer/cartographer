@@ -21,6 +21,7 @@ import type { UrbanSkeleton } from './nodes';
 import type { PlotSubdivisionResult } from './plots';
 import type { UrbanRoadResult } from './roads';
 import {
+  conditionFactors,
   LITTER_PROPS,
   STREET_RECIPES,
   YARD_RECIPES,
@@ -1341,7 +1342,7 @@ export function placeBuildingsLandmarksAndDetails(
       const profile = profileOf(plot);
       const bounds = plot.bounds;
       const rolls = Math.round((bounds.w + bounds.h) / 5);
-      const count = Math.max(0, Math.min(5, Math.round(rolls * profile.vegetation * dressingDensity)));
+      const count = Math.max(0, Math.min(5, Math.round(rolls * profile.vegetation * dressingDensity * conditionFactors(cityCondition).weeds)));
       const green = plot.courtyardKind === 'private_garden' || plot.courtyardKind === 'garden_yard';
       for (let n = 0; n < count; n += 1) {
         const kind: TreeKind = green ? 'bush' : profile.vegetation > 0.55 ? 'oak' : 'bush';
@@ -1370,7 +1371,7 @@ export function placeBuildingsLandmarksAndDetails(
     // (е) Уличные деревья: зелёные аллеи вдоль улиц в жилых и храмовых районах.
     for (const district of districts) {
       const profile = districtProfile(district.kind, district.wealth, 'inner_city', town);
-      const budget = Math.max(0, Math.min(18, Math.round((district.area / 110) * profile.vegetation * dressingDensity)));
+      const budget = Math.max(0, Math.min(18, Math.round((district.area / 110) * profile.vegetation * dressingDensity * conditionFactors(cityCondition).weeds)));
       const radius = Math.sqrt(Math.max(1, district.area)) * 0.95;
       for (let n = 0; n < budget; n += 1) {
         for (let attempt = 0; attempt < 30; attempt += 1) {
@@ -1428,6 +1429,8 @@ export function placeBuildingsLandmarksAndDetails(
         if (placedHere >= 8) break;
         // Ворота/проход: часть кромки остаётся открытой.
         if (hash2(candidate.x, candidate.y, seed + 0x7761) < 0.32) continue;
+        // Изношенный город: часть заборов сломана и отсутствует.
+        if (cityCondition === 'worn' && hash2(candidate.x, candidate.y, seed + 0x7762) < 0.45) continue;
         const shapes: { fw: number; fh: number; rotation: ChestRotation }[] = candidate.vertical
           ? [{ fw: 1, fh: 2, rotation: 90 }, { fw: 2, fh: 1, rotation: 0 }]
           : [{ fw: 2, fh: 1, rotation: 0 }, { fw: 1, fh: 2, rotation: 90 }];
