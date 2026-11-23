@@ -913,20 +913,21 @@ function generateDungeon(s: GenSettings): MapData {
       }
     }
   }
-  const dungeonMap = decorateCrypt(
-    { width: w, height: h, biome: 'dungeon', cells, trees, rocks, structures: rooms, chests: [], river: [], road: [] },
-    s,
-  );
+  const bare: MapData = { width: w, height: h, biome: 'dungeon', cells, trees, rocks, structures: rooms, chests: [], river: [], road: [] };
   if ((s.generationEngine ?? 'structured') === 'structured') {
     // Граф залов, глубина от входа и назначения — часть структурного плана.
+    // Назначение зависит только от геометрии, поэтому ключевые предметы
+    // (сундук сокровищницы, тайник, капкан стражи) ставятся ДО декора на голый
+    // пол и передаются декоратору как сохранённые. Так их позиции не зависят
+    // от детализации и монотонность «detail 0.4 ⊆ 0.7» соблюдается.
     const basePlan = dungeonPlan(rooms, cells, w, h);
+    const furnished = furnishByPurpose(bare, basePlan);
+    const decorated = decorateCrypt(bare, s, furnished.map.crypt ?? []);
     // Зоны, POI и группы залов: план описывает замысел склепа, а не только граф.
-    const composed = cryptCompositionPlan(dungeonMap, basePlan);
-    // Наполнение по назначению: сокровищница без сундука — не сокровищница.
-    const furnished = furnishByPurpose({ ...dungeonMap, plan: composed }, composed);
-    const trapped = placeCorridorTraps({ ...dungeonMap, crypt: furnished.map.crypt, plan: furnished.plan }, furnished.plan);
-    dungeonMap.crypt = trapped.map.crypt;
-    dungeonMap.plan = trapped.plan;
+    const composed = cryptCompositionPlan(decorated, furnished.plan);
+    const trapped = placeCorridorTraps({ ...decorated, plan: composed }, composed);
+    return { ...decorated, crypt: trapped.map.crypt, plan: trapped.plan };
   }
+  const dungeonMap = decorateCrypt(bare, s);
   return dungeonMap;
 }

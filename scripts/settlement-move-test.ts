@@ -3,6 +3,7 @@ import { generateMap } from '../src/lib/generator';
 import { DEFAULT_GEN } from '../src/lib/presets';
 import { CRYPT, CRYPT_GROUP_COUNTS, CRYPT_KINDS, CRYPT_PLACEMENT_LABEL } from '../src/lib/cryptKit';
 import { moveObject, objectInfo, rotateObject } from '../src/lib/objectSizing';
+import { canPlaceCrypt } from '../src/lib/cryptLayout';
 import { contains } from '../src/lib/settlementKit';
 import type { MapData } from '../src/lib/types';
 
@@ -48,9 +49,12 @@ for (const room of rooms) {
 }
 
 // 4. Перемещение и поворот на 180 градусов.
-const free = (x: number, y: number) => map.cells[y]?.[x]?.terrain === 'floor'
-  && !(map.crypt ?? []).some((item) => item !== map.crypt![0] && item.x <= x && item.x + item.w > x && item.y <= y && item.y + item.h > y);
-let index = map.crypt!.findIndex((item) => free(item.x + item.w, item.y) && item.x + item.w < map.width - 1);
+// Ищем предмет, который действительно можно сдвинуть на клетку вправо: проверка
+// одной клетки справа от верхнего угла пропускала высокие предметы, у которых
+// ниже стоит стена или сосед, и тест падал на корректном отказе.
+let index = map.crypt!.findIndex((item, i) => item.x + item.w < map.width - 1
+  && CRYPT[item.kind].placement !== 'wallFace'
+  && canPlaceCrypt({ ...map, crypt: map.crypt!.filter((_, j) => j !== i) }, { ...item, x: item.x + 1 }));
 assert.ok(index >= 0, 'Нуж��н свободный предмет для проверки перемещения');
 const target = { type: 'crypt', index } as const;
 const before = map.crypt![index];

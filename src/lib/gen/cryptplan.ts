@@ -1,5 +1,5 @@
 import type { MapData, CryptTheme, CryptObject, Point } from '../types';
-import { addCryptObject, canPlaceCrypt, cryptStamp } from '../cryptLayout';
+import { addCryptObject, canPlaceCrypt, cryptStamp, cryptWalkable } from '../cryptLayout';
 import { CRYPT } from '../cryptKit';
 import type { DungeonRoom, GenerationPlan, GroupType, ObjectGroup, Poi, PoiType, Zone, ZoneType } from './plan';
 import { emptyPlan } from './plan';
@@ -160,42 +160,83 @@ export function furnishByPurpose(map: MapData, plan: GenerationPlan): { map: Map
       return x >= item.x - pad && x <= item.x + item.w - 1 + pad
         && y >= item.y - pad && y <= item.y + item.h - 1 + pad;
     });
-  const freeSpot = (room: DungeonRoom): Point | undefined => {
+  // Центр зала — узел, через который проходят коридоры (они прокладываются
+  // от центра к центру). Сундук или плита в центре перекрывали проход, поэтому
+  // центр и клетки у дверей для ключевого предмета не годятся.
+  const nearDoor = (x: number, y: number): boolean =>
+    [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => map.cells[y + dy]?.[x + dx]?.terrain === 'door');
+  const freeSpots = (room: DungeonRoom): Point[] => {
+    const cx = room.bounds.x + Math.floor(room.bounds.w / 2);
+    const cy = room.bounds.y + Math.floor(room.bounds.h / 2);
+    const spots: Point[] = [];
     for (const pad of [1, 0]) {
       for (let y = room.bounds.y + 1; y < room.bounds.y + room.bounds.h - 1; y += 1) {
         for (let x = room.bounds.x + 1; x < room.bounds.x + room.bounds.w - 1; x += 1) {
           if (map.cells[y]?.[x]?.terrain !== 'floor') continue;
-          if (!blocked(x, y, pad)) return { x, y };
+          if ((x === cx && y === cy) || nearDoor(x, y)) continue;
+          if (!blocked(x, y, pad) && !spots.some((spot) => spot.x === x && spot.y === y)) spots.push({ x, y });
         }
       }
     }
-    return undefined;
+    return spots;
+  };
+  // Сколько центров залов достижимо от первого: ключевой предмет не имеет
+  // права перерезать единственный проход в плотно обставленном зале.
+  const centers = rooms.map((room) => ({
+    x: room.bounds.x + Math.floor(room.bounds.w / 2),
+    y: room.bounds.y + Math.floor(room.bounds.h / 2),
+  }));
+  const reachableCenters = (target: MapData): number => {
+    const start = centers[0];
+    if (!start || !cryptWalkable(target, start.x, start.y)) return 0;
+    const seen = new Uint8Array(target.width * target.height);
+    const queue: number[] = [start.y * target.width + start.x];
+    seen[queue[0]] = 1;
+    for (let head = 0; head < queue.length; head += 1) {
+      const x = queue[head] % target.width;
+      const y = (queue[head] - x) / target.width;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= target.width || ny >= target.height) continue;
+        const index = ny * target.width + nx;
+        if (seen[index] || !cryptWalkable(target, nx, ny)) continue;
+        seen[index] = 1;
+        queue.push(index);
+      }
+    }
+    return centers.filter((center) => seen[center.y * target.width + center.x]).length;
   };
   let next = map;
+  let reachable = reachableCenters(map);
   const actions: string[] = [];
+  const tryPlace = (room: DungeonRoom, make: (spot: Point) => CryptObject, action: string): void => {
+    let attempts = 0;
+    for (const spot of freeSpots(room)) {
+      if (attempts >= 16) break;
+      const item = make(spot);
+      if (!canPlaceCrypt(next, item)) continue;
+      attempts += 1;
+      const candidate = addCryptObject(next, item);
+      if (CRYPT[item.kind].blocks && reachableCenters(candidate) < reachable) continue;
+      next = candidate;
+      reachable = reachableCenters(next);
+      actions.push(action);
+      return;
+    }
+  };
   for (const room of rooms) {
-    const spot = freeSpot(room);
-    if (!spot) continue;
     if (room.purpose === 'treasury' && !hasInside(room, (item) => item.kind === 'chest')) {
-      const item = cryptStamp(spot, 'chest', 0, false);
-      if (canPlaceCrypt(next, item)) {
-        next = addCryptObject(next, item);
-        actions.push(`зал ${room.id}: добавлен сундук сокровищницы`);
-      }
+      tryPlace(room, (spot) => cryptStamp(spot, 'chest', 0, false), `зал ${room.id}: добавлен сундук сокровищницы`);
     } else if (room.purpose === 'crypt' && !hasInside(room, (item) => item.hidden === true)) {
       // cryptStamp сохраняет hidden только для «секретных» видов, поэтому
       // скрытый тайник делаем сундуком и помечаем hidden вручную.
-      const item = { ...cryptStamp(spot, 'chest', 0, false), hidden: true };
-      if (canPlaceCrypt(next, item)) {
-        next = addCryptObject(next, item);
-        actions.push(`зал ${room.id}: добавлен тайник крипты`);
-      }
-    } else if (room.purpose === 'guard' && !hasInside(room, (item) => item.kind === 'pressureTile' || item.kind === 'spikeGlyph' || item.kind === 'runeTrap')) {
-      const item = cryptStamp(spot, 'pressureTile', 0, false);
-      if (canPlaceCrypt(next, item)) {
-        next = addCryptObject(next, item);
-        actions.push(`зал ${room.id}: добавлена стража-ловушка`);
-      }
+      tryPlace(room, (spot) => ({ ...cryptStamp(spot, 'chest', 0, false), hidden: true }), `зал ${room.id}: добавлен тайник крипты`);
+    } else if (room.purpose === 'guard' && !hasInside(room, (item) => ['pressureTile', 'spikeGlyph', 'runeTrap', 'bearTrap', 'trapNet'].includes(item.kind))) {
+      // Скрытые нажимные плиты по правилам склепа живут только в коридорах
+      // (placeCorridorTraps), поэтому зал стражи получает открытый механизм —
+      // капкан: он не секретный и не конфликтует с инвариантом isSecret.
+      tryPlace(room, (spot) => cryptStamp(spot, 'bearTrap', 0, false), `зал ${room.id}: добавлена стража-ловушка`);
     }
   }
   if (!actions.length) return { map, plan };

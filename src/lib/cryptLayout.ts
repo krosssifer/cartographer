@@ -499,13 +499,17 @@ export function decorateCrypt(base: MapData, settings: GenSettings, preserved: C
   map.cryptRooms = rooms;
 
   // The reserved aisle network connects every doorway and room centre through the existing floor.
+  // Проходы прокладываются в обход уже стоящих блокирующих предметов
+  // (preserved: ключевые предметы назначения зала, ручные правки), иначе
+  // декор мог закрыть единственный путь вокруг них. Без preserved это то же
+  // самое, что open(): crypt ещё пуст.
   const aisle = new Set<number>(), root = new Int32Array(width * height).fill(-2), queue: Point[] = [];
-  for (const p of rooms.map(midpoint)) if (open(map, p.x, p.y)) { queue.push(p); root[key(p.x, p.y)] = -1; aisle.add(key(p.x, p.y)); break; }
+  for (const p of rooms.map(midpoint)) if (cryptWalkable(map, p.x, p.y)) { queue.push(p); root[key(p.x, p.y)] = -1; aisle.add(key(p.x, p.y)); break; }
   for (let i = 0; i < queue.length; i++) {
     const { x, y } = queue[i];
     for (const [dx, dy] of ADJACENT) {
       const nx = x + dx, ny = y + dy;
-      if (bounds(nx, ny) && root[key(nx, ny)] === -2 && open(map, nx, ny)) { root[key(nx, ny)] = key(x, y); queue.push({ x: nx, y: ny }); }
+      if (bounds(nx, ny) && root[key(nx, ny)] === -2 && cryptWalkable(map, nx, ny)) { root[key(nx, ny)] = key(x, y); queue.push({ x: nx, y: ny }); }
     }
   }
   const anchor = (x: number, y: number) => {

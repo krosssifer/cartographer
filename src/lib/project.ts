@@ -104,7 +104,7 @@ export function validateProject(v: unknown): v is ImportProject {
     if (m.crypt !== undefined && (!Array.isArray(m.crypt) || m.crypt.length > Math.min(Number(g.width) * Number(g.height) * 2, 4000) || !m.crypt.every((p: unknown) => record(p) && rectangle(p)
       && CRYPT_KINDS.includes(p.kind as EditorSettings['cryptKind']) && finite(p.w, .15, 20) && finite(p.h, .15, 20) && CHEST_ROTATIONS.includes(p.rotation as ChestRotation)
       && integer(p.variant, 0, 3) && (p.source === 'layout' || p.source === 'manual')
-      && (p.hidden === undefined || bool(p.hidden) && (!p.hidden || CRYPT[p.kind as EditorSettings['cryptKind']].secret))))) return false;
+      && (p.hidden === undefined || bool(p.hidden) && (!p.hidden || p.kind === 'chest' || CRYPT[p.kind as EditorSettings['cryptKind']].secret))))) return false;
     if (m.chests !== undefined && (!Array.isArray(m.chests) || m.chests.length > Number(g.width) * Number(g.height) || !m.chests.every((c: unknown) => record(c)
       && finite(c.x, 0, Number(g.width)) && c.x !== g.width && finite(c.y, 0, Number(g.height)) && c.y !== g.height
       && optionalSize(c) && (c.kind === undefined || CHEST_KINDS.includes(c.kind as EditorSettings['chestKind'])) && CHEST_ROTATIONS.includes(c.rotation as ChestRotation)))) return false;
