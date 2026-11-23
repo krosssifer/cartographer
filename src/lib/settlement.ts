@@ -30,7 +30,7 @@ interface Plan {
   road: Point[];
   river: Point[];
   /** Осевые линии улиц: по ним рендер рисует гладкие ленты. */
-  lanes: { points: Point[]; width: number; surface: 'road' | 'plaza' }[];
+  lanes: { points: Point[]; width: number; surface: 'road' | 'plaza'; hierarchy?: 1 | 2 | 3 | 4 | 5 }[];
   /** Новый рынок (marketArchetype ≠ 'classic'): план, проверка, отчёт. */
   market?: MarketOutcome;
   /** Деревья, которые ставит рынок (дерево в центре деревенской площади). */
@@ -625,11 +625,12 @@ function settlementComposition(
   // Улицы — такие же ленты, как тракты в дикой природе: рендер рисует их гладко.
   const streetPaths = layout.lanes.map((lane, index) => ({
     id: `street_${index}`,
-    type: 'main' as const,
+    type: lane.hierarchy && lane.hierarchy >= 4 ? ('trail' as const) : ('main' as const),
     width: lane.width,
     points: lane.points,
     bridges: 0,
     surface: lane.surface,
+    ...(lane.hierarchy ? { hierarchy: lane.hierarchy } : {}),
   }));
   plan.roads = [...(plan.roads ?? []), ...streetPaths];
   return { trees, rocks, plan };
@@ -651,10 +652,14 @@ export const typedSettlement = (s: Pick<GenSettings, 'settlementType'>): boolean
 export function generateSettlement(s: GenSettings): MapData {
   const style = s.biome === 'town' ? 'town' : 'village';
   const typed = typedSettlement(s) ? buildTypedPlan(s, style) : undefined;
-  const plan: Plan = typed ?? buildPlan(s, style);
+  const rawPlan: Plan = typed ?? buildPlan(s, style);
   const density = between(s.density ?? .42, 0, 1);
-  const count = density === 0 ? 0 : Math.min(plan.plots.length, Math.max(1, Math.round(plan.plots.length * density ** 1.18)));
-  const buildings = plan.plots.slice(0, count);
+  const count = density === 0 ? 0 : Math.min(rawPlan.plots.length, Math.max(1, Math.round(rawPlan.plots.length * density ** 1.18)));
+  const buildings = rawPlan.plots.slice(0, count);
+  const activeCivic = typed ? typed.rankedCivic.filter((rc) => rc.plotRank < count).map((rc) => rc.item) : rawPlan.civic;
+  const plan: Plan = typed
+    ? { ...typed, cells: typed.cells.map((row) => row.map((c) => ({ ...c }))), civic: activeCivic }
+    : rawPlan;
   const { width, height, seed } = s;
   let trees: Tree[] = [];
   let rocks: MapData['rocks'] = [];
@@ -681,12 +686,24 @@ export function generateSettlement(s: GenSettings): MapData {
   }
 
   if (typed) {
+    // Добавляем тематические деревья/надгробия (например, на кладбище), избегая крыш.
+    for (const ut of typed.urbanTrees) {
+      if (!buildings.some((b) => contains({ x: b.x - 1, y: b.y - 1, w: b.w + 2, h: b.h + 2 }, Math.floor(ut.x), Math.floor(ut.y)))) {
+        trees.push(ut);
+      }
+    }
+    for (const ur of typed.urbanRocks) {
+      if (!buildings.some((b) => contains(b, Math.floor(ur.x), Math.floor(ur.y)))) {
+        rocks.push(ur);
+      }
+    }
     // Отчёт считает только поставленные плотностью постройки.
     const placed = typed.plotDistrict.slice(0, count);
     const settlement: SettlementReport = {
       ...typed.report,
       districts: typed.report.districts.map((district, index) => ({ ...district, buildings: placed.filter((d) => d === index).length })),
       buildings: buildings.reduce<SettlementReport['buildings']>((acc, b) => ({ ...acc, [b.kind]: (acc[b.kind] ?? 0) + 1 }), {}),
+      ...(typed.report.plots ? { plots: { ...typed.report.plots, built: buildings.length } } : {}),
     };
     generationPlan = { ...(generationPlan ?? { version: 1, engine: 'structured', zones: [], poi: [], groups: [] }), settlement };
   }

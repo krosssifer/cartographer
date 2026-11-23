@@ -15,7 +15,7 @@ import { MAX_DUNGEON_LEVELS } from './gen/dungeonArchitect';
 import { DOOR_KINDS } from './doors';
 import { isComplexArchetype, isGeometrySetting, isTopologySetting } from './gen/complex/registry';
 import { FLOOR_CODE_PATTERN, isConditionSetting, isStyleSetting } from './gen/complex/styles';
-import { isSettlementLayout, isSettlementType } from './gen/settlementTypes';
+import { isSettlementLayout, isSettlementType, isUrbanCharacterSetting } from './gen/settlementTypes';
 import type { DoorKind, ObjectDimensions } from './types';
 
 export interface Project {
@@ -74,12 +74,16 @@ export function validateProject(v: unknown): v is ImportProject {
   if (g.dungeonCondition !== undefined && !isConditionSetting(g.dungeonCondition)) return false;
   if (g.settlementType !== undefined && g.settlementType !== 'classic' && !isSettlementType(g.settlementType)) return false;
   if (g.settlementLayout !== undefined && !isSettlementLayout(g.settlementLayout)) return false;
+  if (g.settlementCharacter !== undefined && !isUrbanCharacterSetting(g.settlementCharacter)) return false;
   if (g.sceneArchetype !== undefined && g.sceneArchetype !== 'auto' && !isArchetypeId(g.sceneArchetype)) return false;
   if (g.generationEngine !== undefined && g.generationEngine !== 'legacy' && g.generationEngine !== 'structured') return false;
   if (!integer(r.cellSize, 16, 72) || !finite(r.gridOpacity, 0, 1) || typeof r.gridColor !== 'string' || !/^#[0-9a-f]{6}$/i.test(r.gridColor)) return false;
   if (!['square', 'hex'].includes(String(r.gridType))) return false;
   if (![r.showGrid, r.shading, r.texture, r.showTrees, r.showRocks, r.showStructures, r.vignette].every(bool)) return false;
-  if (![r.showChests, r.showCivic, r.showRoofs, r.showCrypt, r.showSecrets].every((value) => value === undefined || bool(value))) return false;
+  if (![r.showChests, r.showCivic, r.showRoofs, r.showCrypt, r.showSecrets, r.showDebug, r.showDecor].every((value) => value === undefined || bool(value))) return false;
+  if (r.settlementDebug !== undefined && (!record(r.settlementDebug) || !Object.entries(r.settlementDebug).every(([k, v]) =>
+    ['terrainInfluence', 'districts', 'districtLabels', 'primaryRoads', 'secondaryRoads', 'plots', 'footprints', 'landmarks', 'accessibility', 'roadHierarchy', 'urbanAge'].includes(k)
+    && (v === undefined || bool(v))))) return false;
   if (r.wallThickness !== undefined && !finite(r.wallThickness, 0.15, 1.2)) return false;
   if (v.map !== null) {
     const m = v.map;
@@ -108,6 +112,8 @@ export function validateProject(v: unknown): v is ImportProject {
       && ['village', 'town'].includes(String(b.style)) && ['house', 'hall', 'tower', 'shop', 'tavern'].includes(String(b.kind))
       && integer(b.roof, 0, ROOF_KIT.length - 1) && (b.shape === undefined || shape(b.shape)) && (b.source === undefined || b.source === 'layout' || b.source === 'manual')
       && (b.facing === undefined || CHEST_ROTATIONS.includes(b.facing as ChestRotation))
+      && (b.annex === undefined || ['porch', 'wing', 'awning', 'dormer', 'battlement'].includes(String(b.annex)))
+      && (b.role === undefined || ['house', 'workshop', 'shop', 'warehouse', 'tavern', 'town_hall', 'temple', 'minor_temple', 'citadel', 'barracks', 'prison', 'smithy', 'mill', 'baths', 'stable', 'manor'].includes(String(b.role)))
       && (b.furniture === undefined || Array.isArray(b.furniture) && b.furniture.length <= 4000 && b.furniture.every((f: unknown) => record(f)
         && optionalSize(f) && FURNITURE_KINDS.includes(f.kind as EditorSettings['furnitureKind']) && finite(f.x, 0, Number(b.w)) && finite(f.y, 0, Number(b.h))
         && CHEST_ROTATIONS.includes(f.rotation as ChestRotation) && (f.finish === undefined || FURNITURE_FINISH_KEYS.includes(f.finish as EditorSettings['furnitureFinish']))

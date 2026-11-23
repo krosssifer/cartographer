@@ -124,6 +124,12 @@ export interface Structure {
   ruin: boolean;
 }
 
+export type BuildingAnnex = 'porch' | 'wing' | 'awning' | 'dormer' | 'battlement';
+export type BuildingRole =
+  | 'house' | 'workshop' | 'shop' | 'warehouse' | 'tavern'
+  | 'town_hall' | 'temple' | 'minor_temple' | 'citadel' | 'barracks'
+  | 'prison' | 'smithy' | 'mill' | 'baths' | 'stable' | 'manor';
+
 export interface Building {
   x: number;
   y: number;
@@ -137,6 +143,10 @@ export interface Building {
   door: Point;
   facing?: ChestRotation;
   furniture?: Furnishing[];
+  /** Небольшой архитектурный выступ/навес/крыльцо (только типизированный генератор). */
+  annex?: BuildingAnnex;
+  /** Городское назначение здания (склад, кузница, ратуша, храм, казарма…). */
+  role?: BuildingRole;
 }
 
 export interface Point {
@@ -280,6 +290,8 @@ export interface GenSettings {
   settlementType?: string;
   /** Схема улиц ('auto' — по типу поселения). */
   settlementLayout?: string;
+  /** Исторический характер города ('auto' или отсутствие — по типу поселения). */
+  settlementCharacter?: string;
   /**
    * Архетип рынка: 'auto' — по поселению, воде и размеру; id из
    * gen/marketArchetypes.ts; 'classic' или отсутствие — прежний рынок.
@@ -326,6 +338,20 @@ export interface EditorSettings {
   doorKind?: DoorKind;
 }
 
+export interface SettlementDebugLayers {
+  terrainInfluence?: boolean;
+  districts?: boolean;
+  districtLabels?: boolean;
+  primaryRoads?: boolean;
+  secondaryRoads?: boolean;
+  plots?: boolean;
+  footprints?: boolean;
+  landmarks?: boolean;
+  accessibility?: boolean;
+  roadHierarchy?: boolean;
+  urbanAge?: boolean;
+}
+
 export interface RenderSettings {
   cellSize: number;
   showGrid: boolean;
@@ -346,6 +372,8 @@ export interface RenderSettings {
   showSecrets: boolean;
   /** Debug-разметка: зоны, POI, группы и дороги генератора. */
   showDebug?: boolean;
+  /** Индивидуальные слои debug-режима поселения. */
+  settlementDebug?: SettlementDebugLayers;
   /** Мелкий декор (трава, цветы, камешки, мох) — слой поверх земли. */
   showDecor?: boolean;
   vignette: boolean;

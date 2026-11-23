@@ -14,6 +14,7 @@ export default defineConfig({
   // Редакторы и агенты пишут файлы через временные каталоги рядом с оригиналом.
   // Без игнора chokidar на Windows пытается взять их под наблюдение и падает с EBUSY.
   server: {
+    allowedHosts: true,
     watch: {
       ignored: ['**/node_modules/**', '**/.git/**', '**/*.tmpdir/**', '**/*.tmp'],
     },

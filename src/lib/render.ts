@@ -12,6 +12,7 @@ import { treeDimensions, rockDimensions } from './objectSizing';
 import { drawWalls } from './wallPaint';
 import { paintFloorLayer } from './floorPaint';
 import { drawFortification, fortificationOf } from './townWallPaint';
+import { drawSettlementDebugOverlay } from './gen/urban/debug';
 import { drawFurnishing } from './interiorPaint';
 import { interiorOf } from './interiors';
 import { furnitureBounds } from './furnitureKit';
@@ -378,14 +379,41 @@ function drawRoadRibbons(ctx: CanvasRenderingContext2D, map: MapData, cs: number
     };
     const plaza = road.surface === "plaza";
     const body = plaza ? cobbleStyle : bankStyle;
-    // Обочина: три убывающих по ширине и растущих по плотности прохода.
-    stroke(base + cs * 1.25, earthStyle, 0.2, cs * 0.5);
-    stroke(base + cs * 0.62, earthStyle, 0.42, cs * 0.2);
-    stroke(base + cs * 0.3, earthStyle, 0.55, cs * 0.08);
-    // Полотно и утоптанная середина.
-    stroke(base + cs * 0.06, body, 0.6, cs * 0.12);
-    stroke(base - cs * 0.12, body, 0.85, cs * 0.03);
-    if (!plaza) stroke(base * 0.42, earthStyle, 0.14, cs * 0.24);
+    const hLvl = road.hierarchy;
+    if (hLvl !== undefined) {
+      if (hLvl === 1) {
+        // Уровень 1 (магистраль): чёткая обочина, бордюрный тон и плотное мощение.
+        stroke(base + cs * 1.15, earthStyle, 0.22, cs * 0.45);
+        stroke(base + cs * 0.46, earthStyle, 0.48, cs * 0.14);
+        stroke(base + cs * 0.18, "#3e352b", 0.32, cs * 0.02);
+        stroke(base + cs * 0.04, plaza ? cobbleStyle : bankStyle, 0.92, cs * 0.04);
+      } else if (hLvl === 2) {
+        // Уровень 2 (районная улица): уверенная ширина без бордюра магистрали.
+        stroke(base + cs * 0.95, earthStyle, 0.2, cs * 0.42);
+        stroke(base + cs * 0.36, earthStyle, 0.46, cs * 0.14);
+        stroke(base, body, 0.84, cs * 0.05);
+      } else if (hLvl === 3) {
+        // Уровень 3 (местная жилая улочка): мягче и чуть уже.
+        const w3 = base * 0.82;
+        stroke(w3 + cs * 0.65, earthStyle, 0.24, cs * 0.3);
+        stroke(w3 + cs * 0.22, earthStyle, 0.5, cs * 0.09);
+        stroke(w3 - cs * 0.08, body, 0.72, cs * 0.05);
+      } else {
+        // Уровень 4–5 (переулок / дворовый проход): узкая тёмная грунтовая/каменная тропа.
+        const w4 = Math.max(cs * 0.44, base * 0.56);
+        stroke(w4 + cs * 0.34, earthStyle, 0.36, cs * 0.16);
+        stroke(w4, earthStyle, 0.68, cs * 0.04);
+      }
+    } else {
+      // Обочина: три убывающих по ширине и растущих по плотности прохода.
+      stroke(base + cs * 1.25, earthStyle, 0.2, cs * 0.5);
+      stroke(base + cs * 0.62, earthStyle, 0.42, cs * 0.2);
+      stroke(base + cs * 0.3, earthStyle, 0.55, cs * 0.08);
+      // Полотно и утоптанная середина.
+      stroke(base + cs * 0.06, body, 0.6, cs * 0.12);
+      stroke(base - cs * 0.12, body, 0.85, cs * 0.03);
+      if (!plaza) stroke(base * 0.42, earthStyle, 0.14, cs * 0.24);
+    }
   }
   ctx.restore();
 }
@@ -947,6 +975,9 @@ function drawDebugOverlay(ctx: CanvasRenderingContext2D, map: MapData, rs: Rende
     ctx.beginPath();
     ctx.arc(poi.x * cs, poi.y * cs, Math.max(4, (poi.radius ?? 2) * cs), 0, Math.PI * 2);
     ctx.stroke();
+  }
+  if (plan.settlement) {
+    drawSettlementDebugOverlay(ctx, map, cs, rs.settlementDebug);
   }
   ctx.restore();
 }

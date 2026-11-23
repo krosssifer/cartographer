@@ -120,6 +120,57 @@ export function settlementPainter(ctx: CanvasRenderingContext2D, settings: Rende
         ctx.fillStyle = '#b89d68'; ctx.fillRect(x1 - .74, ridge + .25, .34, .35);
         ctx.fillStyle = '#675d46'; ctx.fillRect(x1 - .68, ridge + .31, .22, .23);
       }
+      if (b.annex === 'dormer' && length >= 3) {
+        const dx0 = x0 + (x1 - x0) * .42;
+        ctx.fillStyle = '#31261cb8'; ctx.fillRect(dx0 - .03, y0 + .12, .56, .34);
+        ctx.fillStyle = tile ?? roof.color; ctx.fillRect(dx0, y0 + .10, .50, .30);
+        ctx.strokeStyle = '#3b2e22'; ctx.lineWidth = .035; ctx.strokeRect(dx0, y0 + .10, .50, .30);
+        ctx.fillStyle = '#d9c39a'; ctx.fillRect(dx0 + .11, y0 + .12, .28, .06);
+      }
+      if (b.annex === 'wing' && !isCross && length >= 4 && depth >= 3) {
+        const wx0 = x0 + (x1 - x0) * .56, wx1 = Math.min(x1 - .25, wx0 + 1.25), wm = (wx0 + wx1) * .5;
+        roofPane([[wx0, y1], [wx0, ridge], [wm, ridge], [wm, y1 + .14]], '#f4e1be1c', true);
+        roofPane([[wm, ridge], [wx1, ridge], [wx1, y1], [wm, y1 + .14]], '#261e244d', true);
+      }
+      if (b.annex === 'battlement') {
+        ctx.fillStyle = '#7d7569';
+        ctx.strokeStyle = '#2f2922';
+        ctx.lineWidth = .028;
+        for (let mx = x0 + .08; mx + .26 <= x1 - .06; mx += .48) {
+          ctx.fillRect(mx, y0 - .03, .26, .14); ctx.strokeRect(mx, y0 - .03, .26, .14);
+          ctx.fillRect(mx, y1 - .11, .26, .14); ctx.strokeRect(mx, y1 - .11, .26, .14);
+        }
+        for (let my = y0 + .36; my + .26 <= y1 - .22; my += .48) {
+          ctx.fillRect(x0 - .03, my, .14, .26); ctx.strokeRect(x0 - .03, my, .14, .26);
+          ctx.fillRect(x1 - .11, my, .14, .26); ctx.strokeRect(x1 - .11, my, .14, .26);
+        }
+      }
+      ctx.restore();
+    }
+    if (settings.showRoofs && (b.annex === 'porch' || b.annex === 'awning')) {
+      ctx.save();
+      ctx.translate(doorX + out[0] * .16, doorY + out[1] * .16);
+      if (out[0]) ctx.rotate(Math.PI / 2);
+      if (b.annex === 'porch') {
+        ctx.fillStyle = '#8b7f6e';
+        ctx.strokeStyle = '#352b20';
+        ctx.lineWidth = .04;
+        ctx.fillRect(-.48, -.20, .96, .40);
+        ctx.strokeRect(-.48, -.20, .96, .40);
+        ctx.fillStyle = '#6c533b';
+        ctx.fillRect(-.42, -.14, .12, .28);
+        ctx.fillRect(.30, -.14, .12, .28);
+      } else {
+        ctx.fillStyle = '#241c1588';
+        ctx.fillRect(-.54, -.16, 1.08, .38);
+        for (let s = 0; s < 5; s++) {
+          ctx.fillStyle = s % 2 === 0 ? '#b54c3b' : '#ead9b7';
+          ctx.fillRect(-.52 + s * .208, -.20, .208, .36);
+        }
+        ctx.strokeStyle = '#3d2a1e';
+        ctx.lineWidth = .032;
+        ctx.strokeRect(-.52, -.20, 1.04, .36);
+      }
       ctx.restore();
     }
     ctx.translate(doorX, doorY);

@@ -1,4 +1,5 @@
-import type { MapData, Biome, CryptArchetype, GenSettings, RenderSettings } from '../lib/types';
+import type { MapData, Biome, CryptArchetype, GenSettings, RenderSettings, SettlementDebugLayers } from '../lib/types';
+import { DEFAULT_SETTLEMENT_DEBUG } from '../lib/gen/urban/debug';
 import { BIOME_LABELS, CRYPT_ARCHETYPE_IDS, CRYPT_ARCHETYPE_LABELS, PRESETS } from '../lib/presets';
 import { Slider, Toggle, pct } from './controls';
 import { DensitySlider, SettlementChoices } from './SettlementPanel';
@@ -143,7 +144,25 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
       <Toggle label="Растительность" checked={render.showTrees} onChange={(showTrees) => onRender({ showTrees })} />
       <Toggle label="Камни" checked={render.showRocks} onChange={(showRocks) => onRender({ showRocks })} />
       <Toggle label="Мелкий декор" checked={render.showDecor !== false} onChange={(showDecor) => onRender({ showDecor })} />
-        <Toggle label="Разметка генерации (debug)" checked={render.showDebug === true} onChange={(showDebug) => onRender({ showDebug })} />
+      <Toggle label="Разметка генерации (debug)" checked={render.showDebug === true} onChange={(showDebug) => onRender({ showDebug })} />
+      {render.showDebug === true && isSettlement && map.plan?.settlement && (() => {
+        const dbg: Required<SettlementDebugLayers> = { ...DEFAULT_SETTLEMENT_DEBUG, ...(render.settlementDebug ?? {}) };
+        const patch = (key: keyof SettlementDebugLayers, val: boolean) =>
+          onRender({ settlementDebug: { ...dbg, [key]: val } });
+        return <>
+          <Toggle label="Debug: Влияние рельефа" checked={dbg.terrainInfluence} onChange={(v) => patch('terrainInfluence', v)} />
+          <Toggle label="Debug: Районы" checked={dbg.districts} onChange={(v) => patch('districts', v)} />
+          <Toggle label="Debug: Подписи районов" checked={dbg.districtLabels} onChange={(v) => patch('districtLabels', v)} />
+          <Toggle label="Debug: Главные дороги" checked={dbg.primaryRoads} onChange={(v) => patch('primaryRoads', v)} />
+          <Toggle label="Debug: Второстепенные улицы" checked={dbg.secondaryRoads} onChange={(v) => patch('secondaryRoads', v)} />
+          <Toggle label="Debug: Участки (Plots)" checked={dbg.plots} onChange={(v) => patch('plots', v)} />
+          <Toggle label="Debug: Контуры и фасады" checked={dbg.footprints} onChange={(v) => patch('footprints', v)} />
+          <Toggle label="Debug: Ориентиры и цепочки" checked={dbg.landmarks} onChange={(v) => patch('landmarks', v)} />
+          <Toggle label="Debug: Доступность и оценка" checked={dbg.accessibility} onChange={(v) => patch('accessibility', v)} />
+          <Toggle label="Debug: Иерархия и граф дорог" checked={dbg.roadHierarchy} onChange={(v) => patch('roadHierarchy', v)} />
+          <Toggle label="Debug: Возраст города" checked={dbg.urbanAge} onChange={(v) => patch('urbanAge', v)} />
+        </>;
+      })()}
       <Toggle label="Постройки" checked={render.showStructures} onChange={(showStructures) => onRender({ showStructures })} />
       {isDungeon && <Toggle label="Метки ловушек" checked={render.showSecrets} onChange={(showSecrets) => onRender({ showSecrets })} />}
       {(isSettlement || (map.civic?.length ?? 0) > 0) && <Toggle label="Городские объекты" checked={render.showCivic} onChange={(showCivic) => onRender({ showCivic })} />}
