@@ -18,13 +18,23 @@ import { emptyPlan } from './plan';
  * детерминизм и существующие тесты не ломаются.
  */
 
-const POI_BY_PURPOSE: Record<DungeonRoom['purpose'], PoiType> = {
+const POI_BY_PURPOSE: Partial<Record<DungeonRoom['purpose'], PoiType>> = {
   entrance: 'entrance',
   hall: 'chamber',
   guard: 'chamber',
   crypt: 'chamber',
   treasury: 'chamber',
   storage: 'chamber',
+  landing: 'chamber',
+  quarters: 'chamber',
+  workshop: 'chamber',
+  archive: 'chamber',
+  shrine: 'chamber',
+  burial: 'chamber',
+  ossuary: 'chamber',
+  cell: 'chamber',
+  cave: 'chamber',
+  secret: 'chamber',
 };
 
 const GROUP_BY_THEME: Record<CryptTheme, GroupType> = {
@@ -36,6 +46,9 @@ const GROUP_BY_THEME: Record<CryptTheme, GroupType> = {
   reliquary: 'treasure_pile',
   storage: 'storage_clutter',
   watch: 'guard_post',
+  quarters: 'storage_clutter',
+  forge: 'storage_clutter',
+  cell: 'guard_post',
 };
 
 const ZONE_BY_THEME: Record<CryptTheme, ZoneType> = {
@@ -47,6 +60,9 @@ const ZONE_BY_THEME: Record<CryptTheme, ZoneType> = {
   reliquary: 'chamber',
   storage: 'chamber',
   watch: 'chamber',
+  quarters: 'chamber',
+  forge: 'chamber',
+  cell: 'chamber',
 };
 
 const center = (area: { x: number; y: number; w: number; h: number }) => ({
@@ -228,7 +244,7 @@ export function furnishByPurpose(map: MapData, plan: GenerationPlan): { map: Map
   for (const room of rooms) {
     if (room.purpose === 'treasury' && !hasInside(room, (item) => item.kind === 'chest')) {
       tryPlace(room, (spot) => cryptStamp(spot, 'chest', 0, false), `зал ${room.id}: добавлен сундук сокровищницы`);
-    } else if (room.purpose === 'crypt' && !hasInside(room, (item) => item.hidden === true)) {
+    } else if ((room.purpose === 'crypt' || room.purpose === 'secret') && !hasInside(room, (item) => item.hidden === true)) {
       // cryptStamp сохраняет hidden только для «секретных» видов, поэтому
       // скрытый тайник делаем сундуком и помечаем hidden вручную.
       tryPlace(room, (spot) => ({ ...cryptStamp(spot, 'chest', 0, false), hidden: true }), `зал ${room.id}: добавлен тайник крипты`);

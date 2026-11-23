@@ -1,5 +1,7 @@
 import { getAssets } from './assets';
 import type { MapData } from './types';
+import { naturalFloor } from './floorPaint';
+import { hash2 } from './random';
 
 const floorLike = (map: MapData, x: number, y: number) => {
   const t = map.cells[y]?.[x]?.terrain;
@@ -34,14 +36,41 @@ export function drawWalls(
   const offset = band / 2;
 
   const segments: [number, number, number, number][] = [];
+  // Природная порода (покрытие пола 'n'): вместо кладки — неровная кромка скалы.
+  const rock: [number, number, number, number][] = [];
   for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
     if (!floorLike(map, x, y)) continue;
+    if (naturalFloor(map, x, y)) {
+      const j = (px: number, py: number) => (hash2(px, py, 0x5c4) - .5) * cs * .3;
+      const left = x * cs, right = (x + 1) * cs, top = y * cs, bottom = (y + 1) * cs;
+      if (wallEdge(map, x, y - 1)) rock.push([left, top + j(x, y), right, top + j(x + 1, y)]);
+      if (wallEdge(map, x, y + 1)) rock.push([left, bottom + j(x, y + 1), right, bottom + j(x + 1, y + 1)]);
+      if (wallEdge(map, x - 1, y)) rock.push([left + j(x, y), top, left + j(x, y + 1), bottom]);
+      if (wallEdge(map, x + 1, y)) rock.push([right + j(x + 1, y), top, right + j(x + 1, y + 1), bottom]);
+      continue;
+    }
     const left = x * cs, right = (x + 1) * cs;
     const top = y * cs, bottom = (y + 1) * cs;
     if (wallEdge(map, x, y - 1)) segments.push([left, top - offset, right, top - offset]);
     if (wallEdge(map, x, y + 1)) segments.push([left, bottom + offset, right, bottom + offset]);
     if (wallEdge(map, x - 1, y)) segments.push([left - offset, top, left - offset, bottom]);
     if (wallEdge(map, x + 1, y)) segments.push([right + offset, top, right + offset, bottom]);
+  }
+  if (rock.length) {
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    for (const [x0, y0, x1, y1] of rock) { ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); }
+    if (shading) { ctx.shadowColor = 'rgba(12,10,8,.6)'; ctx.shadowBlur = cs * .25; }
+    ctx.strokeStyle = '#2c2924';
+    ctx.lineWidth = band * 1.15;
+    ctx.stroke();
+    ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = 'rgba(112,102,86,.55)';
+    ctx.lineWidth = Math.max(1, band * .16);
+    ctx.stroke();
+    ctx.restore();
   }
   if (!segments.length) return true;
 

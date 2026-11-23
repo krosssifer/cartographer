@@ -1,4 +1,4 @@
-import type { CryptKind, CryptObject, CryptPlacement, CryptTheme } from './types';
+import type { Biome, CryptKind, CryptObject, CryptPlacement, CryptTheme, Terrain } from './types';
 
 export type CryptGroup = 'hazards' | 'burial' | 'relics' | 'furnishings';
 export type CryptSpec = {
@@ -247,14 +247,40 @@ export const CRYPT: Record<CryptKind, CryptSpec> = {
   runeCirclePurple: { label: 'Лиловый круг', group: 'relics', w: 2, h: 2, flat: true, placement: 'center', purpose: 'Круг призыва' },
   greenRuneStone: { label: 'Зелёный рунный камень', group: 'relics', w: 1, h: 1, flat: true, placement: 'any', purpose: 'Камень с руной' },
   crackedPlate: { label: 'Треснувшая плита', group: 'furnishings', w: 2, h: 2, flat: true, placement: 'any', purpose: 'Разбитая плита пола' },
+  // ---------------- переходы между уровнями ----------------
+  wallTorch: { label: 'Настенный факел', group: 'furnishings', w: 1, h: 1, placement: 'wallFace', purpose: 'Факел в держателе на стене' },
+  chandelier: { label: 'Люстра', group: 'furnishings', w: 2, h: 2, flat: true, placement: 'center', purpose: 'Подвесная люстра со свечами над залом' },
+  magicLamp: { label: 'Магический светильник', group: 'relics', w: 1, h: 1, placement: 'wallFace', purpose: 'Парящий шар холодного света' },
+  spiralStairs: { label: 'Винтовая лестница', group: 'furnishings', w: 2, h: 2, placement: 'center', purpose: 'Винтовая лестница на соседний уровень' },
+  liftPlatform: { label: 'Подъёмная платформа', group: 'furnishings', w: 2, h: 2, flat: true, placement: 'center', purpose: 'Платформа подъёмника на цепях' },
+  stairsDown: { label: 'Лестница вниз', group: 'furnishings', w: 2, h: 2, placement: 'center', purpose: 'Спуск на нижний уровень (клетки совпадают с подъёмом уровнем ниже)' },
+  stairsUp: { label: 'Лестница вверх', group: 'furnishings', w: 2, h: 2, placement: 'center', purpose: 'Подъём на верхний уровень или к выходу' },
 };
+/** Лестницы — часть архитектуры: перерасстановка декора их не убирает. */
+export const STAIR_KINDS: ReadonlySet<CryptKind> = new Set<CryptKind>(['stairsDown', 'stairsUp', 'spiralStairs', 'liftPlatform']);
 
 export const CRYPT_KINDS = Object.keys(CRYPT) as CryptKind[];
 export const CRYPT_GROUPS: Record<CryptGroup, string> = { hazards: 'Опасности', burial: 'Погребение', relics: 'Реликвии', furnishings: 'Обстановка' };
-export const CRYPT_THEMES: Record<CryptTheme, string> = { entry: 'Вестибюль', burial: 'Усыпальница', sanctum: 'Святилище', ossuary: 'Костница', archive: 'Архив', reliquary: 'Сокровищница', storage: 'Кладовая', watch: 'Пост стражи' };
+export const CRYPT_THEMES: Record<CryptTheme, string> = { entry: 'Вестибюль', burial: 'Усыпальница', sanctum: 'Святилище', ossuary: 'Костница', archive: 'Архив', reliquary: 'Сокровищница', storage: 'Кладовая', watch: 'Пост стражи', quarters: 'Жилые покои', forge: 'Мастерская', cell: 'Камера' };
 export const cryptArt = (kind: CryptKind) => `crypt-${kind}`;
 export const hazard = (kind: CryptKind) => kind === 'chasm' || kind === 'pit' || kind === 'sinkhole' || kind === 'collapse' || kind === 'pitTrap';
 export const coversHazard = (kind: CryptKind) => kind === 'bridge' || kind === 'grate';
 export const isSecret = (item: CryptObject) => CRYPT[item.kind].secret === true && item.hidden === true;
 export const CRYPT_GROUP_COUNTS = (Object.keys(CRYPT_GROUPS) as CryptGroup[]).map((group) => ({ group, count: CRYPT_KINDS.filter((kind) => CRYPT[kind].group === group).length }));
 export const CRYPT_PLACEMENT_LABEL: Record<CryptPlacement, string> = { wall: 'вдоль стен', wallFace: 'на стенах', center: 'в центре зала', corner: 'в углу', any: 'где есть место' };
+
+/** Природный грунт, на котором под открытым небом стоят предметы склепа
+ *  (надгробья кладбища, идолы святилища, обломки руин). */
+const OUTDOOR_GROUND: ReadonlySet<Terrain> = new Set<Terrain>(['grass', 'darkGrass', 'dirt', 'sand', 'snow', 'mud', 'plaza', 'road', 'caveFloor']);
+const OUTDOOR_BIOMES: ReadonlySet<Biome> = new Set<Biome>(['forest', 'plains', 'swamp', 'desert', 'snow']);
+
+/**
+ * Можно ли поставить предмет склепа на клетку. В подземельях, пещерах и
+ * поселениях — только на пол (как раньше); на открытой местности ещё и на
+ * природный грунт: иначе сюжетные объекты сцен-архетипов исчезали бы при
+ * первом же мазке кисти (pruneCrypt).
+ */
+export function cryptGround(biome: Biome, terrain: Terrain | undefined): boolean {
+  if (terrain === 'floor') return true;
+  return terrain !== undefined && OUTDOOR_BIOMES.has(biome) && OUTDOOR_GROUND.has(terrain);
+}

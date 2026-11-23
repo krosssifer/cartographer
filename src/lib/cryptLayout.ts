@@ -1,4 +1,4 @@
-import { CRYPT, coversHazard, hazard } from './cryptKit';
+import { CRYPT, STAIR_KINDS, coversHazard, cryptGround, hazard } from './cryptKit';
 import { hash2, mulberry32, randInt } from './random';
 import { contains, intersects } from './settlementKit';
 import { footprintCells, rectOnGrid, rotatedSize } from './objectGeometry';
@@ -25,6 +25,60 @@ function mixSeed(...parts: number[]): number {
   return hash >>> 0;
 }
 const rngFor = (...parts: number[]) => mulberry32(mixSeed(...parts));
+
+/** Сид уровня разнообразного подземелья: уровень 0 — сам seed, остальные — производные. */
+export function dungeonLevelSeed(seed: number, level: number): number {
+  if (level <= 0) return seed >>> 0;
+  let h = 0x811c9dc5;
+  for (const value of [seed, level, 0x1e7e1]) {
+    h ^= value | 0;
+    h = Math.imul(h, 0x01000193);
+    h ^= h >>> 15;
+  }
+  return h >>> 0;
+}
+
+/** Завал непроходим: на время расстановки его клетка считается стеной. */
+export function wallOffBlockedDoors(map: MapData): MapData {
+  const blocked = (map.doors ?? []).filter((door) => door.kind === 'blocked');
+  if (!blocked.length) return map;
+  const cells = map.cells.map((row) => row.slice());
+  for (const door of blocked) if (cells[door.y]?.[door.x]?.terrain === 'door') cells[door.y][door.x] = { ...cells[door.y][door.x], terrain: 'wall' };
+  return { ...map, cells };
+}
+
+/**
+ * Обходные дорожки разнообразных залов: клетки пола зала на расстоянии ровно
+ * 2 (по Чебышёву) от стены, колонны или края формы. Блокирующая мебель на них
+ * не встаёт, поэтому стенные предметы (кольцо у стены) и центральные (ядро
+ * зала) не замыкают карманов. Зависит только от клеток, а не от детализации —
+ * монотонность «детализация 0.4 ⊆ 0.7» сохраняется.
+ */
+export function processionalLanes(map: MapData, rooms: readonly Selection[]): Set<number> {
+  const lanes = new Set<number>();
+  const floor = (x: number, y: number) => map.cells[y]?.[x]?.terrain === 'floor' || map.cells[y]?.[x]?.terrain === 'water';
+  for (const room of rooms) {
+    if (room.w < 5 || room.h < 5) continue;
+    // Колонна — отдельная клетка стены внутри зала (≥3 открытых соседа). Для
+    // кольца она считается частью зала, иначе кольцо рвалось у каждой колонны;
+    // клетки вокруг колонн тоже свободны — между колоннами остаётся проход.
+    const pillar = (x: number, y: number) => contains(room, x, y) && map.cells[y]?.[x]?.terrain === 'wall'
+      && ADJACENT.filter(([dx, dy]) => floor(x + dx, y + dy)).length >= 3;
+    const inside = (x: number, y: number) => contains(room, x, y) && (floor(x, y) || pillar(x, y));
+    for (let y = room.y; y < room.y + room.h; y++) for (let x = room.x; x < room.x + room.w; x++) {
+      if (!contains(room, x, y) || !floor(x, y)) continue;
+      if (ADJACENT.some(([dx, dy]) => pillar(x + dx, y + dy))) { lanes.add(y * map.width + x); continue; }
+      let edge = false, near = true;
+      for (let dy = -2; dy <= 2 && near; dy++) for (let dx = -2; dx <= 2; dx++) {
+        if (inside(x + dx, y + dy)) continue;
+        if (Math.max(Math.abs(dx), Math.abs(dy)) === 1) { near = false; break; }
+        edge = true;
+      }
+      if (near && edge) lanes.add(y * map.width + x);
+    }
+  }
+  return lanes;
+}
 
 const ROOM_PITCH = 5;
 
@@ -249,7 +303,7 @@ export function canPlaceCrypt(map: MapData, item: CryptObject) {
     if (!footprintCells(item, (x, y) => map.cells[y]?.[x]?.terrain === 'wall')) return false;
     return !props.some((other) => intersects(other, item));
   }
-  if (!footprintCells(item, (x, y) => isFloor(map, x, y))) return false;
+  if (!footprintCells(item, (x, y) => cryptGround(map.biome, map.cells[y]?.[x]?.terrain))) return false;
   if (coversHazard(item.kind) && !hazardOn(map, item)) return false;
   if (props.some((other) => {
     if (!intersects(other, item)) return false;
@@ -368,6 +422,30 @@ const SETS: Record<CryptTheme, Slot[]> = {
     { kind: 'stalagmites', weight: 1 }, { kind: 'rockSpikes', weight: 1 }, { kind: 'boulder', weight: 1 }, { kind: 'rockPile', weight: 1 }, { kind: 'stalactites', weight: 1 },
     { kind: 'portcullis', weight: 1 }, { kind: 'spikedWheel', weight: 1 }, { kind: 'leverBlade', weight: 1 }, { kind: 'hangingCage', weight: 1 }, { kind: 'spikeRack', weight: 1 },
   ],
+  // Темы разнообразной планировки: жилые покои, мастерская, камера.
+  quarters: [
+    { kind: 'bench', weight: 3 }, { kind: 'rug', weight: 3 }, { kind: 'writingDesk', weight: 2 }, { kind: 'chest', weight: 1 },
+    { kind: 'shelf', weight: 2 }, { kind: 'barrels', weight: 2 }, { kind: 'crates', weight: 1 }, { kind: 'candleHolder', weight: 3 },
+    { kind: 'oilLamp', weight: 2 }, { kind: 'bucket', weight: 2 }, { kind: 'cauldron', weight: 1 }, { kind: 'tapestry', weight: 1 },
+    { kind: 'oldCradle', weight: 1 }, { kind: 'dryingRack', weight: 1 }, { kind: 'sackPile', weight: 2 }, { kind: 'goblet', weight: 1 },
+    { kind: 'chalice', weight: 1 }, { kind: 'ropeCoil', weight: 1 }, { kind: 'hayPile', weight: 2 }, { kind: 'mirror', weight: 1 },
+    { kind: 'web', weight: 1 }, { kind: 'dirtPatch', weight: 1 }, { kind: 'pebbles', weight: 1 },
+  ],
+  forge: [
+    { kind: 'forge', weight: 3 }, { kind: 'anvil', weight: 3 }, { kind: 'bellows', weight: 2 }, { kind: 'workbench', weight: 3 },
+    { kind: 'vise', weight: 2 }, { kind: 'toolRack', weight: 3 }, { kind: 'toolbox', weight: 2 }, { kind: 'coalHeap', weight: 2 },
+    { kind: 'cauldron', weight: 2 }, { kind: 'bucket', weight: 2 }, { kind: 'barrels', weight: 2 }, { kind: 'crateOpen', weight: 2 },
+    { kind: 'chainPulley', weight: 1 }, { kind: 'pulleyBlock', weight: 1 }, { kind: 'gearCog', weight: 1 }, { kind: 'winch', weight: 1 },
+    { kind: 'sawhorse', weight: 1 }, { kind: 'logs', weight: 1 }, { kind: 'mineCart', weight: 1 }, { kind: 'scree', weight: 1 },
+    { kind: 'brazierStand', weight: 2 }, { kind: 'oilLamp', weight: 1 },
+  ],
+  cell: [
+    { kind: 'manacles', weight: 4 }, { kind: 'chains', weight: 4 }, { kind: 'hayPile', weight: 3 }, { kind: 'bucket', weight: 3 },
+    { kind: 'skeleton', weight: 2 }, { kind: 'bones', weight: 3 }, { kind: 'skull', weight: 2 }, { kind: 'bench', weight: 1 },
+    { kind: 'stocks', weight: 1 }, { kind: 'pillory', weight: 1 }, { kind: 'cage', weight: 1 }, { kind: 'web', weight: 2 },
+    { kind: 'puddleMud', weight: 2 }, { kind: 'dirtPatch', weight: 2 }, { kind: 'cracks', weight: 2 }, { kind: 'rubble', weight: 1 },
+    { kind: 'candleHolder', weight: 1 }, { kind: 'roots', weight: 1 }, { kind: 'nestEggs', weight: 1 },
+  ],
 };
 
 /** Сцена: якорь ставится обычным поиском, спутники — по смещениям от якоря. */
@@ -419,11 +497,26 @@ const SCENES: Record<CryptTheme, CryptScene[]> = {
     { anchor: 'boulder', parts: [{ kind: 'rockSpikes', dx: 2, dy: 0 }, { kind: 'stalagmites', dx: -2, dy: 0 }, { kind: 'pebbles', dx: 0, dy: 1 }] },
     { anchor: 'spikedWheel', parts: [{ kind: 'portcullis', dx: 2, dy: 0 }, { kind: 'flail', dx: -2, dy: 0 }, { kind: 'hangingCage', dx: 0, dy: 2 }] },
   ],
+  quarters: [
+    { anchor: 'writingDesk', parts: [{ kind: 'bench', dx: 0, dy: 1 }, { kind: 'candleHolder', dx: 2, dy: 0 }, { kind: 'shelf', dx: -1, dy: 0 }] },
+    { anchor: 'rug', parts: [{ kind: 'bench', dx: -2, dy: 0 }, { kind: 'chest', dx: 2, dy: 0 }, { kind: 'oilLamp', dx: 0, dy: -1 }] },
+    { anchor: 'cauldron', parts: [{ kind: 'bucket', dx: 1, dy: 0 }, { kind: 'sackPile', dx: -1, dy: 0 }, { kind: 'barrels', dx: 0, dy: 1 }] },
+  ],
+  forge: [
+    { anchor: 'forge', parts: [{ kind: 'bellows', dx: -1, dy: 0 }, { kind: 'anvil', dx: 2, dy: 0 }, { kind: 'coalHeap', dx: 0, dy: 2 }] },
+    { anchor: 'workbench', parts: [{ kind: 'vise', dx: 2, dy: 0 }, { kind: 'toolRack', dx: -1, dy: 0 }, { kind: 'toolbox', dx: 0, dy: 1 }] },
+    { anchor: 'cauldron', parts: [{ kind: 'bucket', dx: 2, dy: 0 }, { kind: 'barrels', dx: -2, dy: 0 }] },
+  ],
+  cell: [
+    { anchor: 'hayPile', parts: [{ kind: 'manacles', dx: 1, dy: 0 }, { kind: 'bucket', dx: 0, dy: 1 }] },
+    { anchor: 'chains', parts: [{ kind: 'skeleton', dx: 0, dy: 1 }, { kind: 'bones', dx: 1, dy: 0 }] },
+  ],
 };
 /** По одному настенному украшению на зал: знамёна, маски, гобелены, зеркала. */
 const WALL_ORNAMENTS: Partial<Record<CryptTheme, CryptKind>> = {
   entry: 'banner', burial: 'mask', sanctum: 'tapestry', ossuary: 'stoneEye',
   archive: 'banner', reliquary: 'tapestry', storage: 'bell', watch: 'mirror',
+  quarters: 'tapestry', forge: 'bell',
 };
 /** Порядок тем служебных залов от входа в глубину — задаёт характер архетипа. */
 const ARCHETYPE_THEMES: Record<CryptArchetype, CryptTheme[]> = {
@@ -442,7 +535,12 @@ const HALL_BY_SIZE: Record<CryptArchetype, boolean> = {
   tomb: false, catacombs: false, temple: false, archive: true, prison: true,
 };
 
-export function decorateCrypt(base: MapData, settings: GenSettings, preserved: CryptObject[] = []): MapData {
+/**
+ * `themes` (optional) — темы залов по индексу в `base.structures`. Разнообразная
+ * планировка назначает темы сама (по смыслу зала); без них темы раздаются
+ * прежним способом — по глубине и архетипу.
+ */
+export function decorateCrypt(base: MapData, settings: GenSettings, preserved: CryptObject[] = [], themes?: readonly CryptTheme[], lanes?: ReadonlySet<number>): MapData {
   const seed = settings.seed;
   const detail = Math.min(1, Math.max(0, settings.cryptDetail ?? .67));
   const { width, height } = base;
@@ -494,8 +592,9 @@ export function decorateCrypt(base: MapData, settings: GenSettings, preserved: C
   const assigned = new Map<number, CryptTheme>([[ranked[0].index, ranked.length > 1 ? 'entry' : 'burial']]);
   if (sanctum) assigned.set(sanctum.index, CRYPT_HALL_THEME[settings.cryptArchetype ?? 'tomb']);
   service.forEach((item, i) => assigned.set(item.index, order[i % order.length]));
+  const given = themes && themes.length === base.structures.length ? themes : undefined;
   const rooms: CryptRoom[] = plan.map((room, index) => ({ x: room.x, y: room.y, w: room.w, h: room.h,
-    theme: assigned.get(index) ?? 'burial' }));
+    theme: given ? given[base.structures.indexOf(room)] : assigned.get(index) ?? 'burial' }));
   map.cryptRooms = rooms;
 
   // The reserved aisle network connects every doorway and room centre through the existing floor.
@@ -520,6 +619,8 @@ export function decorateCrypt(base: MapData, settings: GenSettings, preserved: C
     anchor(x, y);
   }
   for (const p of queue) if (map.cells[p.y][p.x].terrain === 'door' || !rooms.some((r) => contains(r, p.x, p.y))) anchor(p.x, p.y);
+  // Обходные дорожки разнообразной планировки (см. processionalLanes).
+  for (const cell of lanes ?? []) aisle.add(cell);
   const byDoor = (x: number, y: number) => ADJACENT.some(([dx, dy]) => map.cells[y + dy]?.[x + dx]?.terrain === 'door');
 
   /** Ставит предмет в зал, учитывая его роль: вдоль стен, по центру или в углу.
@@ -636,9 +737,10 @@ export function decorateCrypt(base: MapData, settings: GenSettings, preserved: C
   // Базовый набор есть при любой детализации: раньше при 0% склеп оставался
   // пустым. В каждом зале ставится свет, чтобы зал читался и на карте, и в игре.
   const BASE: Record<CryptTheme, CryptKind> = { entry: 'steps', burial: 'coffin', sanctum: 'altar', ossuary: 'bonePile',
-    archive: 'bookcase', reliquary: 'chest', storage: 'crates', watch: 'bench' };
+    archive: 'bookcase', reliquary: 'chest', storage: 'crates', watch: 'bench', quarters: 'bench', forge: 'anvil', cell: 'hayPile' };
   const LIGHT: Record<CryptTheme, CryptKind> = { entry: 'brazierStand', burial: 'graveCandle', sanctum: 'brazier',
-    ossuary: 'graveCandle', archive: 'candleStand', reliquary: 'brazier', storage: 'candleHolder', watch: 'brazier' };
+    ossuary: 'graveCandle', archive: 'candleStand', reliquary: 'brazier', storage: 'candleHolder', watch: 'brazier',
+    quarters: 'candleHolder', forge: 'brazierStand', cell: 'candleHolder' };
   for (const room of rooms) {
     tryPlace(BASE[room.theme], room, 20);
     if (!tryPlace(LIGHT[room.theme], room, 21)) tryPlace('oilLamp', room, 22);
@@ -713,7 +815,28 @@ export function decorateCrypt(base: MapData, settings: GenSettings, preserved: C
   return map;
 }
 
+/** Ниша: клетка пола вне прямоугольников залов с единственным открытым соседом. */
+export function inNiche(map: MapData, x: number, y: number): boolean {
+  if (!isFloor(map, x, y) || map.structures.some((room) => contains(room, x, y))) return false;
+  return ADJACENT.filter(([dx, dy]) => open(map, x + dx, y + dy)).length === 1;
+}
+
 export function redecorateCrypt(map: MapData, settings: GenSettings): MapData {
-  const result = decorateCrypt(map, settings, (map.crypt ?? []).filter((item) => item.source === 'manual'));
-  return { ...result, rocks: map.rocks, trees: map.trees };
+  // Разнообразная планировка: темы залов заданы смыслом зала, а лестницы и
+  // убранство ниш — часть архитектуры, поэтому они переживают перерасстановку.
+  const varied = settings.dungeonLayout === 'varied';
+  const keep = (item: CryptObject) => item.source === 'manual' || (varied && (STAIR_KINDS.has(item.kind) || inNiche(map, item.x, item.y)));
+  const themes = varied && map.cryptRooms?.length === map.structures.length
+    ? map.structures.map((room) => map.cryptRooms!.find((r) => r.x === room.x && r.y === room.y && r.w === room.w && r.h === room.h)?.theme ?? 'burial')
+    : undefined;
+  if (!varied) {
+    const result = decorateCrypt(map, settings, (map.crypt ?? []).filter(keep), themes);
+    return { ...result, rocks: map.rocks, trees: map.trees };
+  }
+  // Как в генераторе: сид уровня, завалы как стены, обходные дорожки залов.
+  const walled = wallOffBlockedDoors(map);
+  const levelSettings = { ...settings, seed: dungeonLevelSeed(settings.seed, map.plan?.dungeon?.level ?? 0) };
+  const onBlocked = (item: CryptObject) => (map.doors ?? []).some((door) => door.kind === 'blocked' && contains(item, door.x, door.y));
+  const result = decorateCrypt(walled, levelSettings, (map.crypt ?? []).filter(keep), themes, processionalLanes(walled, walled.structures));
+  return { ...result, cells: map.cells, crypt: (result.crypt ?? []).filter((item) => !onBlocked(item)), rocks: map.rocks, trees: map.trees };
 }

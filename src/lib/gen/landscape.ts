@@ -538,12 +538,13 @@ export function groundFor(biome: Biome, moisture: number, height: number, waterD
       return 'snow';
     case 'plains':
       if (wet && wetlands > 0.4) return 'mud';
-      if (moisture < 0.3) return 'dirt';
+      if (moisture < 0.2) return 'dirt';
       return moisture > 0.7 ? 'darkGrass' : 'grass';
     default:
       if (wet && wetlands > 0.4) return 'mud';
       if (moisture > 0.6) return 'darkGrass';
-      if (moisture < 0.27) return 'dirt';
+      // Голая земля — только на самых сухих местах: иначе лес «в клетку».
+      if (moisture < 0.16) return 'dirt';
       return 'grass';
   }
 }

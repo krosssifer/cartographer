@@ -6,6 +6,8 @@ const plate = rect(9, 9, 82, 82, '#5f5d53', 5) + `<path d="M13 84V13h73" fill="n
 const bolt = [[17, 17], [83, 17], [17, 83], [83, 83]].map(([x, y]) => circle(x, y, 3.7, '#baae91')).join('');
 const bridge = Array.from({ length: 9 }, (_, i) => rect(10 + i * 9, 26 + (i % 3), 9, 49 - (i % 2), ['#997754', '#85684f', '#71533a'][i % 3], 1)).join('');
 const steps = Array.from({ length: 7 }, (_, i) => rect(22 - i * 2, 9 + i * 12, 56 + i * 4, 11, `hsl(37 11% ${28 + i * 5}%)`, 1)).join('');
+// Лестничный пролёт 2×2: ступени темнеют к спуску и светлеют к подъёму.
+const flight = (down: boolean) => Array.from({ length: 8 }, (_, i) => rect(12, 10 + i * 10, 76, 10, `hsl(36 10% ${down ? 62 - i * 6 : 20 + i * 6}%)`, 1)).join('');
 const cross = `<path d="M24 24 76 76M76 24 24 76" stroke="#c18167" stroke-width="5" stroke-linecap="round"/>`;
 const diamond = `<path d="m50 20 28 30-28 30-28-30z" fill="none" stroke="#c48a65" stroke-width="3"/>`;
 
@@ -18,6 +20,8 @@ export const cryptVectors: Record<string, string> = {
   'crypt-runeTrap': svg(plate + `<circle cx="50" cy="50" r="35" stroke="#c78673" stroke-width="3" fill="#614e54"/><path d="m50 23 23 38H27zm0 13 15 21H36z" stroke="#e9a492" stroke-width="2.8" fill="none"/>` + circle(50, 67, 3.4, '#ebac91')),
   'crypt-fallSeal': svg(plate + rect(16, 16, 68, 68, '#282726', 0) + `<path d="M20 22h60v56H20z" fill="#4d4640" stroke="#9c8370" stroke-width="2" stroke-dasharray="6 4"/>` + cross),
   'crypt-steps': svg(rect(4, 4, 92, 92, '#514b42', 4) + steps + `<path d="M50 24v30m-8-9 8 9 8-9" fill="none" stroke="#d4c2a0" stroke-width="3"/>`),
+  'crypt-stairsDown': svg(rect(4, 4, 92, 92, '#3d3830', 5) + flight(true) + `<path d="M8 8v84M92 8v84" stroke="#2a2621" stroke-width="5"/><path d="M50 26v40m-11-12 11 12 11-12" fill="none" stroke="#ead9b4" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>`),
+  'crypt-stairsUp': svg(rect(4, 4, 92, 92, '#4a443a', 5) + flight(false) + `<path d="M8 8v84M92 8v84" stroke="#2a2621" stroke-width="5"/><path d="M50 74V34m-11 12 11-12 11 12" fill="none" stroke="#ead9b4" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>`),
   'crypt-pillar': svg(rect(9, 9, 82, 82, '#645d50', 7) + rect(16, 16, 68, 68, '#8f8775', 5) + circle(50, 50, 25, stone) + `<path d="M29 56a23 23 0 0 1 14-27 M52 72l-9-12 12-14-5-12" fill="none" stroke="#bab19c" stroke-width="3"/>`),
   'crypt-statue': svg(rect(17, 11, 66, 78, '#817c6f', 8) + rect(23, 17, 54, 64, '#99917c', 5) + `<path d="M33 67l4-28 8-9h10l9 9 4 28-15 7z" fill="#6b6b61" stroke="#544e46" stroke-width="2.5"/>` + circle(50, 29, 9, '#a5a093') + `<path d="m55 42 8 20M44 40l-6 18m9 6 6-14 4 16" stroke="#b5ad96" fill="none" stroke-width="3"/>`),
   'crypt-brazier': svg(circle(50, 50, 38, '#5a4d3c') + circle(50, 50, 31, '#a2875e') + circle(50, 50, 23, 'url(#fire)') + `<path d="M19 50h62M50 19v62M28 28l44 44m0-44L28 72" stroke="#624833" stroke-width="3"/><path d="M45 57l7-24 8 19-7 8z" fill="#f4d798"/>`),

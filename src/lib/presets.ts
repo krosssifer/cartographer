@@ -41,10 +41,13 @@ export const DEFAULT_GEN: GenSettings = {
   publicSpaces: true,
   marketStyle: 'auto',
   marketRichness: 0.62,
+  // Новые карты получают рынок по архетипу; проекты без поля остаются на прежнем рынке.
+  marketArchetype: 'auto',
   cryptDetail: .67,
   cryptTraps: true,
   cryptChasms: true,
   cryptArchetype: 'tomb',
+  sceneArchetype: 'auto',
 };
 
 export const STARTER_SETTLEMENT: GenSettings = { ...DEFAULT_GEN, biome: 'town', settlement: 'town', width: 48, height: 32, density: 0.58, vegetation: 0.65 };

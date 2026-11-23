@@ -85,7 +85,18 @@ const isMarketAsset = (path: string) => /\/market[A-Z][^/]*\.webp$/.test(path);
 async function loadImage(src: string) {
   const img = new Image();
   img.src = src;
-  await img.decode();
+  try {
+    await img.decode();
+  } catch (error) {
+    // decode() при десятках одновременных загрузок иногда отклоняется, хотя
+    // картинка грузится: тогда ждём обычного onload, а не теряем спрайт.
+    if (!img.complete || !img.naturalWidth) {
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(error);
+      });
+    }
+  }
   return img;
 }
 

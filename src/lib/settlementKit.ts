@@ -44,6 +44,9 @@ export const CIVIC_KIT = {
   marketStallPotion: { label: 'Зелья', art: 'marketStallPotion', icon: 'market', w: 2, h: 2 },
   marketStallTools: { label: 'Инструменты', art: 'marketStallTools', icon: 'market', w: 2, h: 2 },
   marketStallFish: { label: 'Рыбный прилавок', art: 'marketStallFish', icon: 'market', w: 2, h: 2 },
+  marketStallCheese: { label: 'Сырный прилавок', art: 'marketStallCheese', icon: 'market', w: 2, h: 2 },
+  marketStallTextiles: { label: 'Сукно и ковры', art: 'marketStallTextiles', icon: 'market', w: 2, h: 2 },
+  marketStallSweets: { label: 'Сладости', art: 'marketStallSweets', icon: 'market', w: 2, h: 2 },
   // транспорт и товары
   marketWagon: { label: 'Телега', art: 'marketWagon', icon: 'cart', w: 3, h: 2 },
   marketWagonCovered: { label: 'Крытая телега', art: 'marketWagonCovered', icon: 'cart', w: 3, h: 2 },

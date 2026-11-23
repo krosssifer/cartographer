@@ -113,7 +113,12 @@ export function normalizeTerrain(source: MapData, settings: GenSettings): MapDat
     // даже когда сам настил полностью накрывает узкую протоку.
     const underBridge = part.some((cell) => bridgeCells.has(cell) || bridgeNeighbourhood.has(cell));
     const spring = part.length >= 4 && part.some((cell) => reasonedWater(cell));
-    if (index === 0 || part.length >= 40 || underBridge || spring) part.forEach((cell) => keepWater.add(cell));
+    // Сцена-архетип: вода получена гидрологией (озёра в котловинах, ручьи по
+    // стоку) и уже проверена landscape.ts — убираем только крошки до 3 клеток.
+    // То же для поселения по типу (plan.settlement): море, река и протоки под
+    // мостами спроектированы планировщиком, мост делит русло на части.
+    const hydrological = Boolean(source.plan?.archetype || source.plan?.settlement) && part.length >= 3;
+    if (index === 0 || part.length >= 40 || underBridge || spring || hydrological) part.forEach((cell) => keepWater.add(cell));
   }
   const replaceWater = settings.biome === 'swamp' ? 'mud' : ground;
   for (const part of waterParts) {

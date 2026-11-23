@@ -518,6 +518,10 @@ export interface RoadPlannerOptions {
   entry?: Point;
   exit?: Point;
   waypoints?: Point[];
+  /** Цель ответвления (место сцены); без неё — случайная глубинная точка. */
+  inland?: Point;
+  /** Строить ли ответвление (по умолчанию — на картах больше 500 клеток). */
+  branch?: boolean;
 }
 
 export function planRoadNetwork(
@@ -538,11 +542,15 @@ export function planRoadNetwork(
   nodes.push({ id: 'exit', kind: 'entrance', ...exit });
 
   // Глубинная точка: тянем ответвление к середине карты, смещённой по сиду.
-  const inland = {
+  // Случайную точку тянем всегда: поток RNG не зависит от опций сцены.
+  const randomInland = {
     x: rng.int(Math.floor(width * 0.35), Math.max(Math.floor(width * 0.35) + 1, Math.floor(width * 0.65))),
     y: rng.int(Math.floor(height * 0.3), Math.max(Math.floor(height * 0.3) + 1, Math.floor(height * 0.7))),
   };
-  const wantBranch = width * height > 500;
+  const inland = options.inland
+    ? { x: Math.max(1, Math.min(width - 2, Math.round(options.inland.x))), y: Math.max(1, Math.min(height - 2, Math.round(options.inland.y))) }
+    : randomInland;
+  const wantBranch = options.branch ?? width * height > 500;
   if (wantBranch) nodes.push({ id: 'junction', kind: 'junction', ...inland, x: inland.x, y: inland.y });
   nodes[nodes.length - 1].kind = wantBranch ? 'junction' : 'entrance';
 

@@ -8,12 +8,13 @@ import CryptPanel, { type CryptSettings } from './components/CryptPanel';
 import ObjectSizePanel from './components/ObjectSizePanel';
 import Icon from './components/Icon';
 import { generateMap } from './lib/generator';
+import { EMPTY_LEVEL_EDITS, isLevelSwitch, recallLevel, stashLevel } from './lib/levelEdits';
 import { highResSettings, renderMap, renderPixelRatio } from './lib/render';
 import { TERRAIN_COLORS, TERRAIN_LABELS } from './lib/palette';
 import { loadAssets, loadMarketAssets } from './lib/assets';
 import { CHEST_ROTATIONS, copyArea, eraseArea } from './lib/edits';
 import { BIOME_LABELS, DEFAULT_RENDER, STARTER_CRYPT } from './lib/presets';
-import { downloadJson, parseProject, readSession, saveSession } from './lib/project';
+import { CORRUPT_SESSION_KEY, downloadJson, parseProject, readSession, saveSession, sessionWasQuarantined } from './lib/project';
 import { CIVIC_KIT, contains, DEFAULT_EDITOR, isSettlement } from './lib/settlementKit';
 import { buildingAt, replanSettlement } from './lib/settlementEdits';
 import { FURNITURE } from './lib/furnitureKit';
@@ -54,6 +55,8 @@ export default function App() {
   const [editor, setEditor] = useState<EditorSettings>(initial?.editor ?? (initial ? DEFAULT_EDITOR : { ...DEFAULT_EDITOR, tool: 'select' }));
   const [history, setHistory] = useState(() => historyFor(initial?.gen ?? STARTER_CRYPT, initial?.map));
   const { gen, edit } = history.current;
+  // Правки уровней подземелья: переход между уровнями их не теряет.
+  const levelEdits = useRef(EMPTY_LEVEL_EDITS);
   const [mode, setMode] = useState<Mode>('edit');
   const [inspector, setInspector] = useState<Inspector>(() => inspectorFor(gen.biome, editor.tool));
   const [settlementTab, setSettlementTab] = useState<'settlement' | 'crypt'>(() => gen.biome === 'dungeon' || editor.tool === 'crypt' ? 'crypt' : 'settlement');
@@ -71,9 +74,9 @@ export default function App() {
   const [cursor, setCursor] = useState<Point | null>(null);
   const [assetsReady, setAssetsReady] = useState(false);
   const [spritesReady, setSpritesReady] = useState(!initial?.map?.furnitureSprites?.length);
-  const [marketReady, setMarketReady] = useState(!isSettlement(gen.biome));
+  const [marketReady, setMarketReady] = useState(!isSettlement(gen.biome) && !initial?.map?.civic?.length);
   const [spacePan, setSpacePan] = useState(false);
-  const [toast, setToast] = useState('');
+  const [toast, setToast] = useState(() => sessionWasQuarantined() ? `Автосохранение повреждено: копия отложена в localStorage («${CORRUPT_SESSION_KEY}»)` : '');
   const [mobileSidebar, setMobileSidebar] = useState(false);
   const [viewSize, setViewSize] = useState({ width: 1000, height: 590 });
   const fileRef = useRef<HTMLInputElement>(null);
@@ -117,15 +120,16 @@ export default function App() {
     return () => { stopped = true; };
   }, [initial]);
 
-  // Рыночные спрайты нужны только поселениям: не держим их в памяти и не
-  // декодируем при старте карт леса/склепа.
+  // Рыночные спрайты нужны поселениям и сценам с городскими объектами
+  // (торговый пост, лагерь): остальным картам их не декодируем.
+  const needsMarket = isSettlement(gen.biome) || (map.civic?.length ?? 0) > 0;
   useEffect(() => {
-    if (!isSettlement(gen.biome)) { setMarketReady(true); return; }
+    if (!needsMarket) { setMarketReady(true); return; }
     let stopped = false;
     setMarketReady(false);
     loadMarketAssets().then(() => { if (!stopped) setMarketReady(true); });
     return () => { stopped = true; };
-  }, [gen.biome]);
+  }, [needsMarket]);
 
   useEffect(() => {
     if (assetsReady && spritesReady && marketReady && mode === 'generate' && canvasRef.current) renderMap(canvasRef.current, map, highResSettings(map, render), gen.seed);
@@ -179,7 +183,18 @@ export default function App() {
   }, []);
 
   function onGen(patch: Partial<GenSettings>) {
-    if (edit && !window.confirm('Создать новую карту? Ручные правки текущей карты будут сброшены.')) return;
+    if (isLevelSwitch(gen, patch)) {
+      // Другой уровень того же подземелья: правки текущего уходят в хранилище, правки нового возвращаются.
+      levelEdits.current = stashLevel(levelEdits.current, gen, edit);
+      const next = { ...gen, ...patch };
+      setHistory(historyFor(next, recallLevel(levelEdits.current, next)));
+      setZoom(null); setSelection(null); setCursor(null); setFocusedRoom(null);
+      setSelectedObject(null); setSizePreview(null); setHiddenSize(null);
+      return;
+    }
+    const stored = Object.keys(levelEdits.current.maps).length > 0;
+    if ((edit || stored) && !window.confirm('Создать новую карту? Ручные правки текущей карты будут сброшены.')) return;
+    levelEdits.current = EMPTY_LEVEL_EDITS;
     const biome = patch.biome ?? gen.biome;
     setHistory(historyFor({ ...gen, ...patch, settlement: isSettlement(biome) ? biome : gen.settlement }));
     setZoom(null); setSelection(null); setCursor(null); setFocusedHouse(null); setFocusedRoom(null);
@@ -190,7 +205,8 @@ export default function App() {
 
   function randomSeed() {
     const seed = (gen.seed + 1 + Math.floor(Math.random() * 99999)) % 4294967296;
-    if (edit && !window.confirm('Создать новую карту? Ручные правки текущей карты будут сброшены.')) return;
+    if ((edit || Object.keys(levelEdits.current.maps).length > 0) && !window.confirm('Создать новую карту? Ручные правки текущей карты будут сброшены.')) return;
+    levelEdits.current = EMPTY_LEVEL_EDITS;
     setSeedHistory((seeds) => [gen.seed, ...seeds.filter((n) => n !== gen.seed)].slice(0, 8));
     setHistory(historyFor({ ...gen, seed })); setZoom(null); setSelection(null); setCursor(null); setFocusedHouse(null);
     setSelectedObject(null); setSizePreview(null); setHiddenSize(null);
@@ -209,10 +225,10 @@ export default function App() {
 
   function applyLayout(layout: LayoutSettings) {
     if (lockedLayers.length) return;
-    const next = { ...gen, biome: layout.style, settlement: layout.style, density: layout.density, publicSpaces: layout.publicSpaces, marketStyle: layout.marketStyle, marketRichness: layout.marketRichness };
+    const next = { ...gen, biome: layout.style, settlement: layout.style, density: layout.density, publicSpaces: layout.publicSpaces, marketStyle: layout.marketStyle, marketRichness: layout.marketRichness, marketArchetype: layout.marketArchetype };
     const merged = edit && gen.biome === layout.style ? replanSettlement(map, generated, generateMap(next)) : null;
     if (merged || next.biome !== gen.biome || next.density !== gen.density || next.publicSpaces !== gen.publicSpaces
-      || next.marketStyle !== gen.marketStyle || next.marketRichness !== gen.marketRichness) keepSnapshot({ gen: next, edit: merged });
+      || next.marketStyle !== gen.marketStyle || next.marketRichness !== gen.marketRichness || next.marketArchetype !== gen.marketArchetype) keepSnapshot({ gen: next, edit: merged });
     setSettlementTab('settlement'); setInspector('settlement'); setFocusedRoom(null);
     setSelection(null); setCursor(null); setMobileSidebar(false);
     setToast(merged && next.density > 0 && !merged.buildings?.some((b) => b.kind === 'tavern') ? 'Таверна не помещается среди ручных построек. Освободите участок.' : 'Планировка применена');
@@ -437,7 +453,7 @@ export default function App() {
       const project = parseProject(JSON.parse(await file.text()));
       if (!project) throw new Error('Неверный формат проекта. Выберите JSON из Картографа.');
       if (project.map?.furnitureSprites?.length) { setSpritesReady(false); await loadFurnitureSprites(project.map.furnitureSprites); setSpritesReady(true); }
-      setRender(project.render); setHistory(historyFor(project.gen, project.map));
+      setRender(project.render); levelEdits.current = EMPTY_LEVEL_EDITS; setHistory(historyFor(project.gen, project.map));
       setEditor(project.editor ?? DEFAULT_EDITOR); setActiveLayer(TOOL_LAYERS[project.editor?.tool ?? 'brush'] ?? 'terrain');
       setInspector(inspectorFor(project.gen.biome, project.editor?.tool ?? 'brush'));
       setSettlementTab(project.gen.biome === 'dungeon' || project.editor?.tool === 'crypt' ? 'crypt' : 'settlement');
@@ -528,7 +544,7 @@ export default function App() {
 
     <main className="studio-main">
       <div className="project-heading">
-        <div><div className="section-kicker"><i aria-hidden="true" /> Мастерская боевых карт</div><h1>{MAP_TITLES[gen.biome]}</h1></div>
+        <div><div className="section-kicker"><i aria-hidden="true" /> Мастерская боевых карт</div><h1>{map.plan?.archetype?.label ?? MAP_TITLES[gen.biome]}</h1></div>
         <div className="project-details"><span><Icon name={gen.biome === 'forest' ? 'tree' : cryptMap ? 'crypt' : isSettlement(gen.biome) ? 'structure' : 'mountain'} size={16} /> {cryptMap ? 'Склеп' : BIOME_LABELS[gen.biome]}</span><span className="detail-rule" /><span className="project-seed">SEED <b>{gen.seed}</b></span></div>
       </div>
 

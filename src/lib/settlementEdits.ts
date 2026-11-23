@@ -101,6 +101,8 @@ export function replanSettlement(current: MapData, oldPlan: MapData, newPlan: Ma
   }));
 
   let map: MapData = { ...current, cells, road: newPlan.road, river: newPlan.river, buildings: manual, structures, civic: details };
+  // Поселение по типу: отчёт (кварталы, укрепления) берём из нового плана.
+  if (newPlan.plan?.settlement) map = { ...map, plan: newPlan.plan };
   for (const item of newPlan.civic ?? []) if (canPlaceCivic(map, item)) map = { ...map, civic: [...map.civic!, item] };
   for (const house of newPlan.buildings ?? []) {
     if (house.kind === 'tavern' && map.buildings?.some((b) => b.kind === 'tavern')) continue;

@@ -24,6 +24,24 @@ export interface ValidationReport {
   problems: string[];
 }
 
+/** Управление растительностью со стороны сцены-архетипа (scenes.ts). */
+export interface VegetationOptions {
+  /** Готовая композиция сцены вместо автоматической. */
+  composition?: MapComposition;
+  /** Множители бюджетов крон, подлеска и камней. */
+  canopy?: number;
+  undergrowth?: number;
+  rocks?: number;
+  /** Плодородие 0..1 по клеткам (landscape.ts). */
+  fertility?: Float32Array;
+  /** Кольцо деревьев вокруг главной поляны (по умолчанию есть). */
+  arenaRing?: boolean;
+  /** Тропы от тракта к POI (по умолчанию есть; у сцены к фокусу ведёт своё ответвление). */
+  trails?: boolean;
+  /** Прямоугольники сюжетных построек: растительность их обходит. */
+  reserved?: { x: number; y: number; w: number; h: number }[];
+}
+
 export interface VegetationResult {
   trees: Tree[];
   rocks: Rock[];
@@ -75,16 +93,31 @@ export function generateStructuredVegetation(
   river: Point[],
   road: Point[],
   structures: { x: number; y: number; w: number; h: number; ruin: boolean }[] = [],
+  options: VegetationOptions = {},
 ): VegetationResult {
   const { width, height } = settings;
   const rng = new SeededRandom(settings.seed, 0x5eed);
   const zones = buildZoneField(settings, cells, river, road);
+  // Сцена-архетип: плодородие рельефа (влажность, крутизна, близость воды)
+  // модулирует плотность зон — лес гуще в сырых низинах и реже на склонах.
+  if (options.fertility) {
+    for (let index = 0; index < zones.density.length; index += 1) {
+      zones.density[index] = Math.max(0, Math.min(1, zones.density[index] * (0.3 + options.fertility[index] * 1.05)));
+    }
+  }
   const occupancy = OccupancyGrid.fromMap(width, height, (x, y) => terrainAt(cells, x, y), (terrain) =>
     HARD_BLOCKED.includes(terrain as Terrain),
   );
   // Дорога и берег реки недоступны для стволов: держимся на расстоянии от кромки.
   for (const point of road) markCell(occupancy, point.x, point.y);
   for (const point of river) markCell(occupancy, point.x, point.y);
+  for (const rect of options.reserved ?? []) {
+    for (let y = Math.floor(rect.y); y < Math.ceil(rect.y + rect.h); y += 1) {
+      for (let x = Math.floor(rect.x); x < Math.ceil(rect.x + rect.w); x += 1) {
+        if (x >= 0 && y >= 0 && x < width && y < height) markCell(occupancy, x, y);
+      }
+    }
+  }
 
   // Дистанция до дороги: кроны крупных деревьев не должны свисать на полотно.
   // BFS от всех клеток road/bridge, не глубже 6 клеток.
@@ -138,7 +171,7 @@ export function generateStructuredVegetation(
   const plan: GenerationPlan = emptyPlan();
   plan.zones = zones.zones;
   // Композиция строится ДО объектов: сначала пространства и переходы, потом декор.
-  const composition: MapComposition = buildComposition({
+  const composition: MapComposition = options.composition ?? buildComposition({
     settings: { width, height, biome: settings.biome, seed: settings.seed },
     map: { width, height, cells },
     river,
@@ -374,7 +407,7 @@ export function generateStructuredVegetation(
     }
     trails.push({ id: `trail_${trails.length}`, type: 'trail', width: 1, points: found.points, bridges: found.bridges });
   };
-  for (const poi of pois) {
+  for (const poi of options.trails === false ? [] : pois) {
     if (poi.type === 'grove' || poi.type === 'camp' || poi.type === 'clearing' || poi.type === 'boulder_field') carveTrail(poi);
   }
   if (trails.length) roadDist = computeRoadDist();
@@ -522,7 +555,7 @@ export function generateStructuredVegetation(
   // Без этого арена висит в пустом поле. Кольцо из крон делает её «просветом
   // в лесу», как на нормальных боевых картах, и даёт укрытия по краям.
   // Своё ограничение по количеству, чтобы не съедать бюджет крон.
-  if (arena) {
+  if (arena && options.arenaRing !== false) {
     let ringPlaced = 0;
     const ringLimit = Math.max(8, Math.round(arenaRadius * 3.2));
     const ringRadius = arenaRadius + 1.4;
@@ -547,8 +580,8 @@ export function generateStructuredVegetation(
   const area = width * height;
   // Бюджет подобран по площади кроны: при 2–3-клеточных кронах 0.035 даёт
   // ~40 % покрытия — лес читается, но остаётся место для боя.
-  const canopyBudget = Math.max(18, Math.round(area * 0.075 * (0.6 + settings.vegetation * 0.8)));
-  const undergrowthBudget = Math.max(8, Math.round(area * 0.025 * (0.6 + settings.vegetation * 0.8)));
+  const canopyBudget = Math.max(options.composition ? 0 : 18, Math.round(area * 0.075 * (0.6 + settings.vegetation * 0.8) * (options.canopy ?? 1)));
+  const undergrowthBudget = Math.max(options.composition ? 0 : 8, Math.round(area * 0.025 * (0.6 + settings.vegetation * 0.8) * (options.undergrowth ?? 1)));
   let canopyPlaced = 0;
   let undergrowthPlaced = 0;
   const isUndergrowth = (kind: TreeKind): boolean => kind === 'bush' || kind === 'mushroom';
@@ -645,7 +678,7 @@ export function generateStructuredVegetation(
   }
 
   // ---- Камни: акценты, а не россыпь -----------------------------------------
-  const rockScale = 0.2 + settings.rocks * 0.45;
+  const rockScale = (0.2 + settings.rocks * 0.45) * (options.rocks ?? 1);
   for (let y = 1; y < height - 1; y += 1) {
     for (let x = 1; x < width - 1; x += 1) {
       if (inArena(x, y)) continue;

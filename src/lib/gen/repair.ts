@@ -146,14 +146,26 @@ export function repairMap(map: MapData): RepairResult {
         : undefined;
       if (start && isWalkable(terrainAt(start.x, start.y) ?? 'void')) {
         const seen = reachableFloor({ ...map, cells: cellsChanged ? cells : map.cells } as MapData, start);
-        const roomsToFix = rooms.filter((room) => {
+        // Опорная клетка зала — центр рамки; у фигурных залов (Г, Т, пещера) центр
+        // может быть стеной, тогда берём ближайшую к центру проходимую клетку рамки.
+        // Для прямоугольных залов это всегда сам центр — поведение прежнее.
+        const probe = (room: (typeof rooms)[number]) => {
           const cx = room.bounds.x + Math.floor(room.bounds.w / 2);
           const cy = room.bounds.y + Math.floor(room.bounds.h / 2);
+          if (isWalkable(terrainAt(cx, cy) ?? 'void')) return { cx, cy };
+          let found = { cx, cy }, bestD = Infinity;
+          for (let y = room.bounds.y; y < room.bounds.y + room.bounds.h; y += 1) for (let x = room.bounds.x; x < room.bounds.x + room.bounds.w; x += 1) {
+            const d = Math.abs(x - cx) + Math.abs(y - cy);
+            if (d < bestD && isWalkable(terrainAt(x, y) ?? 'void')) { bestD = d; found = { cx: x, cy: y }; }
+          }
+          return found;
+        };
+        const roomsToFix = rooms.filter((room) => {
+          const { cx, cy } = probe(room);
           return !seen.has(cy * width + cx);
         });
         for (const room of roomsToFix) {
-          const cx = room.bounds.x + Math.floor(room.bounds.w / 2);
-          const cy = room.bounds.y + Math.floor(room.bounds.h / 2);
+          const { cx, cy } = probe(room);
           // Ближайшая достижимая клетка — по манхэттену, детерминированно.
           let best: { x: number; y: number } | undefined;
           let bestDistance = Infinity;

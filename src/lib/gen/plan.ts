@@ -124,7 +124,19 @@ export interface RoadNetwork {
   graph: RoadGraphEdge[];
 }
 
-export type RoomPurpose = 'entrance' | 'hall' | 'guard' | 'storage' | 'crypt' | 'treasury';
+export type LegacyRoomPurpose = 'entrance' | 'hall' | 'guard' | 'storage' | 'crypt' | 'treasury'
+  // разнообразная планировка (gen/dungeonArchitect.ts)
+  | 'landing' | 'quarters' | 'workshop' | 'archive' | 'shrine' | 'burial' | 'ossuary' | 'cell' | 'cave' | 'secret';
+/** Назначения залов архитектурных комплексов (gen/complex). */
+export type ComplexRoomPurpose = 'barracks' | 'dormitory' | 'kitchen' | 'armory' | 'machinery' | 'chapel' | 'ritual'
+  | 'library' | 'laboratory' | 'alchemy' | 'throne' | 'lake' | 'mining' | 'collector' | 'cistern' | 'gallery';
+export type RoomPurpose = LegacyRoomPurpose | ComplexRoomPurpose;
+
+export type RoomShape = 'rect' | 'square' | 'circle' | 'oval' | 'octagon' | 'L' | 'T' | 'cross' | 'organic'
+  // архитектурные комплексы: многоугольник, ниши, перегородки, неправильная, галерея, составной зал
+  | 'hexagon' | 'niched' | 'partitioned' | 'irregular' | 'gallery' | 'composite';
+export type RoomFeature = 'pillars' | 'niches' | 'rotunda' | 'pool' | 'dais';
+export type RoomCategory = 'living' | 'utility' | 'religious' | 'defense' | 'special' | 'arcane' | 'natural';
 
 /** Описание зала подземелья: назначение и глубина от входа. */
 export interface DungeonRoom {
@@ -133,6 +145,37 @@ export interface DungeonRoom {
   bounds: ZoneBounds;
   /** Сколько рёбер графа от входа (0 — вход). */
   depth: number;
+  /** Форма, особенности и смысловая группа (только разнообразная планировка). */
+  shape?: RoomShape;
+  features?: RoomFeature[];
+  category?: RoomCategory;
+}
+
+/** Отчёт разнообразной планировки подземелья: читается в UI и тестах. */
+export interface DungeonLayoutReport {
+  /** Версия алгоритма (DUNGEON_GENERATOR_VERSION). */
+  generator: number;
+  level: number;
+  levels: number;
+  /** Сколько залов запрошено и сколько удалось разместить. */
+  requested: number;
+  placed: number;
+  shapes: Partial<Record<RoomShape, number>>;
+  features: Partial<Record<RoomFeature, number>>;
+  doors: Partial<Record<import('../types').DoorKind, number>>;
+  /** Рёбра графа сверх остова (кольцевые маршруты). */
+  loops: number;
+  /** Залы с единственным выходом, не считая задуманных тупиков (сокровищница, тайник, лестницы). */
+  deadEnds: number;
+  /** Длина коридоров по ширине: клеток осевой линии шириной 1, 2, 3. */
+  corridorWidths: Record<1 | 2 | 3, number>;
+  secretRooms: number;
+  stairsUp?: Point;
+  stairsDown?: Point;
+  /** Все залы достижимы от входа (завалы считаются непроходимыми, тайные двери — проходимыми). */
+  connected: boolean;
+  /** Архитектурный комплекс (gen.dungeonArchetype): архетип, топология, стиль, состояние. */
+  complex?: import('./complex').ComplexReport;
 }
 
 export interface GenerationPlan {
@@ -164,6 +207,41 @@ export interface GenerationPlan {
   /** Мосты, спроектированные вместе с переправой (ось по дороге). */
   bridges?: Bridge[];
   roadGraph?: RoadGraphEdge[];
+  /** Сцена-архетип, по которой собрана карта (optional — только для сцен). */
+  archetype?: ArchetypeReport;
+  /** Разнообразная планировка подземелья (optional). */
+  dungeon?: DungeonLayoutReport;
+  /** Поселение по типу и планировке (settlementType): кварталы, стены, улицы. */
+  settlement?: import('./settlementPlanner').SettlementReport;
+  /** Отчёт планировщика рынка (только для нового рынка, marketArchetype ≠ 'classic'). */
+  market?: import('./marketLayout').MarketReport;
+
+}
+
+/** Что сделал генератор сцены-архетипа: читается в отчёте UI и в тестах. */
+export interface ArchetypeReport {
+  /** Версия алгоритма сцен (SCENE_GENERATOR_VERSION): тот же seed при другой версии даёт другую карту. */
+  generator: number;
+  id: string;
+  label: string;
+  /** Запрошенный архетип, если для биома пришлось взять замену. */
+  requested?: string;
+  /** Цепочка замен «запрошенный → … → использованный». */
+  chain: string[];
+  focal: Point;
+  focalRadius: number;
+  secondary: number;
+  masses: number;
+  /** Заметки сюжетных построек (что и сколько поставлено). */
+  features: string[];
+  landscape: {
+    waterShare: number;
+    rockShare: number;
+    lakes: number;
+    rivers: number;
+    basins: number;
+    checks: { id: string; label: string; ok: boolean; fixed: number }[];
+  };
 }
 
 export const emptyPlan = (): GenerationPlan => ({

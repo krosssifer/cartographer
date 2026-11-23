@@ -7,9 +7,11 @@ import { hash2 } from './random';
 import { paintTerrain } from './terrainPaint';
 import { chaikin } from './pathSmooth';
 import { chestArt, chestDimensions } from './chests';
-import { doorAxis, doorStyle, drawDoor } from './doors';
+import { doorAxis, doorKindAt, doorStyle, drawDoor, drawDoorKind } from './doors';
 import { treeDimensions, rockDimensions } from './objectSizing';
 import { drawWalls } from './wallPaint';
+import { paintFloorLayer } from './floorPaint';
+import { drawFortification, fortificationOf } from './townWallPaint';
 import { drawFurnishing } from './interiorPaint';
 import { interiorOf } from './interiors';
 import { furnitureBounds } from './furnitureKit';
@@ -595,7 +597,7 @@ export function drawObjectGhost(
   ctx.restore();
 }
 
-interface StaticLayer { key: string; plan: unknown; rooms: unknown; canvas: HTMLCanvasElement }
+interface StaticLayer { key: string; plan: unknown; rooms: unknown; floor?: unknown; canvas: HTMLCanvasElement }
 let groundCache: StaticLayer | null = null;
 let structureCache: StaticLayer | null = null;
 
@@ -617,6 +619,8 @@ const CACHE_LIMIT = 14_000_000;
 function paintGround(ctx: CanvasRenderingContext2D, map: MapData, rs: RenderSettings, seed: number, W: number, H: number) {
   const cs = rs.cellSize;
   ctx.drawImage(terrainLayer(map, rs, seed, W, H), 0, 0, W, H);
+  // Покрытие пола архитектурного комплекса: материалы, бордюры, орнаменты.
+  if (map.floorLayer) paintFloorLayer(ctx, map, cs, seed);
   if (map.plan?.river?.length) drawRiverRibbon(ctx, map, cs);
   if (map.plan?.roads?.length) drawRoadRibbons(ctx, map, cs);
   if (map.plan?.roads?.length) drawBridgeDecks(ctx, map, cs);
@@ -626,11 +630,11 @@ function paintGround(ctx: CanvasRenderingContext2D, map: MapData, rs: RenderSett
 /** Террейн + реки/дороги/мосты + подложка склепа. Перерисовывается только при изменении клеток или плана. */
 function drawGround(ctx: CanvasRenderingContext2D, map: MapData, rs: RenderSettings, seed: number, W: number, H: number, cellKey: string) {
   if (W * H > CACHE_LIMIT) { paintGround(ctx, map, rs, seed, W, H); return; }
-  if (!groundCache || groundCache.key !== cellKey || groundCache.plan !== map.plan || groundCache.rooms !== map.cryptRooms) {
+  if (!groundCache || groundCache.key !== cellKey || groundCache.plan !== map.plan || groundCache.rooms !== map.cryptRooms || groundCache.floor !== map.floorLayer) {
     const layer = layerCanvas(W, H);
     if (!layer.ctx) { paintGround(ctx, map, rs, seed, W, H); return; }
     paintGround(layer.ctx, map, rs, seed, W, H);
-    groundCache = { key: cellKey, plan: map.plan, rooms: map.cryptRooms, canvas: layer.canvas };
+    groundCache = { key: cellKey, plan: map.plan, rooms: map.cryptRooms, floor: map.floorLayer, canvas: layer.canvas };
   }
   ctx.drawImage(groundCache.canvas, 0, 0);
 }
@@ -638,7 +642,10 @@ function drawGround(ctx: CanvasRenderingContext2D, map: MapData, rs: RenderSetti
 /** Стены, двери, клеточные мосты — прозрачный слой поверх земли. */
 function paintStructures(ctx: CanvasRenderingContext2D, map: MapData, rs: RenderSettings, seed: number) {
   const cs = rs.cellSize;
-  const spriteWalls = drawWalls(ctx, map, cs, seed, rs.shading, rs.wallThickness);
+  // Укрепления поселения по типу рисуются лентой вдоль кольца, а не клетками.
+  const fortified = fortificationOf(map) !== undefined;
+  const spriteWalls = fortified || drawWalls(ctx, map, cs, seed, rs.shading, rs.wallThickness);
+  if (fortified && rs.showStructures) drawFortification(ctx, map, cs, seed);
   if (!spriteWalls && rs.shading) {
     eachStructure(map, (terrainKind, x, y) => {
       if (terrainKind !== "wall") return;
@@ -665,7 +672,10 @@ function paintStructures(ctx: CanvasRenderingContext2D, map: MapData, rs: Render
       ctx.translate((x + 0.5) * cs, (y + 0.5) * cs);
       ctx.scale(cs, cs);
       if (doorAxis(map, x, y) === "vertical") ctx.rotate(Math.PI / 2);
-      drawDoor(ctx, doorStyle(map.biome, x, y, seed), 0.96, map.biome === "dungeon" && hash2(x, y, seed + 19) > 0.62);
+      const style = doorStyle(map.biome, x, y, seed);
+      const opened = map.biome === "dungeon" && hash2(x, y, seed + 19) > 0.62;
+      if (map.doors) drawDoorKind(ctx, doorKindAt(map, x, y), style, opened, rs.showSecrets);
+      else drawDoor(ctx, style, 0.96, opened);
       ctx.restore();
     }
   });
@@ -673,7 +683,9 @@ function paintStructures(ctx: CanvasRenderingContext2D, map: MapData, rs: Render
 
 function drawStructures(ctx: CanvasRenderingContext2D, map: MapData, rs: RenderSettings, seed: number, W: number, H: number, cellKey: string) {
   if (W * H > CACHE_LIMIT) { paintStructures(ctx, map, rs, seed); return; }
-  const key = `${cellKey}|${rs.wallThickness}`;
+  // Виды дверей и видимость потайных меняют слой построек.
+  const doorKey = map.doors ? `|${rs.showSecrets ? 1 : 0}|${map.doors.map((door) => `${door.x},${door.y},${door.kind}`).join(";")}` : "";
+  const key = `${cellKey}|${rs.wallThickness}${doorKey}`;
   if (!structureCache || structureCache.key !== key || structureCache.plan !== map.plan) {
     const layer = layerCanvas(W, H);
     if (!layer.ctx) { paintStructures(ctx, map, rs, seed); return; }

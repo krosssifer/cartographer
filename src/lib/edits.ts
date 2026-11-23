@@ -1,8 +1,9 @@
+import { pruneDoors } from './doors';
 import { hash2, mulberry32 } from './random';
 import { contains, encloses, intersects } from './settlementKit';
 import { addBuilding, addCivic } from './settlementEdits';
 import { addCryptObject, eraseCrypt } from './cryptLayout';
-import { CRYPT } from './cryptKit';
+import { CRYPT, cryptGround } from './cryptKit';
 import { MAX_SPRITES } from './furnitureImport';
 import { canPlaceChest, chestBounds } from './chests';
 import { footprintCells } from './objectGeometry';
@@ -53,14 +54,14 @@ export function paintCells(m: MapData, sel: Selection, terrain: Terrain): MapDat
   for (let y = Math.max(0, sel.y); y < Math.min(m.height, sel.y + sel.h); y++) {
     for (let x = Math.max(0, sel.x); x < Math.min(m.width, sel.x + sel.w); x++) next.cells[y][x].terrain = terrain;
   }
-  return pruneCrypt(removeEditedStructures(next, m, sel));
+  return pruneDoors(pruneCrypt(removeEditedStructures(next, m, sel)));
 }
 
 export function pruneCrypt(map: MapData): MapData {
   if (!map.crypt?.length) return map;
   const props = map.crypt.filter((item) => {
     const mounted = CRYPT[item.kind].placement === 'wallFace';
-    return footprintCells(item, (x, y) => map.cells[y]?.[x]?.terrain === (mounted ? 'wall' : 'floor'));
+    return footprintCells(item, (x, y) => mounted ? map.cells[y]?.[x]?.terrain === 'wall' : cryptGround(map.biome, map.cells[y]?.[x]?.terrain));
   });
   const rests = props.filter((item) => (item.kind !== 'bridge' && item.kind !== 'grate') || props.some((pit) => (pit.kind === 'chasm' || pit.kind === 'pit') && intersects(pit, item)));
   return rests.length !== map.crypt.length ? { ...map, crypt: rests } : map;
@@ -77,7 +78,7 @@ export function floodFill(m: MapData, x: number, y: number, terrain: Terrain): M
     next.cells[p.y][p.x].terrain = terrain;
     stack.push({ x: p.x + 1, y: p.y }, { x: p.x - 1, y: p.y }, { x: p.x, y: p.y + 1 }, { x: p.x, y: p.y - 1 });
   }
-  return pruneCrypt(next);
+  return pruneDoors(pruneCrypt(next));
 }
 
 export function eraseArea(m: MapData, sel: Selection, layer?: LayerId): MapData {
@@ -114,7 +115,7 @@ export function eraseArea(m: MapData, sel: Selection, layer?: LayerId): MapData 
     next.buildings = m.buildings?.filter((b) => !intersects(b, sel));
     next.structures = next.structures.filter((s) => !removed.some((b) => s.x === b.x && s.y === b.y && s.w === b.w && s.h === b.h));
     if (!removed.length && next.cells.every((row, y) => row.every((cell, x) => cell.terrain === m.cells[y][x].terrain))) return m;
-    return pruneCrypt(removeEditedStructures(next, m, sel));
+    return pruneDoors(pruneCrypt(removeEditedStructures(next, m, sel)));
   }
   const next = paintCells(m, sel, baseTerrain(m));
   if (layer === 'terrain') return next;
@@ -210,6 +211,7 @@ export function copyArea(m: MapData, sel: Selection): MapData {
       .map((b) => ({ ...b, x: b.x - sel.x, y: b.y - sel.y, door: { x: b.door.x - sel.x, y: b.door.y - sel.y } })),
     civic: m.civic?.filter((item) => encloses({ ...sel, w, h }, item)).map((item) => ({ ...item, x: item.x - sel.x, y: item.y - sel.y })),
     crypt: m.crypt?.filter((item) => encloses({ ...sel, w, h }, item)).map((item) => ({ ...item, x: item.x - sel.x, y: item.y - sel.y })),
+    doors: m.doors?.filter((door) => contains({ ...sel, w, h }, door.x, door.y)).map((door) => ({ ...door, x: door.x - sel.x, y: door.y - sel.y })),
     furnitureSprites: m.furnitureSprites?.filter((p) => m.buildings?.some((b) => encloses({ ...sel, w, h }, b) && b.furniture?.some((f) => f.sprite === p.id))),
     structures: [], river: [], road: [],
   };
@@ -266,5 +268,13 @@ export function pasteArea(target: MapData, source: MapData, x: number, y: number
     next.crypt = target.crypt?.filter((item) => !encloses(bounds, item));
     for (const item of source.crypt ?? []) next = addCryptObject(next, { ...item, x: item.x + x, y: item.y + y, source: 'manual' });
   }
-  return pruneCrypt(removeEditedStructures(next, target, bounds));
+  if (!locks.includes('terrain') && (target.doors?.length || source.doors?.length)) {
+    // Виды дверей едут вместе с клетками: в области вставки остаются метки источника.
+    const marks = [
+      ...(target.doors ?? []).filter((door) => !contains(bounds, door.x, door.y)),
+      ...(source.doors ?? []).map((door) => ({ ...door, x: door.x + x, y: door.y + y })),
+    ];
+    next.doors = marks.length ? marks : undefined;
+  }
+  return pruneDoors(pruneCrypt(removeEditedStructures(next, target, bounds)));
 }

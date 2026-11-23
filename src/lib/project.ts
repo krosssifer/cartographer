@@ -7,9 +7,16 @@ import { FURNITURE_FINISH_KEYS, FURNITURE_KINDS } from './furnitureKit';
 import { CRYPT, CRYPT_KINDS, CRYPT_THEMES } from './cryptKit';
 import { MAX_SPRITES, MAX_SPRITE_DATA, SPRITE_DATA_PATTERN } from './furnitureImport';
 import { DEFAULT_GEN, DEFAULT_RENDER } from './presets';
+import { isMarketArchetypeSetting } from './gen/marketArchetypes';
 import { CHEST_KINDS } from './chests';
 import { validSize } from './objectGeometry';
-import type { ObjectDimensions } from './types';
+import { isArchetypeId } from './gen/archetypes';
+import { MAX_DUNGEON_LEVELS } from './gen/dungeonArchitect';
+import { DOOR_KINDS } from './doors';
+import { isComplexArchetype, isGeometrySetting, isTopologySetting } from './gen/complex/registry';
+import { FLOOR_CODE_PATTERN, isConditionSetting, isStyleSetting } from './gen/complex/styles';
+import { isSettlementLayout, isSettlementType } from './gen/settlementTypes';
+import type { DoorKind, ObjectDimensions } from './types';
 
 export interface Project {
   version: 1;
@@ -52,9 +59,23 @@ export function validateProject(v: unknown): v is ImportProject {
   if (g.publicSpaces !== undefined && !bool(g.publicSpaces)) return false;
   if (g.marketStyle !== undefined && !['auto', 'rows', 'ring', 'fair'].includes(String(g.marketStyle))) return false;
   if (g.marketRichness !== undefined && !finite(g.marketRichness, 0, 1)) return false;
+  if (g.marketArchetype !== undefined && !isMarketArchetypeSetting(g.marketArchetype)) return false;
   if (g.cryptDetail !== undefined && !finite(g.cryptDetail, 0, 1)) return false;
   if (g.cryptArchetype !== undefined && !['tomb', 'catacombs', 'temple', 'archive', 'prison'].includes(String(g.cryptArchetype))) return false;
   if (![g.cryptTraps, g.cryptChasms].every((v) => v === undefined || bool(v))) return false;
+  if (g.dungeonLayout !== undefined && g.dungeonLayout !== 'classic' && g.dungeonLayout !== 'varied') return false;
+  if (g.dungeonLevels !== undefined && !integer(g.dungeonLevels, 1, MAX_DUNGEON_LEVELS)) return false;
+  if (g.dungeonLevel !== undefined && !integer(g.dungeonLevel, 0, MAX_DUNGEON_LEVELS - 1)) return false;
+  // Архитектурный комплекс: архетип и необязательные уточнения ('auto' — выбор по архетипу).
+  if (g.dungeonArchetype !== undefined && !isComplexArchetype(g.dungeonArchetype)) return false;
+  if (g.dungeonTopology !== undefined && !isTopologySetting(g.dungeonTopology)) return false;
+  if (g.dungeonGeometry !== undefined && !isGeometrySetting(g.dungeonGeometry)) return false;
+  if (g.dungeonStyle !== undefined && !isStyleSetting(g.dungeonStyle)) return false;
+  if (g.dungeonCondition !== undefined && !isConditionSetting(g.dungeonCondition)) return false;
+  if (g.settlementType !== undefined && g.settlementType !== 'classic' && !isSettlementType(g.settlementType)) return false;
+  if (g.settlementLayout !== undefined && !isSettlementLayout(g.settlementLayout)) return false;
+  if (g.sceneArchetype !== undefined && g.sceneArchetype !== 'auto' && !isArchetypeId(g.sceneArchetype)) return false;
+  if (g.generationEngine !== undefined && g.generationEngine !== 'legacy' && g.generationEngine !== 'structured') return false;
   if (!integer(r.cellSize, 16, 72) || !finite(r.gridOpacity, 0, 1) || typeof r.gridColor !== 'string' || !/^#[0-9a-f]{6}$/i.test(r.gridColor)) return false;
   if (!['square', 'hex'].includes(String(r.gridType))) return false;
   if (![r.showGrid, r.shading, r.texture, r.showTrees, r.showRocks, r.showStructures, r.vignette].every(bool)) return false;
@@ -104,7 +125,28 @@ export function validateProject(v: unknown): v is ImportProject {
     if (m.crypt !== undefined && (!Array.isArray(m.crypt) || m.crypt.length > Math.min(Number(g.width) * Number(g.height) * 2, 4000) || !m.crypt.every((p: unknown) => record(p) && rectangle(p)
       && CRYPT_KINDS.includes(p.kind as EditorSettings['cryptKind']) && finite(p.w, .15, 20) && finite(p.h, .15, 20) && CHEST_ROTATIONS.includes(p.rotation as ChestRotation)
       && integer(p.variant, 0, 3) && (p.source === 'layout' || p.source === 'manual')
-      && (p.hidden === undefined || bool(p.hidden) && (!p.hidden || p.kind === 'chest' || CRYPT[p.kind as EditorSettings['cryptKind']].secret))))) return false;
+      && (p.hidden === undefined || bool(p.hidden) && (!p.hidden || p.kind === 'chest' || CRYPT[p.kind as EditorSettings['cryptKind']].secret))
+      && (p.unlit === undefined || bool(p.unlit))))) return false;
+    // Покрытие пола комплекса: по букве на клетку, орнаменты внутри карты.
+    if (m.floorLayer !== undefined) {
+      const f = m.floorLayer;
+      if (!record(f) || typeof f.codes !== 'string' || f.codes.length !== Number(g.width) * Number(g.height) || !FLOOR_CODE_PATTERN.test(f.codes)) return false;
+      if (!Array.isArray(f.ornaments) || f.ornaments.length > 200 || !f.ornaments.every((o: unknown) => record(o)
+        && finite(o.x, 0, Number(g.width)) && finite(o.y, 0, Number(g.height)) && finite(o.r, .5, 6)
+        && ['rosette', 'star', 'ring', 'sun'].includes(String(o.kind)))) return false;
+    }
+    // Виды дверей: только на клетках-дверях, без повторов; 'normal' не хранится.
+    if (m.doors !== undefined) {
+      if (!Array.isArray(m.doors) || m.doors.length > Number(g.width) * Number(g.height)) return false;
+      const seenDoors = new Set<number>();
+      for (const d of m.doors as unknown[]) {
+        if (!record(d) || !integer(d.x, 0, Number(g.width) - 1) || !integer(d.y, 0, Number(g.height) - 1) || !DOOR_KINDS.includes(d.kind as DoorKind) || d.kind === 'normal') return false;
+        const key = Number(d.y) * Number(g.width) + Number(d.x);
+        const cell = (m.cells as Array<Array<{ terrain: string }>>)[Number(d.y)][Number(d.x)];
+        if (seenDoors.has(key) || cell.terrain !== 'door') return false;
+        seenDoors.add(key);
+      }
+    }
     if (m.chests !== undefined && (!Array.isArray(m.chests) || m.chests.length > Number(g.width) * Number(g.height) || !m.chests.every((c: unknown) => record(c)
       && finite(c.x, 0, Number(g.width)) && c.x !== g.width && finite(c.y, 0, Number(g.height)) && c.y !== g.height
       && optionalSize(c) && (c.kind === undefined || CHEST_KINDS.includes(c.kind as EditorSettings['chestKind'])) && CHEST_ROTATIONS.includes(c.rotation as ChestRotation)))) return false;
@@ -127,6 +169,7 @@ export function validateProject(v: unknown): v is ImportProject {
     if (e.furnitureSprite !== undefined && e.furnitureSprite !== '' && !spriteKey(e.furnitureSprite)) return false;
     if (e.cryptKind !== undefined && !CRYPT_KINDS.includes(e.cryptKind as EditorSettings['cryptKind'])) return false;
     if (![e.cryptErase, e.cryptConceal].every((value) => value === undefined || bool(value))) return false;
+    if (e.doorKind !== undefined && !DOOR_KINDS.includes(e.doorKind as DoorKind)) return false;
     if (e.chestKind !== undefined && !CHEST_KINDS.includes(e.chestKind as EditorSettings['chestKind'])) return false;
     if (e.sizeLock !== undefined && !bool(e.sizeLock)) return false;
     if (e.sizeUnit !== undefined && e.sizeUnit !== 'cells' && e.sizeUnit !== 'feet') return false;
@@ -156,12 +199,35 @@ export function parseProject(value: unknown): Project | null {
 }
 
 const STORAGE_KEY = 'battlemap-studio-project-v1';
+/** Ключ, куда откладывается повреждённая сессия до первой перезаписи. */
+export const CORRUPT_SESSION_KEY = `${STORAGE_KEY}.corrupt`;
+let quarantined = false;
+
+/**
+ * Читает автосохранение. Если запись есть, но не проходит разбор/валидацию,
+ * её исходный текст копируется в CORRUPT_SESSION_KEY: следующее автосохранение
+ * перезапишет основной ключ, и без копии работа пользователя пропала бы молча.
+ */
 export function readSession(): Project | null {
+  let raw: string | null = null;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    return parseProject(JSON.parse(raw));
-  } catch { return null; }
+    const project = parseProject(JSON.parse(raw));
+    if (project) return project;
+  } catch { /* разбор не удался — ниже откладываем копию */ }
+  if (raw) {
+    try {
+      if (localStorage.getItem(CORRUPT_SESSION_KEY) !== raw) localStorage.setItem(CORRUPT_SESSION_KEY, raw);
+      quarantined = true;
+    } catch { /* хранилище недоступно или переполнено — копию сделать нельзя */ }
+  }
+  return null;
+}
+
+/** Была ли при последнем чтении отложена повреждённая сессия. */
+export function sessionWasQuarantined(): boolean {
+  return quarantined;
 }
 export function saveSession(p: Project) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(p));

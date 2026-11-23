@@ -4,10 +4,15 @@ import { repairMap } from './gen/repair';
 import { normalizeTerrain } from './gen/normalize';
 import { smoothTerrain } from './gen/morphology';
 import { generateSettlement } from './settlement';
+import { generateVariedDungeon } from './gen/dungeonArchitect';
+import { generateComplexDungeon } from './gen/complex';
+import { isComplexArchetype } from './gen/complex/registry';
 import { generateStructuredVegetation } from './gen/forest';
 import { caveEntranceWidth, generateStructuredCave } from './gen/cave';
 import { planRoadNetwork } from './gen/roads';
 import { planScene } from './gen/scene';
+import { resolveArchetype } from './gen/archetypes';
+import { generateSceneMap } from './gen/scenes';
 import { dungeonPlan } from './gen/dungeon';
 import { cryptCompositionPlan, furnishByPurpose, placeCorridorTraps } from './gen/cryptplan';
 import { SeededRandom } from './gen/random';
@@ -41,13 +46,22 @@ export function generateMap(s: GenSettings): MapData {
   const raw = generateMapRaw(s);
   // Нормализация террейна до починки: убираем изолированные лужи, мосты без воды,
   // оторванные куски дороги и случайные пятна земли — они читаются как баги.
-  const normalized = normalizeTerrain(raw, s);
+  // Подземелье 'varied' (plan.dungeon) выходит уже обставленным: купели и лужи
+  // спроектированы под залы и учтены декоратором склепа. Нормализация и
+  // морфология превратили бы их в caveFloor, который склеп считает
+  // непроходимым, — проходы между мебелью оказались бы отрезаны.
+  const designed = raw.plan?.dungeon !== undefined;
+  const normalized = designed ? raw : normalizeTerrain(raw, s);
   // Морфология: убираем одноклеточные вкрапления и лестницы на стыках грунта.
-  const smoothed = smoothTerrain(normalized);
+  // Поселение по типу (plan.settlement): площади, дворы и переулки шириной в
+  // клетку спроектированы планировщиком — морфология съела бы их как шум.
+  const smoothed = designed || raw.plan?.settlement !== undefined ? normalized : smoothTerrain(normalized);
   // Концы троп: после морфологии площадка у конца ответвления могла «зарасти».
   // Возвращаем её — конец пути должен читаться как место, а не обрубок.
   const blockedForYard = new Set<Terrain>(['water', 'deepWater', 'wall', 'void', 'caveWall', 'buildingWall', 'roof', 'door', 'floor']);
-  for (const path of smoothed.plan?.roads ?? []) {
+  // Поселение по типу ставит площади и дворы само: «двор» у конца улицы затёр бы
+  // мощение площади или обход цитадели грунтом.
+  for (const path of smoothed.plan?.settlement ? [] : smoothed.plan?.roads ?? []) {
     const end = path.points[path.points.length - 1];
     if (!end) continue;
     const centerTerrain = smoothed.cells[end.y]?.[end.x]?.terrain;
@@ -71,6 +85,11 @@ function generateMapRaw(s: GenSettings): MapData {
   if (s.biome === 'cave') return generateCave(s);
   if (s.biome === 'dungeon') return generateDungeon(s);
   if (s.biome === 'village' || s.biome === 'town') return generateSettlement(s);
+  // Сцена-архетип работает только в структурном движке; 'auto' — прежний путь.
+  if ((s.generationEngine ?? 'structured') === 'structured' && s.sceneArchetype && s.sceneArchetype !== 'auto') {
+    const resolution = resolveArchetype(s.sceneArchetype, s.biome);
+    if (resolution) return generateSceneMap(s, resolution);
+  }
   return generateOverland(s);
 }
 
@@ -714,6 +733,12 @@ function generateCave(s: GenSettings): MapData {
 // ---------- Подземелье (комнаты + коридоры) ----------
 
 function generateDungeon(s: GenSettings): MapData {
+  // Разнообразная планировка — отдельный генератор; без неё (по умолчанию)
+  // работает прежний код ниже без изменений.
+  // Архитектурный комплекс (gen.dungeonArchetype) — модульный генератор
+  // src/lib/gen/complex; без поля работают прежние планировки.
+  if (isComplexArchetype(s.dungeonArchetype)) return generateComplexDungeon(s);
+  if (s.dungeonLayout === 'varied') return generateVariedDungeon(s);
   const { width: w, height: h } = s;
   const rng = mulberry32(s.seed);
   const hn = new Perlin(s.seed);

@@ -27,7 +27,8 @@ for (const biome of ['village', 'town'] as const) for (const [width, height] of 
     }
     const busy = planned[5];
     assert.deepEqual(busy, generateSettlement({ ...settings, density: 1 }));
-    assert.ok(busy.civic!.some((p) => p.kind === 'square'));
+    // Площадь есть всегда: мощёная ('square') или грунтовый/луговой рынок по архетипу.
+    assert.ok(busy.civic!.some((p) => p.kind === 'square') || busy.plan?.market !== undefined);
     for (const [i, b] of houses[5].entries()) {
       assert.ok(b.w * b.h >= 20);
       assert.ok(Math.min(b.w, b.h) >= 4);

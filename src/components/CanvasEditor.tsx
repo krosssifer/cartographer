@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, type PointerEvent, type RefObject } from 'react';
 import { drawObjectGhost, excludeObject, highResSettings, objectGhostBounds, renderMap, renderPixelRatio } from '../lib/render';
 import { artUrl } from '../lib/assets';
+import { doorKindAt, pruneDoors, setDoorKind } from '../lib/doors';
 import { cloneMap, eraseArea, floodFill, getChestStamp, normalizeSelection, paintCells, pasteArea, placeChest, placeObject, placeStructure, pruneCrypt } from '../lib/edits';
 import { addBuilding, addCivic, addFurnishing, buildingAt, buildingStamp, canPlaceBuilding, canPlaceCivic, changeRoof, civicStamp, furnishingAt, removeFurnishing } from '../lib/settlementEdits';
 import { civicArt, marketStalls, ROOF_KIT } from '../lib/settlementKit';
@@ -218,14 +219,20 @@ export default function CanvasEditor(p: Props) {
     if (tool === 'brush') {
       const midX = startX + (size - 1) / 2, midY = startY + (size - 1) / 2;
       let next = m;
+      const doorKind = settings.terrain === 'door' ? settings.doorKind ?? 'normal' : undefined;
+      const marked: Point[] = [];
       for (let row = Math.max(0, startY); row < Math.min(m.height, startY + size); row++) {
         for (let col = Math.max(0, startX); col < Math.min(m.width, startX + size); col++) {
           if (settings.brushShape === 'round' && Math.hypot(col - midX, row - midY) > size / 2) continue;
+          // Кисть «дверь» перекрашивает и вид уже стоящей двери.
+          if (doorKind && doorKindAt(next, col, row) !== doorKind) marked.push({ x: col, y: row });
           if (next.cells[row][col].terrain === settings.terrain) continue;
           if (next === m) next = cloneMap(m);
           next.cells[row][col].terrain = settings.terrain;
         }
       }
+      for (const cell of marked) next = setDoorKind(next, cell.x, cell.y, doorKind!);
+      if (next !== m) next = pruneDoors(next);
       return next === m || p.lockedLayers.includes('crypt') ? next : pruneCrypt(next);
     }
     if (tool === 'tree' || tool === 'rock') {
@@ -396,7 +403,13 @@ export default function CanvasEditor(p: Props) {
       if (room) p.onRoom(room);
       p.onSelect(target ? null : selection);
     }
-    else if (g.tool === 'rect') p.onCommit(paintCells(map, normalizeSelection(cell(g.start), cell(point(e))), settings.terrain));
+    else if (g.tool === 'rect') {
+      const area = normalizeSelection(cell(g.start), cell(point(e)));
+      let next = paintCells(map, area, settings.terrain);
+      const doorKind = settings.terrain === 'door' ? settings.doorKind ?? 'normal' : undefined;
+      if (doorKind) for (let y = area.y; y < area.y + area.h; y++) for (let x = area.x; x < area.x + area.w; x++) next = setDoorKind(next, x, y, doorKind);
+      p.onCommit(next);
+    }
     else if (g.tool !== 'hand' && g.draft !== map) p.onCommit(g.draft);
   }
 

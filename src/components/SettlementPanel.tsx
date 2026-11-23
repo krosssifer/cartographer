@@ -1,12 +1,18 @@
 import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import { artUrl } from '../lib/assets';
 import { generateSettlement } from '../lib/settlement';
+import { isSettlementType } from '../lib/gen/settlementTypes';
+import { MARKET_ARCHETYPE_OPTIONS, getMarketArchetype, isMarketArchetypeSetting, type MarketArchetypeSetting } from '../lib/gen/marketArchetypes';
 import { BUILDING_SIZES, CIVIC_GROUPS, CIVIC_KIT, CIVIC_SIZES, MARKET_STYLES, isSettlement, ROOF_KIT, ROOF_SHAPES } from '../lib/settlementKit';
 import type { EditorSettings, EditorTool, GenSettings, MapData, MarketStyle, RoofShape, SettlementStyle } from '../lib/types';
 import Icon from './Icon';
 import { Toggle } from './controls';
 
-export type LayoutSettings = { style: SettlementStyle; density: number; publicSpaces: boolean; marketStyle: MarketStyle; marketRichness: number };
+export type LayoutSettings = { style: SettlementStyle; density: number; publicSpaces: boolean; marketStyle: MarketStyle; marketRichness: number; marketArchetype: MarketArchetypeSetting };
+
+/** Настройка архетипа рынка из GenSettings: поле отсутствует у старых проектов — значит прежний рынок. */
+export const marketArchetypeOf = (gen: Pick<GenSettings, 'marketArchetype'>): MarketArchetypeSetting =>
+  isMarketArchetypeSetting(gen.marketArchetype) ? gen.marketArchetype : 'classic';
 
 export function SettlementChoices({ style, onStyle }: { style: SettlementStyle; onStyle: (style: SettlementStyle) => void }) {
   return <div className="settlement-types" role="group" aria-label="Тип поселения">
@@ -24,21 +30,37 @@ export function DensitySlider({ density, onDensity }: { density: number; onDensi
   </label>;
 }
 
+/** Какой рынок получился на карте: архетип (с заменой, если выбранный не подошёл) и раскладка. */
+function MarketSummary({ map }: { map: MapData }) {
+  const market = map.plan?.market;
+  if (!market) return null;
+  const requested = market.requested ? getMarketArchetype(market.requested)?.label : undefined;
+  return <p className="tool-hint" aria-live="polite">
+    Рынок на карте: «{market.label}», торговых мест: {market.placed}{requested ? ` (вместо «${requested}»: не подходит месту)` : ''}.
+  </p>;
+}
+
 const houseCount = (n: number) => `${n} ${n % 100 >= 11 && n % 100 <= 14 ? 'домов' : n % 10 === 1 ? 'дом' : n % 10 >= 2 && n % 10 <= 4 ? 'дома' : 'домов'}`;
 
 function PlanPanel({ gen, map, onApply, locked }: { gen: GenSettings; map: MapData; onApply: (value: LayoutSettings) => void; locked: boolean }) {
-  const [draft, setDraft] = useState<LayoutSettings>(() => ({ style: isSettlement(gen.biome) ? gen.biome : gen.settlement, density: gen.density, publicSpaces: gen.publicSpaces, marketStyle: gen.marketStyle, marketRichness: gen.marketRichness }));
+  const [draft, setDraft] = useState<LayoutSettings>(() => ({ style: isSettlement(gen.biome) ? gen.biome : gen.settlement, density: gen.density, publicSpaces: gen.publicSpaces, marketStyle: gen.marketStyle, marketRichness: gen.marketRichness, marketArchetype: marketArchetypeOf(gen) }));
   const changed = draft.style !== map.biome || draft.density !== gen.density || draft.publicSpaces !== gen.publicSpaces
-    || draft.marketStyle !== gen.marketStyle || draft.marketRichness !== gen.marketRichness;
-  const estimate = useMemo(() => changed ? (generateSettlement({ ...gen, biome: draft.style, density: draft.density, publicSpaces: draft.publicSpaces, marketStyle: draft.marketStyle, marketRichness: draft.marketRichness }).buildings?.length ?? 0) : (map.buildings?.length ?? 0),
+    || draft.marketStyle !== gen.marketStyle || draft.marketRichness !== gen.marketRichness || draft.marketArchetype !== marketArchetypeOf(gen);
+  const estimate = useMemo(() => changed ? (generateSettlement({ ...gen, biome: draft.style, density: draft.density, publicSpaces: draft.publicSpaces, marketStyle: draft.marketStyle, marketRichness: draft.marketRichness, marketArchetype: draft.marketArchetype }).buildings?.length ?? 0) : (map.buildings?.length ?? 0),
     [gen, draft, changed, map.buildings]);
   const patch = (value: Partial<LayoutSettings>) => setDraft((old) => ({ ...old, ...value }));
   return <section className="sidebar-section layout-section" aria-label="Планировка поселения">
     <div className="section-heading"><h2><Icon name="compass" size={17} /> Планировка</h2><span aria-live="polite" className="plot-count">{changed ? 'В плане: ' : ''}{houseCount(estimate)}</span></div>
-    <SettlementChoices style={draft.style} onStyle={(style) => patch({ style })} />
+    {!isSettlementType(gen.settlementType) && <SettlementChoices style={draft.style} onStyle={(style) => patch({ style })} />}
     <DensitySlider density={draft.density} onDensity={(density) => patch({ density })} />
     <Toggle label="Площади и городские детали" checked={draft.publicSpaces} onChange={(publicSpaces) => patch({ publicSpaces })} />
     {draft.publicSpaces && <div className="market-settings">
+      <label className="field-label">Тип рынка
+        <select aria-label="Тип рынка" value={draft.marketArchetype} onChange={(e) => patch({ marketArchetype: e.target.value as MarketArchetypeSetting })}>
+          {MARKET_ARCHETYPE_OPTIONS.map(({ id, label }) => <option value={id} key={id}>{label}</option>)}
+        </select>
+      </label>
+      {!changed && <MarketSummary map={map} />}
       <label className="field-label">Планировка рынка
         <select aria-label="Планировка рынка" value={draft.marketStyle} onChange={(e) => patch({ marketStyle: e.target.value as MarketStyle })}>
           {MARKET_STYLES.map(({ id, label }) => <option value={id} key={id}>{label}</option>)}
@@ -90,7 +112,7 @@ export default function SettlementPanel({ gen, map, settings: s, layoutLocked, o
     });
   }, [civicGroup, s.tool, s.civicKind, s.civicSize]);
   return <div className="settlement-panel">
-    <PlanPanel key={`${gen.seed}:${gen.biome}:${gen.density}:${gen.publicSpaces}:${gen.marketStyle}:${gen.marketRichness}:${gen.width}:${gen.height}`} gen={gen} map={map} onApply={onApply} locked={layoutLocked} />
+    <PlanPanel key={`${gen.seed}:${gen.biome}:${gen.density}:${gen.publicSpaces}:${gen.marketStyle}:${gen.marketRichness}:${gen.marketArchetype}:${gen.width}:${gen.height}`} gen={gen} map={map} onApply={onApply} locked={layoutLocked} />
     <section className="sidebar-section roof-section" aria-label="Кровля и постройки">
       <div className="section-heading"><h2><Icon name="roof" size={17} /> Кровля</h2><button type="button" className="quiet-btn build-tool" title="Поставить дом (N)" aria-pressed={s.tool === 'building'} onClick={() => onTool(s.tool === 'building' ? 'roof' : 'building')}><Icon name="plus" size={14} /> Дом</button></div>
       <div className="roof-swatches" role="group" aria-label="Материал крыши">

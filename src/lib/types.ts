@@ -11,7 +11,7 @@ export type CivicKind = 'market' | 'square' | 'well' | 'fountain' | 'cart' | 'ga
   | 'marketTentCanopy' | 'marketTentPatch' | 'marketTentTarp' | 'marketTentBurlap'
   | 'marketStallProduce' | 'marketStallFruit' | 'marketStallBread' | 'marketStallGrain'
   | 'marketStallMeat' | 'marketStallPottery' | 'marketStallFabric' | 'marketStallPotion'
-  | 'marketStallTools' | 'marketStallFish'
+  | 'marketStallTools' | 'marketStallFish' | 'marketStallCheese' | 'marketStallTextiles' | 'marketStallSweets'
   | 'marketWagon' | 'marketWagonCovered' | 'marketWheelbarrow' | 'marketWheelbarrowStone'
   | 'marketCrates' | 'marketBarrels' | 'marketSacks' | 'marketRope' | 'marketChest'
   | 'marketChestOpen' | 'marketBaskets' | 'marketBarrelPair' | 'marketNoticeBoard'
@@ -51,8 +51,19 @@ export type CryptKind =
   | 'pressurePlateRusty' | 'buttonPanel' | 'gear' | 'gearCog' | 'chainPulley' | 'pulleyBlock'
   | 'lever' | 'leverBlade' | 'doorWood' | 'doorMetal' | 'doorRound' | 'doorBarred' | 'gateBars'
   | 'hangingCage' | 'pedestalStatue' | 'orbRed' | 'bust' | 'runeBlue' | 'runeCircleBlue' | 'runeCirclePurple'
-  | 'greenRuneStone' | 'flail' | 'crackedPlate';
-export type CryptTheme = 'entry' | 'burial' | 'sanctum' | 'ossuary' | 'archive' | 'reliquary' | 'storage' | 'watch';
+  | 'greenRuneStone' | 'flail' | 'crackedPlate'
+  // переходы между уровнями подземелья
+  | 'stairsDown' | 'stairsUp'
+  // архитектурные комплексы: свет и вертикальные связи
+  | 'wallTorch' | 'chandelier' | 'magicLamp' | 'spiralStairs' | 'liftPlatform';
+export type CryptTheme = 'entry' | 'burial' | 'sanctum' | 'ossuary' | 'archive' | 'reliquary' | 'storage' | 'watch'
+  // залы разнообразной планировки: жилые покои, мастерская, тюремная камера
+  | 'quarters' | 'forge' | 'cell';
+/** Планировка подземелья: прежняя (прямоугольные залы) или разнообразная. */
+export type DungeonLayout = 'classic' | 'varied';
+/** Вид дверного проёма. Клетка остаётся terrain 'door', вид хранится в MapData.doors. */
+export type DoorKind = 'normal' | 'double' | 'arch' | 'secret' | 'broken' | 'blocked' | 'portcullis' | 'gate';
+export interface DoorMark { x: number; y: number; kind: DoorKind }
 export type CryptPlacement = 'wall' | 'wallFace' | 'center' | 'corner' | 'any';
 
 export type Terrain =
@@ -175,6 +186,8 @@ export interface CryptObject extends Selection {
   variant: number;
   source: 'layout' | 'manual';
   hidden?: boolean;
+  /** Светильник погашен (заброшенный комплекс): рисуется без свечения. */
+  unlit?: boolean;
 }
 
 export interface CryptRoom extends Selection { theme: CryptTheme }
@@ -197,9 +210,20 @@ export interface MapData {
   chests: Chest[];
   river: Point[];
   road: Point[];
+  /** Виды дверей по клеткам terrain 'door' (optional: без записи — обычная дверь). */
+  doors?: DoorMark[];
   /** Структурный план (зоны/POI/группы). Optional — старые карты без него валидны. */
   plan?: GenerationPlan;
+  /**
+   * Покрытие пола архитектурного комплекса: строка width·height символов
+   * (см. gen/complex/styles.ts FLOOR_CODES; '.' — без покрытия) и орнаменты
+   * в центрах залов. Optional — карты без него рисуются как раньше.
+   */
+  floorLayer?: FloorLayer;
 }
+
+export interface FloorOrnament { x: number; y: number; r: number; kind: 'rosette' | 'star' | 'ring' | 'sun' }
+export interface FloorLayer { codes: string; ornaments: FloorOrnament[] }
 
 export interface GenSettings {
   seed: number;
@@ -228,6 +252,39 @@ export interface GenSettings {
   cryptArchetype: CryptArchetype;
   /** Движок генерации: структурный pipeline или прежний поклеточный. */
   generationEngine?: 'legacy' | 'structured';
+  /**
+   * Сцена-архетип для открытых биомов ('auto' или отсутствие — прежняя
+   * генерация). Значение — id из реестра gen/archetypes.ts.
+   */
+  sceneArchetype?: string;
+  /** Планировка подземелья ('classic' или отсутствие — прежние прямоугольные залы). */
+  dungeonLayout?: DungeonLayout;
+  /** Число связанных уровней подземелья (1–4, только для 'varied'). */
+  dungeonLevels?: number;
+  /** Открытый уровень подземелья (0 — верхний). */
+  dungeonLevel?: number;
+  /**
+   * Архитектурный комплекс (gen/complex/registry.ts): крепость, шахта, храм…
+   * Отсутствие поля — прежние генераторы склепа (классический и разнообразный).
+   */
+  dungeonArchetype?: string;
+  /** Топология графа комплекса: 'auto' — по архетипу и seed. */
+  dungeonTopology?: string;
+  /** Геометрия залов: прямоугольная, разнообразная, органическая. */
+  dungeonGeometry?: string;
+  /** Архитектурный стиль: 'auto' — стиль архетипа. */
+  dungeonStyle?: string;
+  /** Состояние сооружения: 'auto' — по архетипу и seed. */
+  dungeonCondition?: string;
+  /** Тип поселения ('classic' или отсутствие — прежняя планировка). Id из gen/settlementTypes.ts. */
+  settlementType?: string;
+  /** Схема улиц ('auto' — по типу поселения). */
+  settlementLayout?: string;
+  /**
+   * Архетип рынка: 'auto' — по поселению, воде и размеру; id из
+   * gen/marketArchetypes.ts; 'classic' или отсутствие — прежний рынок.
+   */
+  marketArchetype?: string;
 }
 
 export interface Selection {
@@ -265,6 +322,8 @@ export interface EditorSettings {
   objectSizes: Record<string, ObjectDimensions>;
   sizeLock: boolean;
   sizeUnit: 'cells' | 'feet';
+  /** Вид двери, которую ставит кисть террейна «Дверь». */
+  doorKind?: DoorKind;
 }
 
 export interface RenderSettings {

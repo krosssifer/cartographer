@@ -152,11 +152,22 @@ export function cryptPainter(ctx: CanvasRenderingContext2D, map: MapData, settin
       if (t === 'floor' || t === 'door') ctx.rect(x, y, 1, 1);
     }
     ctx.clip(); ctx.globalCompositeOperation = 'screen';
+    // Старые карты (без покрытия пола) светятся как прежде; комплекс — по всем светильникам.
+    const complex = map.floorLayer !== undefined;
     for (const item of items) {
       const { x, y, w, h, kind } = item;
+      if (item.unlit && kind !== 'altar') continue;
       if (kind === 'brazier' || kind === 'altar') glow(x + w / 2, y + h / 2, 2.72, '187,108,43', .27, .11);
       else if (kind === 'runeCircle') glow(x + w / 2, y + h / 2, 2.2, '47,125,116', .22, .11);
       else if (kind === 'candles') glow(x + w / 2, y + h / 2, 1.58, '192,132,63', .18, .07);
+      // Светильники архитектурного комплекса; погашенные (unlit) не светят.
+      else if (kind === 'wallTorch') glow(x + w / 2, y + h / 2, 2.3, '196,118,48', .24, .1);
+      else if (kind === 'chandelier') glow(x + w / 2, y + h / 2, 3.6, '204,150,78', .22, .1);
+      else if (kind === 'magicLamp') glow(x + w / 2, y + h / 2, 2.4, '96,150,214', .22, .1);
+      else if (complex && (kind === 'brazierStand' || kind === 'pyre')) glow(x + w / 2, y + h / 2, 2.3, '187,108,43', .22, .09);
+      else if (complex && (kind === 'candleStand' || kind === 'candleWheel' || kind === 'candleHolder' || kind === 'oilLamp')) glow(x + w / 2, y + h / 2, 1.6, '192,132,63', .17, .07);
+      else if (complex && kind === 'crystalCluster') glow(x + w / 2, y + h / 2, 1.7, '90,170,190', .16, .07);
+      else if (complex && kind === 'glowingMushroom') glow(x + w / 2, y + h / 2, 1.4, '110,190,120', .14, .06);
     }
     ctx.restore();
   }

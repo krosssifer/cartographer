@@ -116,7 +116,7 @@ let last: { cells: MapData['cells']; key: string; image: ImageData } | undefined
 export function paintTerrain(map: MapData, settings: RenderSettings, seed: number): ImageData {
   const { width, height } = map;
   const samples = Math.max(14, Math.min(settings.cellSize, Math.floor(Math.sqrt(22_000_000 / (width * height)))));
-  const key = `${seed}:${samples}:${settings.texture}:${settings.shading}:${settings.showStructures}:${getAssets().ready}`;
+  const key = `${seed}:${samples}:${settings.texture}:${settings.shading}:${settings.showStructures}:${getAssets().ready}:${map.plan?.settlement?.fortification ? 1 : 0}`;
   if (last?.cells === map.cells && last.key === key) return last.image;
 
   const w = width * samples, h = height * samples;
@@ -125,6 +125,7 @@ export function paintTerrain(map: MapData, settings: RenderSettings, seed: numbe
   const tiles = new Uint8Array(width * height);
   const light = new Float32Array(width * height);
   const fallbackLand = index[map.biome === 'cave' ? 'caveFloor' : map.biome === 'dungeon' ? 'floor' : map.biome === 'snow' ? 'snow' : map.biome === 'swamp' ? 'mud' : map.biome === 'village' || map.biome === 'town' ? 'plaza' : 'sand'];
+  const fortified = map.plan?.settlement?.fortification !== undefined;
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     const at = y * width + x;
     const { terrain, height: elevation } = map.cells[y][x];
@@ -132,7 +133,9 @@ export function paintTerrain(map: MapData, settings: RenderSettings, seed: numbe
     // камня вокруг залов, а на поверхности wall — обычная каменная кладка.
     // Раньше wall → void давало чёрные квадраты вокруг домов и руин.
     const underground = map.biome === 'dungeon' || map.biome === 'cave';
-    const shown = !settings.showStructures && (terrain === 'wall' || terrain === 'door')
+    // Под стеной поселения — земля: саму стену рисует townWallPaint лентой.
+    const shown = terrain === 'wall' && fortified ? 'grass'
+      : !settings.showStructures && (terrain === 'wall' || terrain === 'door')
       ? 'floor'
       : terrain === 'wall' ? (underground ? 'caveWall' : 'wall') : terrain;
     tiles[at] = index[shown];

@@ -3,6 +3,12 @@ import { BIOME_LABELS, CRYPT_ARCHETYPE_IDS, CRYPT_ARCHETYPE_LABELS, PRESETS } fr
 import { Slider, Toggle, pct } from './controls';
 import { DensitySlider, SettlementChoices } from './SettlementPanel';
 import { CryptOptions } from './CryptPanel';
+import { ScenePicker } from './ScenePanel';
+import { DungeonLayoutOptions } from './DungeonLayoutPanel';
+import { isComplexArchetype } from '../lib/gen/complex/registry';
+import { SettlementTypeOptions } from './SettlementTypePanel';
+import { isSettlementType } from '../lib/gen/settlementTypes';
+import { getArchetype } from '../lib/gen/archetypes';
 import Icon from './Icon';
 
 const CRYPT_ARCHETYPE_HINTS: Record<CryptArchetype, string> = {
@@ -27,6 +33,10 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
   const isCave = gen.biome === 'cave', isDungeon = gen.biome === 'dungeon';
   const isSettlement = gen.biome === 'village' || gen.biome === 'town';
   const isOverland = !isCave && !isDungeon && !isSettlement;
+  const structured = (gen.generationEngine ?? 'structured') === 'structured';
+  // Сцена-архетип сама решает рельеф, воду и постройки: соответствующие
+  // переключатели классической генерации прячем, чтобы не было «мёртвых» настроек.
+  const scene = isOverland && structured ? getArchetype(gen.sceneArchetype) : undefined;
   const plan = map.plan;
   const problems = plan?.report?.problems ?? [];
   const warnings = plan?.report?.warnings ?? [];
@@ -62,13 +72,18 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
       <p className="size-note">До 100 × 80 клеток · большие карты автоматически оптимизируют детализацию</p>
       <button type="button" className="action-btn primary-btn generate-btn" onClick={onRandomSeed}><Icon name="dice" size={17} /> Сгенерировать</button>
     </div>
+    {isOverland && structured && <details open className="sidebar-section generation-fields">
+      <summary className="section-heading"><h2>Сцена</h2><Icon name="target" size={17} /></summary>
+      <ScenePicker gen={gen} map={map} onGen={onGen} />
+    </details>}
     {isDungeon && <details open className="sidebar-section generation-fields">
       <summary className="section-heading"><h2>Наполнение склепа</h2><Icon name="crypt" size={17} /></summary>
       <CryptOptions settings={gen} onChange={onGen} />
     </details>}
     {isSettlement && <div className="sidebar-section generation-fields">
       <div className="section-heading"><h2>Планировка</h2><Icon name="structure" size={17} className="section-symbol" /></div>
-      <SettlementChoices style={gen.biome === 'town' ? 'town' : 'village'} onStyle={(style) => onGen({ biome: style, settlement: style })} />
+      <SettlementTypeOptions gen={gen} map={map} onGen={onGen} />
+      {!isSettlementType(gen.settlementType) && <SettlementChoices style={gen.biome === 'town' ? 'town' : 'village'} onStyle={(style) => onGen({ biome: style, settlement: style })} />}
       <DensitySlider density={gen.density} onDensity={(density) => onGen({ density })} />
       <Toggle label="Площади и городские детали" checked={gen.publicSpaces} onChange={(publicSpaces) => onGen({ publicSpaces })} />
       <Toggle label="Река" checked={gen.river} onChange={(river) => onGen({ river })} />
@@ -80,24 +95,31 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
       <Slider label={isDungeon ? 'Затопленность' : 'Уровень воды'} value={gen.waterLevel} min={0} max={0.7} step={0.01} format={pct} onChange={(waterLevel) => onGen({ waterLevel })} />
       {isCave && <Slider label="Открытость пещеры" value={gen.caveOpenness} min={0} max={1} step={0.05} format={pct} onChange={(caveOpenness) => onGen({ caveOpenness })} />}
       {isDungeon && <>
+        {/* В комплексе число залов задают кнопки «Размер», тип — архетип комплекса. */}
+        {!isComplexArchetype(gen.dungeonArchetype) && <>
         <Slider label="Количество комнат" value={gen.rooms} min={2} max={14} onChange={(rooms) => onGen({ rooms })} />
         <label className="field-label">Тип склепа<select aria-label="Тип склепа" value={gen.cryptArchetype} onChange={(e) => onGen({ cryptArchetype: e.target.value as CryptArchetype })}>
           {CRYPT_ARCHETYPE_IDS.map((id) => <option key={id} value={id}>{CRYPT_ARCHETYPE_LABELS[id]}</option>)}
         </select></label>
         <p className="tool-hint">{CRYPT_ARCHETYPE_HINTS[gen.cryptArchetype]}</p>
+        </>}
+        <DungeonLayoutOptions gen={gen} map={map} onGen={onGen} />
       </>}
-      {isOverland && <>
+      {isOverland && !scene && <>
         <Toggle label="Река" checked={gen.river} onChange={(river) => onGen({ river })} />
         <Toggle label="Дорога с мостами" checked={gen.road} onChange={(road) => onGen({ road })} />
       </>}
+      {scene?.road === 'optional' && <Toggle label="Дорога к месту сцены" checked={gen.road} onChange={(road) => onGen({ road })} />}
     </details>}
     <details className="sidebar-section generation-fields">
       <summary className="section-heading"><h2>Объекты</h2><Icon name="chevron" size={15} className="section-symbol" /></summary>
       <Slider label={isDungeon || isCave ? 'Грибы' : 'Растительность'} value={gen.vegetation} min={0} max={1} step={0.05} format={pct} onChange={(vegetation) => onGen({ vegetation })} />
       <Slider label={isDungeon ? 'Обломки' : 'Камни и валуны'} value={gen.rocks} min={0} max={1} step={0.05} format={pct} onChange={(rocks) => onGen({ rocks })} />
       {isOverland && <>
-        <Slider label="Постройки" value={gen.structures} min={0} max={6} onChange={(structures) => onGen({ structures })} />
-        <Toggle label="Руины вместо целых зданий" checked={gen.ruined} onChange={(ruined) => onGen({ ruined })} />
+        {!scene && <>
+          <Slider label="Постройки" value={gen.structures} min={0} max={6} onChange={(structures) => onGen({ structures })} />
+          <Toggle label="Руины вместо целых зданий" checked={gen.ruined} onChange={(ruined) => onGen({ ruined })} />
+        </>}
         <Toggle
           label="Структурная генерация (эксперимент)"
           checked={(gen.generationEngine ?? 'structured') === 'structured'}
@@ -124,7 +146,8 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
         <Toggle label="Разметка генерации (debug)" checked={render.showDebug === true} onChange={(showDebug) => onRender({ showDebug })} />
       <Toggle label="Постройки" checked={render.showStructures} onChange={(showStructures) => onRender({ showStructures })} />
       {isDungeon && <Toggle label="Метки ловушек" checked={render.showSecrets} onChange={(showSecrets) => onRender({ showSecrets })} />}
-      {isSettlement && <Toggle label="Городские объекты" checked={render.showCivic} onChange={(showCivic) => onRender({ showCivic })} />}
+      {(isSettlement || (map.civic?.length ?? 0) > 0) && <Toggle label="Городские объекты" checked={render.showCivic} onChange={(showCivic) => onRender({ showCivic })} />}
+      {isOverland && (map.crypt?.length ?? 0) > 0 && <Toggle label="Предметы сцены" checked={render.showCrypt} onChange={(showCrypt) => onRender({ showCrypt })} />}
       <Toggle label="Сундуки" checked={render.showChests} onChange={(showChests) => onRender({ showChests })} />
     </details>
 
@@ -134,6 +157,12 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
         <span className="gen-report-dot" />
         {problems.length === 0 ? 'Проверка пройдена' : `${problems.length} ${plural(problems.length, 'проблема', 'проблемы', 'проблем')}`}
       </div>
+      {plan?.archetype && <p className="scene-report">
+        Сцена «{plan.archetype.label}»{plan.archetype.requested ? ` (замена для «${getArchetype(plan.archetype.requested)?.label ?? plan.archetype.requested}»)` : ''}
+        {' · '}вода {Math.round(plan.archetype.landscape.waterShare * 100)}%, скалы {Math.round(plan.archetype.landscape.rockShare * 100)}%
+        {plan.archetype.landscape.lakes > 0 ? `, озёр ${plan.archetype.landscape.lakes}` : ''}
+        {plan.archetype.landscape.checks.some((check) => !check.ok) ? ' · есть замечания к рельефу' : ' · рельеф проверен'}
+      </p>}
       {plan && (
         <div className="gen-report-stats">
           <span>{plan.zones.length} зон</span>

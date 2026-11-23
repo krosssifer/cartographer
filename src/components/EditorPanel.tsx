@@ -2,8 +2,9 @@ import Icon from './Icon';
 import { Slider } from './controls';
 import { artUrl, TILE_ART } from '../lib/assets';
 import { CHESTS, CHEST_KINDS } from '../lib/chests';
+import { DOOR_KINDS, DOOR_KIND_LABELS } from '../lib/doors';
 import { TERRAIN_COLORS, TERRAIN_LABELS } from '../lib/palette';
-import type { EditorSettings, EditorTool, LayerId, MapData, Selection, Terrain, TreeKind } from '../lib/types';
+import type { DoorKind, EditorSettings, EditorTool, LayerId, MapData, Selection, Terrain, TreeKind } from '../lib/types';
 import { cn } from '../utils/cn';
 
 export const TOOL_LABELS: Record<EditorTool, string> = {
@@ -116,6 +117,9 @@ export default function EditorPanel(p: Props) {
         })}
       </div>
       <div className="palette-status"><span>{TERRAIN_LABELS[s.terrain]}</span><button title="Пипетка (I)" type="button" className="icon-btn" aria-pressed={s.tool === 'pick'} onClick={() => p.onTool('pick')}><Icon name="pick" size={16} /></button></div>
+      {s.terrain === 'door' && <label className="field-label">Вид двери<select aria-label="Вид двери" value={s.doorKind ?? 'normal'} onChange={(e) => p.onSettings({ doorKind: e.target.value as DoorKind })}>
+        {DOOR_KINDS.map((kind) => <option key={kind} value={kind}>{DOOR_KIND_LABELS[kind]}</option>)}
+      </select><span className="tool-hint">Кисть и область ставят выбранный вид; кистью по готовой двери можно сменить её вид.</span></label>}
     </details>
 
     {(s.tool === 'select' || !!p.selection || !!p.clipboard) && <div className="sidebar-section selection-section">

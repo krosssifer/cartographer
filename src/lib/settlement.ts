@@ -8,6 +8,10 @@ import {
   type SettlementCompositionInput,
 } from './gen/composition';
 import { CIVIC_KIT, contains, intersects } from './settlementKit';
+import { buildTypedPlan, type SettlementReport } from './gen/settlementPlanner';
+import { isSettlementType } from './gen/settlementTypes';
+import { modernMarket } from './gen/marketArchetypes';
+import { facesMarket, applyMarketGround, finishMarket, marketWaterfront, planMarket, resolveMarketSite, type MarketOutcome } from './gen/marketLayout';
 import type { Building, Cell, ChestRotation, CivicKind, CivicObject, GenSettings, MapData, Point, RoofMaterial, Selection, SettlementStyle, Terrain, Tree } from './types';
 
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
@@ -27,14 +31,26 @@ interface Plan {
   river: Point[];
   /** Осевые линии улиц: по ним рендер рисует гладкие ленты. */
   lanes: { points: Point[]; width: number; surface: 'road' | 'plaza' }[];
+  /** Новый рынок (marketArchetype ≠ 'classic'): план, проверка, отчёт. */
+  market?: MarketOutcome;
+  /** Деревья, которые ставит рынок (дерево в центре деревенской площади). */
+  marketTrees?: Tree[];
 }
 
 let cached: { key: string; value: Plan } | undefined;
 
+/** Вид дома на фасаде рынка — по весам архетипа. */
+function pickFrontage(options: readonly (readonly [Building['kind'], number])[], roll: number): Building['kind'] {
+  const total = options.reduce((sum, [, weight]) => sum + weight, 0);
+  let value = roll * total;
+  for (const [kind, weight] of options) { value -= weight; if (value < 0) return kind; }
+  return options[options.length - 1][0];
+}
+
 function buildPlan(s: GenSettings, style: SettlementStyle): Plan {
   const lanes: Plan['lanes'] = [];
   const { width: w, height: h, seed } = s;
-  const key = `${style}:${seed}:${w}:${h}:${s.road}:${s.river}:${s.publicSpaces}:${s.marketStyle}:${s.marketRichness}`;
+  const key = `${style}:${seed}:${w}:${h}:${s.road}:${s.river}:${s.publicSpaces}:${s.marketStyle}:${s.marketRichness}:${s.marketArchetype}`;
   if (cached?.key === key) return cached.value;
   const town = style === 'town', compact = Math.min(w, h) < 19;
   const rng = mulberry32(seed + (town ? 9415 : 4032));
@@ -64,11 +80,18 @@ function buildPlan(s: GenSettings, style: SettlementStyle): Plan {
     }
   }
 
-  const centre = { x: Math.round(w * (byRiver ? .46 : .5) + (rng() - .5) * (compact ? 0 : 3)), y: Math.round(h * .51 + (rng() - .5) * 2) };
-  const pw = compact ? Math.min(5, w - 2) : town ? between(Math.floor(w * .25), 9, 14) : between(Math.floor(w * .18), 6, 9);
-  const ph = compact ? Math.min(4, h - 8) : town ? between(Math.floor(h * .27), 7, 11) : between(Math.floor(h * .21), 5, 8);
+  const hub = { x: Math.round(w * (byRiver ? .46 : .5) + (rng() - .5) * (compact ? 0 : 3)), y: Math.round(h * .51 + (rng() - .5) * 2) };
+  // Новый рынок: архетип и место выбираются до улиц — улицы сходятся к рынку.
+  const placedMarket = s.publicSpaces && !compact && modernMarket(s.marketArchetype)
+    ? resolveMarketSite(s.marketArchetype, { style, water: byRiver ? 'river' : 'none', width: w, height: h, seed }, { width: w, height: h, cells, blocked: () => false, anchor: hub })
+    : undefined;
+  const marketResolution = placedMarket?.resolution, marketSite = placedMarket?.site;
+  const centre = marketSite ? { x: marketSite.bounds.x + Math.floor(marketSite.bounds.w / 2), y: marketSite.bounds.y + Math.floor(marketSite.bounds.h / 2) } : hub;
+  const pw = marketSite ? marketSite.bounds.w : compact ? Math.min(5, w - 2) : town ? between(Math.floor(w * .25), 9, 14) : between(Math.floor(w * .18), 6, 9);
+  const ph = marketSite ? marketSite.bounds.h : compact ? Math.min(4, h - 8) : town ? between(Math.floor(h * .27), 7, 11) : between(Math.floor(h * .21), 5, 8);
   if (compact && h < 15) centre.y = h - Math.ceil(ph / 2);
-  const px = between(centre.x - Math.floor(pw / 2), 1, w - pw - 1), py = between(centre.y - Math.floor(ph / 2), compact ? 7 : 1, h - ph - 1);
+  const px = marketSite ? marketSite.bounds.x : between(centre.x - Math.floor(pw / 2), 1, w - pw - 1);
+  const py = marketSite ? marketSite.bounds.y : between(centre.y - Math.floor(ph / 2), compact ? 7 : 1, h - ph - 1);
   const plaza = { x: px, y: py, w: pw, h: ph };
 
   // Keep a tavern-sized plot beside the square before painting streets through the area.
@@ -131,6 +154,8 @@ function buildPlan(s: GenSettings, style: SettlementStyle): Plan {
   }
 
   const east = byRiver ? Math.floor(w * .77) : w - 1;
+  /** Индекс кольцевой улицы вокруг площади в lanes (−1 — её нет). */
+  let ringLane = -1;
   const main = town ? 'plaza' : 'road';
   if (s.road) {
     const exitY = between(centre.y + Math.round((rng() - .5) * h * .27), 2, h - 3);
@@ -151,7 +176,8 @@ function buildPlan(s: GenSettings, style: SettlementStyle): Plan {
     }
     // Кольцевая улица вокруг рыночной площади: к рынку подходят со всех сторон,
     // а дома не прижимаются к самой площади.
-    if (s.publicSpaces && !compact) {
+    if (s.publicSpaces && !compact && (!marketResolution || marketResolution.archetype.ringRoad)) {
+      ringLane = lanes.length;
       lane([
         { x: px - 1, y: py - 1 }, { x: px + pw, y: py - 1 }, { x: px + pw, y: py + ph },
         { x: px - 1, y: py + ph }, { x: px - 1, y: py - 1 },
@@ -160,8 +186,8 @@ function buildPlan(s: GenSettings, style: SettlementStyle): Plan {
     lane([tavernExit, { x: tavernExit.x, y: Math.min(h - 1, tavernExit.y + 1) }, { x: centre.x, y: centre.y }], .69, main);
   }
 
-  function add(kind: CivicKind, x: number, y: number, w1 = CIVIC_KIT[kind].w, h1 = CIVIC_KIT[kind].h, variant = 0) {
-    const item: CivicObject = { x, y, w: w1, h: h1, kind, variant: variant % 2, rotation: 0, source: 'layout' };
+  function add(kind: CivicKind, x: number, y: number, w1 = CIVIC_KIT[kind].w, h1 = CIVIC_KIT[kind].h, variant = 0, rotation: ChestRotation = 0) {
+    const item: CivicObject = { x, y, w: w1, h: h1, kind, variant: variant % 2, rotation, source: 'layout' };
     for (let yy = y; yy < y + h1; yy++) for (let xx = x; xx < x + w1; xx++) {
       if (!inside(xx, yy) || wet(cells[yy][xx].terrain)) return false;
     }
@@ -176,7 +202,35 @@ function buildPlan(s: GenSettings, style: SettlementStyle): Plan {
     return true;
   }
 
-  if (s.publicSpaces) {
+  let market: MarketOutcome | undefined;
+  const marketTrees: Tree[] = [];
+  if (s.publicSpaces && marketResolution && marketSite) {
+    const plan = planMarket({
+      width: w, height: h, cells, seed, resolution: marketResolution, style: s.marketStyle ?? 'auto', richness: between(s.marketRichness ?? .62, 0, 1),
+      town, bounds: marketSite.bounds, shore: marketSite.shore, streets, ring: ringLane >= 0,
+      lanes: lanes.filter((_, index) => index !== ringLane),
+      blocked: (x, y) => contains(tavern, x, y) || x === tavernExit.x && y === tavernExit.y,
+    });
+    market = finishMarket(plan, marketResolution.archetype, streets);
+    market.report.notes.unshift(...marketSite.notes);
+    if (plan.surface === 'square') add('square', px, py, pw, ph, town ? 0 : 1);
+    applyMarketGround(plan, cells);
+    // Вся площадь — общественное место: дома к ней выходят, но не строятся на ней.
+    for (let i = 0; i < w * h; i++) if (plan.area[i]) { reserved[i] = 1; streets[i] = 1; }
+    for (const path of plan.paths) if (plan.surface !== 'square') lanes.push({ points: path.points, width: path.width, surface: 'road' });
+    const waterfront = marketWaterfront(plan, { width: w, height: h, cells, blocked: (x, y) => reserved[id(x, y)] === 1 || contains(tavern, x, y) }, seed);
+    for (const p of waterfront.quay) paint(p.x, p.y, 'road', false);
+    for (const p of waterfront.pier) { cells[p.y][p.x].terrain = 'bridge'; streets[id(p.x, p.y)] = 1; }
+    if (waterfront.pier.length) lanes.push({ points: [...waterfront.quay.slice(-1), ...waterfront.pier], width: 1, surface: 'road' });
+    for (const it of waterfront.cargo) if (it.threshold <= plan.richness + 1e-9) add(it.kind, it.x, it.y, it.w, it.h, it.variant, it.rotation);
+    for (const it of plan.items) if (!add(it.kind, it.x, it.y, it.w, it.h, it.variant, it.rotation)) market.report.notes.push(`не поставлен ${it.kind} (${it.x},${it.y})`);
+    marketTrees.push(...plan.trees);
+    if (!compact) for (const [x, y] of [[Math.round(w * .13), Math.round(h * .13)], [Math.round(w * .69), Math.round(h * .82)], [Math.round(w * .26), Math.round(h * .76)]]) {
+      if (!streets[id(x, y)] && add('garden', x, y, 3, 2)) {
+        if (!town && !streets[id(x, y + 3)]) add('garden', x, y + 3, 3, 2);
+      }
+    }
+  } else if (s.publicSpaces) {
     add('square', px, py, pw, ph, town ? 0 : 1);
     const rich = between(s.marketRichness ?? .62, 0, 1);
     const requested = s.marketStyle ?? 'auto';
@@ -315,17 +369,21 @@ function buildPlan(s: GenSettings, style: SettlementStyle): Plan {
         { door: { x, y: hy }, out: { x: x - 1, y: hy }, facing: 90 },
         { door: { x: x + plan.w - 1, y: hy }, out: { x: x + plan.w, y: hy }, facing: 270 },
       ].filter(({ out }) => inside(out.x, out.y) && !wet(cells[out.y][out.x].terrain) && !contains(tavern, out.x, out.y)
-        && !civic.some((item) => item.kind !== 'square' && contains(item, out.x, out.y)));
-      const entry = edges.sort((a, b) => distance[id(a.out.x, a.out.y)] - distance[id(b.out.x, b.out.y)])[0];
+        && !civic.some((item) => item.kind !== 'square' && contains(item, out.x, out.y)) && !(market && market.occupied[id(out.x, out.y)]));
+      // Дом у рынка смотрит дверью на площадь (лавка, мастерская, склад).
+      const onMarket = (p: Point) => market !== undefined && facesMarket(market.plan, p.x, p.y, streets);
+      const entry = edges.sort((a, b) => (Number(onMarket(b.out)) - Number(onMarket(a.out))) * 100 + distance[id(a.out.x, a.out.y)] - distance[id(b.out.x, b.out.y)])[0];
       if (!entry) continue;
       const dist = distance[id(entry.out.x, entry.out.y)];
       if (road.length && dist > (compact ? 5 : town ? 7 : 8)) continue;
       const roof = roofs[Math.floor(hash2(x, y, seed + 2428) * roofs.length)];
       const landmark = town && plan.w >= 7 && plan.h >= 5 && taste > .72 && reach < .69;
-      const lot: Building = { ...plan, style, kind: landmark ? 'hall' : reach > .83 && town ? 'shop' : 'house', roof,
+      const frontage = market && marketResolution && onMarket(entry.out) ? marketResolution.archetype.frontage : undefined;
+      const frontKind = frontage ? pickFrontage(frontage, hash2(x, y, seed + 0x6f17 + option)) : undefined;
+      const lot: Building = { ...plan, style, kind: frontKind ?? (landmark ? 'hall' : reach > .83 && town ? 'shop' : 'house'), roof,
         shape: landmark || reach > .79 ? 'cross' : reach > .49 ? 'hip' : 'gable', source: 'layout', door: entry.door, facing: entry.facing as ChestRotation };
       const offset = Math.hypot((hx - centre.x) / w, (hy - centre.y) / h);
-      const score = hash2(x, y, seed + option * 577 + 6501) * 3.3 - offset * (town ? 1.55 : 3.7) - (road.length ? dist * .49 : 0) + (landmark ? .45 : 0);
+      const score = hash2(x, y, seed + option * 577 + 6501) * 3.3 - offset * (town ? 1.55 : 3.7) - (road.length ? dist * .49 : 0) + (landmark ? .45 : 0) + (frontage ? .6 : 0);
       const district = (x >= w * .45 ? 1 : 0) + (y >= h * .52 ? 2 : 0);
       candidates.push({ lot, out: entry.out, score, district });
     }
@@ -347,7 +405,7 @@ function buildPlan(s: GenSettings, style: SettlementStyle): Plan {
     }
   }
 
-  const result = { cells, plots, civic, road, river, lanes };
+  const result: Plan = { cells, plots, civic, road, river, lanes, market, marketTrees };
   cached = { key, value: result };
   return result;
 }
@@ -371,7 +429,8 @@ function settlementComposition(
   const occupied = (x: number, y: number): boolean =>
     !green(cells[y][x].terrain) ||
     buildings.some((b) => contains({ x: b.x - 1, y: b.y - 1, w: b.w + 2, h: b.h + 2 }, x, y)) ||
-    layout.civic.some((c) => contains({ x: c.x - 1, y: c.y - 1, w: c.w + 2, h: c.h + 2 }, x, y));
+    layout.civic.some((c) => contains({ x: c.x - 1, y: c.y - 1, w: c.w + 2, h: c.h + 2 }, x, y)) ||
+    (layout.market?.plan.area[y * w + x] ?? 0) === 1;
 
   // Расстояние до мостовой/площади — из него получаются придорожные зоны.
   const streetDist = new Int16Array(w * h).fill(99);
@@ -576,9 +635,23 @@ function settlementComposition(
   return { trees, rocks, plan };
 }
 
+/**
+ * Полный итог планировщика рынка (план с масками, проверка, отчёт) для тех же
+ * настроек, что и generateSettlement; undefined — рынок прежний или не поместился.
+ */
+export function settlementMarket(s: GenSettings): MarketOutcome | undefined {
+  const style = s.biome === 'town' ? 'town' : 'village';
+  const plan = typedSettlement(s) ? buildTypedPlan(s, style) : buildPlan(s, style);
+  return plan.market;
+}
+
+/** Поселение по типу: GenSettings.settlementType задан и это не 'classic'. */
+export const typedSettlement = (s: Pick<GenSettings, 'settlementType'>): boolean => isSettlementType(s.settlementType);
+
 export function generateSettlement(s: GenSettings): MapData {
   const style = s.biome === 'town' ? 'town' : 'village';
-  const plan = buildPlan(s, style);
+  const typed = typedSettlement(s) ? buildTypedPlan(s, style) : undefined;
+  const plan: Plan = typed ?? buildPlan(s, style);
   const density = between(s.density ?? .42, 0, 1);
   const count = density === 0 ? 0 : Math.min(plan.plots.length, Math.max(1, Math.round(plan.plots.length * density ** 1.18)));
   const buildings = plan.plots.slice(0, count);
@@ -607,5 +680,20 @@ export function generateSettlement(s: GenSettings): MapData {
   }
   }
 
+  if (typed) {
+    // Отчёт считает только поставленные плотностью постройки.
+    const placed = typed.plotDistrict.slice(0, count);
+    const settlement: SettlementReport = {
+      ...typed.report,
+      districts: typed.report.districts.map((district, index) => ({ ...district, buildings: placed.filter((d) => d === index).length })),
+      buildings: buildings.reduce<SettlementReport['buildings']>((acc, b) => ({ ...acc, [b.kind]: (acc[b.kind] ?? 0) + 1 }), {}),
+    };
+    generationPlan = { ...(generationPlan ?? { version: 1, engine: 'structured', zones: [], poi: [], groups: [] }), settlement };
+  }
+  if (plan.market) {
+    generationPlan = { ...(generationPlan ?? { version: 1, engine: 'structured', zones: [], poi: [], groups: [] }), market: plan.market.report };
+    // Дерево в центре деревенской площади — обычное дерево слоя деревьев (его можно двигать и удалять).
+    trees = [...trees, ...(plan.marketTrees ?? [])];
+  }
   return { width, height, biome: style, cells: plan.cells, road: plan.road, river: plan.river, trees, rocks, structures: [], buildings, civic: plan.civic, chests: [], plan: generationPlan };
 }

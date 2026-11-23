@@ -235,6 +235,26 @@ button:disabled { cursor: default; opacity: .38; }
 .settlement-types button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; border-radius: 4px; border: 1px solid transparent; color: #8b8b9a; font-size: 11px; }
 .settlement-types button:hover { color: #ececf1; }
 .settlement-types button[aria-pressed='true'] { border-color: #5b49a0; background: #2a2a36; color: #b37bff; }
+.scene-picker { display: grid; gap: 8px; }
+.scene-categories { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 3px; border: 1px solid #26262f; border-radius: 6px; background: #12121a; }
+.scene-categories button { min-height: 26px; border-radius: 4px; border: 1px solid transparent; color: #8b8b9a; font-size: 10.5px; }
+.scene-categories button:hover { color: #ececf1; }
+.scene-categories button[aria-pressed='true'] { border-color: #5b49a0; background: #2a2a36; color: #b37bff; }
+.scene-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+.scene-grid button { padding: 4px 7px; border-radius: 4px; border: 1px solid #26262f; background: #12121a; color: #a9a9b6; font-size: 10.5px; line-height: 1.25; text-align: left; }
+.scene-grid button:hover { color: #ececf1; border-color: #3a3a46; }
+.scene-grid button[aria-selected='true'] { border-color: #7c5cff; background: #2a2a36; color: #d9c6ff; }
+.scene-grid button.is-fallback { opacity: 0.55; }
+.scene-card { display: grid; gap: 6px; padding: 8px; border: 1px solid #26262f; border-radius: 6px; background: #12121a; }
+.scene-preview { display: block; width: 100%; height: auto; border-radius: 4px; }
+.scene-description { margin: 0; color: #d8d8e0; font-size: 11px; line-height: 1.42; }
+.scene-biomes { display: flex; flex-wrap: wrap; gap: 3px; }
+.scene-biomes span { padding: 1px 6px; border-radius: 9px; background: #1d1d26; color: #8b8b9a; font-size: 9.5px; }
+.scene-biomes span.is-current { background: #2f2a46; color: #b37bff; }
+.scene-fallback { margin: 0; padding: 5px 7px; border-radius: 4px; background: #2e2618; color: #e5c27a; font-size: 10.5px; line-height: 1.4; }
+.scene-report { margin: 0 0 6px; color: #a9a9b6; font-size: 10.5px; line-height: 1.42; }
+.dungeon-group { margin: 12px 0 4px; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #7d7d8c; }
+.scene-notes { margin-top: 0; }
 .density-control { display: grid; gap: 4px; margin: 13px 0 9px; }
 .density-label { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; color: #d8d8e0; font-size: 11px; }
 .density-label output { color: #b37bff; font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
