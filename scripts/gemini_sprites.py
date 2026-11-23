@@ -353,6 +353,41 @@ TASKS: list[Task] = [
         names=["oak-3", "oak-4", "oak-5", "oak-6"],
     ),
 
+# --- городская среда: уличная мебель, мастерские, товары ---
+    Task(
+        name="urban-street",
+        description=(
+            "Four separate street-furniture assets seen from directly above: "
+            "(1) a wrought-iron street lantern standing on a short stone base with warm "
+            "glass panes, (2) a hanging tavern signboard mounted on a small wooden "
+            "bracket, (3) a wooden signpost with two crossed direction arrows, "
+            "(4) a long wooden horse trough filled with water. Strictly top-down, "
+            "weathered wood and dark iron, readable silhouettes, flat pure white background."
+        ),
+        names=["urbanLamp", "urbanSign", "urbanSignpost", "urbanTrough"],
+    ),
+    Task(
+        name="urban-craft",
+        description=(
+            "Four separate craft-workshop assets seen from directly above: "
+            "(1) a black iron anvil mounted on a wooden stump, (2) a heavy wooden "
+            "workbench with scattered tools, (3) a low stone forge hearth with glowing "
+            "coals and a leather bellows, (4) a neat stack of chopped firewood logs. "
+            "Strictly top-down, workshop props, warm dark palette, flat pure white background."
+        ),
+        names=["urbanAnvil", "urbanWorkbench", "urbanForge", "urbanWoodpile"],
+    ),
+    Task(
+        name="urban-goods",
+        description=(
+            "Four separate trade-goods assets seen from directly above: "
+            "(1) a stack of sawn timber planks, (2) a heap of black charcoal lumps, "
+            "(3) a low wooden frame with stretched animal hides, (4) a cluster of clay "
+            "pots and jugs. Strictly top-down, market goods, earthy palette, "
+            "flat pure white background."
+        ),
+        names=["urbanPlanks", "urbanCoal", "urbanHides", "urbanPots"],
+    ),
 ]
 
 TASKS_TEXTURES: list[Task] = [

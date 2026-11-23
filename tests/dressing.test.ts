@@ -14,6 +14,7 @@ import {
   yardPropCount,
   type DressingGround,
 } from '../src/lib/gen/urban/dressing';
+import { CIVIC_KIT } from '../src/lib/settlementKit';
 import type { DistrictKind } from '../src/lib/gen/settlementTypes';
 import type { GenSettings, MapData, Terrain } from '../src/lib/types';
 
@@ -39,6 +40,17 @@ function makeSettings(patch: Partial<GenSettings> = {}): GenSettings {
     publicSpaces: true,
     ...patch,
   };
+}
+
+const URBAN_PROP_KINDS = [
+  'urbanLamp', 'urbanSign', 'urbanSignpost', 'urbanTrough',
+  'urbanAnvil', 'urbanWorkbench', 'urbanForge', 'urbanWoodpile',
+  'urbanPlanks', 'urbanCoal', 'urbanHides', 'urbanPots',
+] as const;
+
+function urbanProps(map: MapData) {
+  const wanted = new Set<string>(URBAN_PROP_KINDS);
+  return (map.civic ?? []).filter((item) => wanted.has(item.kind));
 }
 
 function terrainDigest(map: MapData): string {
@@ -175,5 +187,55 @@ describe('Urban Dressing: генерация', () => {
       return false;
     });
     expect(nearWater.length).toBe(0);
+  });
+
+  it('новые городские предметы зарегистрированы в каталоге', () => {
+    for (const kind of URBAN_PROP_KINDS) {
+      const entry = CIVIC_KIT[kind as keyof typeof CIVIC_KIT];
+      expect(entry, kind).toBeTruthy();
+      expect(entry.art).toBe(kind);
+      expect(entry.w).toBeGreaterThan(0);
+      expect(entry.h).toBeGreaterThan(0);
+    }
+  });
+
+  it('насыщенный город получает фонари, вывески и хозяйственные предметы', () => {
+    const map = generateMap(makeSettings({ urbanDressing: 1, cityCondition: 'lived_in' }));
+    const props = urbanProps(map);
+    expect(props.length).toBeGreaterThan(0);
+    const kinds = new Set(props.map((item) => item.kind));
+    expect(kinds.size).toBeGreaterThanOrEqual(2);
+    for (const item of props) {
+      for (let y = item.y; y < item.y + item.h; y++) {
+        for (let x = item.x; x < item.x + item.w; x++) {
+          const terrain = map.cells[y][x].terrain;
+          expect(WET.has(terrain), 'городской предмет стоит на воде: ' + item.kind).toBe(false);
+          expect(terrain === 'road' || terrain === 'plaza', 'городской предмет стоит на проезжей части: ' + item.kind).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('ремесленный город получает мастерские предметы', () => {
+    const def = SETTLEMENT_TYPES.find((type) => type.id === 'craft_town')!;
+    const map = generateMap(makeSettings({
+      biome: def.style,
+      settlement: def.style,
+      settlementType: 'craft_town',
+      urbanDressing: 1,
+      cityCondition: 'lived_in',
+    }));
+    const craftKinds = new Set(['urbanAnvil', 'urbanWorkbench', 'urbanForge', 'urbanWoodpile', 'urbanPlanks', 'urbanCoal']);
+    const found = urbanProps(map).filter((item) => craftKinds.has(item.kind));
+    expect(found.length).toBeGreaterThan(0);
+  });
+
+  it('фонари не стоят на дорогах и площадях', () => {
+    const map = generateMap(makeSettings({ urbanDressing: 1 }));
+    const lamps = (map.civic ?? []).filter((item) => item.kind === 'urbanLamp');
+    for (const lamp of lamps) {
+      expect(map.cells[lamp.y][lamp.x].terrain === 'road').toBe(false);
+      expect(map.cells[lamp.y][lamp.x].terrain === 'plaza').toBe(false);
+    }
   });
 });

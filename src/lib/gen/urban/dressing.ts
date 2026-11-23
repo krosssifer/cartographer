@@ -164,6 +164,7 @@ export const YARD_RECIPES: Record<CourtyardKind, readonly DressingProp[]> = {
   enclosed_courtyard: [
     prop('marketBarrels', 3), prop('marketCrates', 3), prop('marketBench', 2),
     prop('marketTable', 1), prop('marketBaskets', 2), prop('marketSacks', 2),
+    prop('urbanWoodpile', 2), prop('urbanTrough', 1), prop('urbanPots', 1),
   ],
   garden_yard: [
     prop('garden', 3), prop('marketBench', 2), prop('marketBaskets', 2),
@@ -176,6 +177,8 @@ export const YARD_RECIPES: Record<CourtyardKind, readonly DressingProp[]> = {
   workshop_yard: [
     prop('marketCrates', 3), prop('marketBarrels', 3), prop('cart', 1),
     prop('marketWheelbarrow', 2), prop('marketRope', 2), prop('marketSacks', 1),
+    prop('urbanAnvil', 3), prop('urbanWorkbench', 2), prop('urbanCoal', 2),
+    prop('urbanWoodpile', 2), prop('urbanPlanks', 2), prop('urbanPots', 1),
   ],
   inn_yard: [
     prop('marketTableSet', 3), prop('marketBench', 2), prop('marketBarrels', 2),
@@ -184,6 +187,8 @@ export const YARD_RECIPES: Record<CourtyardKind, readonly DressingProp[]> = {
   trade_courtyard: [
     prop('marketWagon', 2), prop('marketCrates', 3), prop('marketBarrels', 3),
     prop('marketSacks', 2), prop('marketBaskets', 2), prop('marketBench', 1),
+    prop('urbanPlanks', 2), prop('urbanPots', 2), prop('urbanHides', 2),
+    prop('urbanSign', 1), prop('urbanTrough', 1),
   ],
   temple_courtyard: [
     prop('marketBench', 3), prop('garden', 1), prop('marketBaskets', 1),
@@ -192,16 +197,16 @@ export const YARD_RECIPES: Record<CourtyardKind, readonly DressingProp[]> = {
 
 /** Уличная мебель, допустимая в районе (ставится у кромки улиц и на площадях). */
 export const STREET_RECIPES: Record<DistrictKind, readonly DressingProp[]> = {
-  centre: [prop('marketBench', 3), prop('marketNoticeBoard', 2), prop('marketTableSet', 1), prop('marketWell', 1)],
-  market: [prop('marketBarrels', 3), prop('marketCrates', 3), prop('marketBench', 2), prop('marketNoticeBoard', 1)],
-  residential: [prop('marketBench', 2), prop('marketWell', 1), prop('marketBaskets', 2), prop('marketBarrels', 1)],
-  craft: [prop('marketCrates', 3), prop('marketBarrels', 3), prop('marketRope', 2), prop('marketWheelbarrow', 1)],
+  centre: [prop('marketBench', 3), prop('marketNoticeBoard', 2), prop('marketTableSet', 1), prop('marketWell', 1), prop('urbanLamp', 5), prop('urbanSign', 2), prop('urbanSignpost', 2)],
+  market: [prop('marketBarrels', 3), prop('marketCrates', 3), prop('marketBench', 2), prop('marketNoticeBoard', 1), prop('urbanLamp', 4), prop('urbanSign', 3), prop('urbanTrough', 2), prop('urbanPots', 2)],
+  residential: [prop('marketBench', 2), prop('marketWell', 1), prop('marketBaskets', 2), prop('marketBarrels', 1), prop('urbanLamp', 3), prop('urbanSignpost', 1), prop('urbanTrough', 1), prop('urbanWoodpile', 2)],
+  craft: [prop('marketCrates', 3), prop('marketBarrels', 3), prop('marketRope', 2), prop('marketWheelbarrow', 1), prop('urbanAnvil', 3), prop('urbanWoodpile', 3), prop('urbanPlanks', 2), prop('urbanCoal', 2), prop('urbanForge', 2)],
   temple: [prop('marketBench', 3), prop('garden', 1), prop('marketNoticeBoard', 1)],
-  noble: [prop('marketBench', 2), prop('garden', 2), prop('marketTableSet', 1)],
-  docks: [prop('marketBarrels', 3), prop('marketCrates', 3), prop('marketRope', 3), prop('marketSacks', 2), prop('cart', 1)],
-  garrison: [prop('marketCrates', 2), prop('marketBarrels', 2), prop('cart', 1)],
+  noble: [prop('marketBench', 2), prop('garden', 2), prop('marketTableSet', 1), prop('urbanLamp', 4), prop('urbanPots', 1)],
+  docks: [prop('marketBarrels', 3), prop('marketCrates', 3), prop('marketRope', 3), prop('marketSacks', 2), prop('cart', 1), prop('urbanPlanks', 3), prop('urbanHides', 2), prop('urbanTrough', 1), prop('urbanLamp', 2)],
+  garrison: [prop('marketCrates', 2), prop('marketBarrels', 2), prop('cart', 1), prop('urbanLamp', 2), prop('urbanTrough', 1)],
   farms: [prop('marketHay', 3), prop('marketHayLarge', 1), prop('marketCrates', 2), prop('marketWheelbarrow', 1)],
-  poor: [prop('marketBarrelLying', 3), prop('marketCrates', 2), prop('marketBaskets', 2), prop('marketSacks', 2)],
+  poor: [prop('marketBarrelLying', 3), prop('marketCrates', 2), prop('marketBaskets', 2), prop('marketSacks', 2), prop('urbanWoodpile', 3), prop('urbanPots', 2)],
 };
 
 /** Мелкий мусор и «следы жизни» для грязных/изношенных районов. */

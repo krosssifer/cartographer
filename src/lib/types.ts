@@ -16,7 +16,11 @@ export type CivicKind = 'market' | 'square' | 'well' | 'fountain' | 'cart' | 'ga
   | 'marketCrates' | 'marketBarrels' | 'marketSacks' | 'marketRope' | 'marketChest'
   | 'marketChestOpen' | 'marketBaskets' | 'marketBarrelPair' | 'marketNoticeBoard'
   | 'marketWell' | 'marketHay' | 'marketBarrelLying'
-  | 'marketBench' | 'marketTable' | 'marketTableLong' | 'marketFence' | 'marketHayLarge' | 'marketTableSet';
+  | 'marketBench' | 'marketTable' | 'marketTableLong' | 'marketFence' | 'marketHayLarge' | 'marketTableSet'
+  // городская среда (Urban Dressing): уличная мебель, мастерские, товары
+  | 'urbanLamp' | 'urbanSign' | 'urbanSignpost' | 'urbanTrough'
+  | 'urbanAnvil' | 'urbanWorkbench' | 'urbanForge' | 'urbanWoodpile'
+  | 'urbanPlanks' | 'urbanCoal' | 'urbanHides' | 'urbanPots';
 export type MarketStyle = 'auto' | 'rows' | 'ring' | 'fair';
 
 /** Визуальное состояние города для городского декора (Urban Dressing). */
