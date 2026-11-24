@@ -49,5 +49,3 @@ scripts/__pycache__/
 # Build/preview temp dirs
 .build/
 _bundle/
-# промежуточные файлы сборки спрайт-пака
-sprite_pack/_work/
