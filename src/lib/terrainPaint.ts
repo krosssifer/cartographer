@@ -148,27 +148,10 @@ function downsample(art: { width: number; height: number; data: Uint8ClampedArra
   return { width: w, height: h, data: out };
 }
 
-let last: { cells: MapData['cells']; key: string; image: ImageData } | undefined;
-
 export function paintTerrain(map: MapData, settings: RenderSettings, seed: number): ImageData {
   const { width, height } = map;
   const samples = Math.max(14, Math.min(settings.cellSize, Math.floor(Math.sqrt(22_000_000 / (width * height)))));
   const sMeta = map.plan?.settlement;
-  const key = [
-    seed,
-    samples,
-    settings.texture,
-    settings.shading,
-    settings.showStructures,
-    settings.roadMaterial ?? 'auto',
-    getAssets().ready,
-    sMeta?.fortification ? 1 : 0,
-    sMeta?.type ?? '',
-    sMeta?.character ?? '',
-    sMeta?.districts?.length ?? 0,
-  ].join(':');
-  if (last?.cells === map.cells && last.key === key) return last.image;
-
   const w = width * samples, h = height * samples;
   const raster = new ImageData(w, h), pixels = raster.data;
   const paint = buildPaint(samples, settings.texture, seed, map.biome);
@@ -301,6 +284,5 @@ export function paintTerrain(map: MapData, settings: RenderSettings, seed: numbe
       pixels[out] = r; pixels[out + 1] = g; pixels[out + 2] = b; pixels[out + 3] = 255;
     }
   }
-  last = { cells: map.cells, key, image: raster };
   return raster;
 }

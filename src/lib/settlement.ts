@@ -684,7 +684,19 @@ export function generateSettlement(s: GenSettings): MapData {
   const rawPlan: Plan = typed ?? buildPlan(s, style);
   const density = between(s.density ?? .42, 0, 1);
   const count = density === 0 ? 0 : Math.min(rawPlan.plots.length, Math.max(1, Math.round(rawPlan.plots.length * density ** 1.18)));
-  const activeCivic = typed ? typed.rankedCivic.filter((rc) => rc.plotRank < count).map((rc) => rc.item) : rawPlan.civic;
+  // The public-spaces switch also disables automatically generated civic
+  // details for typed settlements; manual objects are merged by the editor.
+  const activeCivic = typed ? (s.publicSpaces === false ? [] : typed.rankedCivic.filter((rc) => rc.plotRank < count).map((rc) => rc.item)) : rawPlan.civic;
+  const activeItems = new Set(activeCivic);
+  const activeScenes = typed?.functionalScenes.filter((group) => group.items.every((item) => activeItems.has(item))) ?? [];
+  // Lamps/forges are ranked civic objects too: do not leave light sources
+  // behind when their owner is hidden by density or the public-spaces switch.
+  const activeLights = typed?.lights?.filter((light) => {
+    if (light.kind !== 'brazier' && light.kind !== 'street_lantern') return true;
+    const kind = light.kind === 'brazier' ? 'urbanForge' : 'urbanLamp';
+    return activeCivic.some((item) => item.kind === kind && item.x + item.w * .5 === light.x && item.y + item.h * .5 === light.y);
+  });
+  const inSceneArea = (x: number, y: number) => activeScenes.some((group) => [...group.placement.access, ...group.items].some((area) => contains(area, x, y)));
   // Состояние города: изношенные дома получают дешёвую или мшистую крышу и метку износа.
   // Клонируем объекты — массив приходит из кэша buildTypedPlan и общий для всех генераций.
   const cityCondition = s.cityCondition ?? 'lived_in';
@@ -775,10 +787,19 @@ export function generateSettlement(s: GenSettings): MapData {
         rocks.push(ur);
       }
     }
+    // Рабочие зоны и предметы сцены остаются свободными от последующего озеленения.
+    trees = trees.filter((tree) => !inSceneArea(Math.floor(tree.x), Math.floor(tree.y)));
+    rocks = rocks.filter((rock) => !inSceneArea(Math.floor(rock.x), Math.floor(rock.y)));
     // Отчёт считает только поставленные плотностью постройки.
     const placed = typed.plotDistrict.slice(0, count);
     const settlement: SettlementReport = {
       ...typed.report,
+      ...(typed.report.debug ? { debug: {
+        ...typed.report.debug,
+        scenes: activeScenes.map((group) => group.placement),
+        sceneFailures: typed.report.debug.sceneFailures?.filter((failure) => typed.placedPlots.slice(0, count).some((plot) => plot?.id === failure.plotId)),
+      } } : {}),
+      ...(typed.report.dressing ? { dressing: { ...typed.report.dressing, scenesPlaced: activeScenes.length, sceneVariants: activeScenes.reduce<Record<string, number>>((acc, group) => { const key = `${group.placement.sceneId}/${group.placement.variantId}`; acc[key] = (acc[key] ?? 0) + 1; return acc; }, {}) } } : {}),
       districts: typed.report.districts.map((district, index) => ({ ...district, buildings: placed.filter((d) => d === index).length })),
       buildings: buildings.reduce<SettlementReport['buildings']>((acc, b) => ({ ...acc, [b.kind]: (acc[b.kind] ?? 0) + 1 }), {}),
       ...(typed.report.plots ? { plots: { ...typed.report.plots, built: buildings.length } } : {}),
@@ -802,7 +823,7 @@ export function generateSettlement(s: GenSettings): MapData {
     structures: [],
     buildings,
     civic: plan.civic,
-    ...(typed?.lights && typed.lights.length ? { lights: typed.lights } : {}),
+    ...(activeLights?.length ? { lights: activeLights } : {}),
     chests: [],
     plan: generationPlan,
   };

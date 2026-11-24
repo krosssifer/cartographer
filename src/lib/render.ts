@@ -488,36 +488,53 @@ function drawRoadRibbons(ctx: CanvasRenderingContext2D, map: MapData, cs: number
 // поэтому берём готовый канвас из кэша — иначе каждый кадр считался бы заново.
 let terrainLayerCache: { key: string; canvas: HTMLCanvasElement } | null = null;
 
-function terrainLayerKey(map: MapData, rs: RenderSettings, seed: number, W: number, H: number): string {
+export function terrainLayerKey(map: MapData, rs: RenderSettings, seed: number, W: number, H: number): string {
   let hash = 2166136261 >>> 0;
   const cells = map.cells;
+  const elevationView = new DataView(new ArrayBuffer(8));
   for (let y = 0; y < cells.length; y += 1) {
     const row = cells[y];
     for (let x = 0; x < row.length; x += 1) {
       const cell = row[x];
       const terrain = cell.terrain;
-      hash = (hash ^ (terrain.charCodeAt(0) * 131 + terrain.length)) >>> 0;
-      hash = Math.imul(hash, 16777619) >>> 0;
-      hash = (hash ^ Math.round((cell.height ?? 0.5) * 255)) >>> 0;
-      hash = Math.imul(hash, 16777619) >>> 0;
+      // The complete terrain identifier is needed: e.g. sand and snow have
+      // the same first letter and length but very different textures.
+      for (let i = 0; i < terrain.length; i++) {
+        hash = Math.imul(hash ^ terrain.charCodeAt(i), 16777619) >>> 0;
+      }
+      hash = Math.imul(hash ^ terrain.length, 16777619) >>> 0;
+      // Shading depends on full elevation precision, not 8-bit rounding.
+      elevationView.setFloat64(0, cell.height ?? 0.5);
+      hash = Math.imul(hash ^ elevationView.getUint32(0), 16777619) >>> 0;
+      hash = Math.imul(hash ^ elevationView.getUint32(4), 16777619) >>> 0;
     }
   }
   return [
     W,
     H,
+    map.width,
+    map.height,
+    rs.cellSize,
     seed,
     map.biome,
     rs.texture ? 1 : 0,
     rs.shading ? 1 : 0,
+    rs.showStructures ? 1 : 0,
+    getAssets().ready ? 1 : 0,
     rs.roadMaterial ?? 'auto',
     map.plan?.settlement?.type ?? '',
     map.plan?.settlement?.character ?? '',
+    // Road material can depend on district geometry, ruin state and condition.
+    JSON.stringify(map.plan?.settlement?.districts ?? []),
+    JSON.stringify(map.plan?.settlement?.materialProfile ?? null),
+    map.plan?.settlement?.fortification === undefined ? 0 : 1,
+    JSON.stringify((map.structures ?? []).map(({ x, y, w, h, ruin }) => [x, y, w, h, ruin])),
+    map.buildings?.[0]?.cityCondition ?? '',
     hash >>> 0,
   ].join('|');
 }
 
-function terrainLayer(map: MapData, rs: RenderSettings, seed: number, W: number, H: number): HTMLCanvasElement {
-  const key = terrainLayerKey(map, rs, seed, W, H);
+function terrainLayer(map: MapData, rs: RenderSettings, seed: number, key: string): HTMLCanvasElement {
   if (terrainLayerCache && terrainLayerCache.key === key) return terrainLayerCache.canvas;
   const terrain = paintTerrain(map, rs, seed);
   const layer = document.createElement('canvas');
@@ -706,6 +723,13 @@ interface StaticLayer { key: string; plan: unknown; rooms: unknown; floor?: unkn
 let groundCache: StaticLayer | null = null;
 let structureCache: StaticLayer | null = null;
 
+/** Clear only raster caches; rendering after this produces a fresh reference. */
+export function clearRenderCaches(): void {
+  terrainLayerCache = null;
+  groundCache = null;
+  structureCache = null;
+}
+
 function layerCanvas(W: number, H: number) {
   const canvas = document.createElement('canvas');
   canvas.width = W;
@@ -721,9 +745,9 @@ function layerCanvas(W: number, H: number) {
 /** Крупнее этого слои не кэшируем (экспорт PNG в 2× и т. п.): рисуем прямо в целевой контекст. */
 const CACHE_LIMIT = 14_000_000;
 
-function paintGround(ctx: CanvasRenderingContext2D, map: MapData, rs: RenderSettings, seed: number, W: number, H: number) {
+function paintGround(ctx: CanvasRenderingContext2D, map: MapData, rs: RenderSettings, seed: number, W: number, H: number, cellKey: string) {
   const cs = rs.cellSize;
-  ctx.drawImage(terrainLayer(map, rs, seed, W, H), 0, 0, W, H);
+  ctx.drawImage(terrainLayer(map, rs, seed, cellKey), 0, 0, W, H);
   // Покрытие пола архитектурного комплекса: материалы, бордюры, орнаменты.
   if (map.floorLayer) paintFloorLayer(ctx, map, cs, seed);
   if (map.plan?.river?.length) drawRiverRibbon(ctx, map, cs);
@@ -734,11 +758,11 @@ function paintGround(ctx: CanvasRenderingContext2D, map: MapData, rs: RenderSett
 
 /** Террейн + реки/дороги/мосты + подложка склепа. Перерисовывается только при изменении клеток или плана. */
 function drawGround(ctx: CanvasRenderingContext2D, map: MapData, rs: RenderSettings, seed: number, W: number, H: number, cellKey: string) {
-  if (W * H > CACHE_LIMIT) { paintGround(ctx, map, rs, seed, W, H); return; }
+  if (W * H > CACHE_LIMIT) { paintGround(ctx, map, rs, seed, W, H, cellKey); return; }
   if (!groundCache || groundCache.key !== cellKey || groundCache.plan !== map.plan || groundCache.rooms !== map.cryptRooms || groundCache.floor !== map.floorLayer) {
     const layer = layerCanvas(W, H);
-    if (!layer.ctx) { paintGround(ctx, map, rs, seed, W, H); return; }
-    paintGround(layer.ctx, map, rs, seed, W, H);
+    if (!layer.ctx) { paintGround(ctx, map, rs, seed, W, H, cellKey); return; }
+    paintGround(layer.ctx, map, rs, seed, W, H, cellKey);
     groundCache = { key: cellKey, plan: map.plan, rooms: map.cryptRooms, floor: map.floorLayer, canvas: layer.canvas };
   }
   ctx.drawImage(groundCache.canvas, 0, 0);
@@ -809,6 +833,8 @@ export function renderMap(canvas: HTMLCanvasElement, map: MapData, rs: RenderSet
   if (canvas.height !== H) canvas.height = H;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
+  // A render must not leak paint state into the next frame on the same canvas.
+  ctx.save();
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
 
@@ -996,6 +1022,7 @@ export function renderMap(canvas: HTMLCanvasElement, map: MapData, rs: RenderSet
     ctx.stroke();
     ctx.restore();
   }
+  ctx.restore();
 }
 const DEBUG_ZONE_FILL: Record<string, string> = {
   dense_forest: "rgba(20, 92, 44, 0.34)",

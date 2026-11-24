@@ -92,7 +92,7 @@ export function validateProject(v: unknown): v is ImportProject {
       'footprint', 'density', 'districts', 'blocks', 'plots', 'roadHierarchy',
       'frontage', 'courtyards', 'emptyAreas', 'accessibility', 'riverInfluence',
       'terrainInfluence', 'districtLabels', 'primaryRoads', 'secondaryRoads',
-      'footprints', 'landmarks', 'urbanAge', 'market', 'activity', 'anchors', 'lighting',
+      'footprints', 'landmarks', 'urbanAge', 'market', 'activity', 'anchors', 'lighting', 'scenes',
     ].includes(k)
     && (v === undefined || bool(v))))) return false;
   if (r.wallThickness !== undefined && !finite(r.wallThickness, 0.15, 1.2)) return false;

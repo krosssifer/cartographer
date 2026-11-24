@@ -295,6 +295,7 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
           <Toggle label="Debug: Рынок и диагностика (Market)" checked={dbg.market} onChange={(v) => patch('market', v)} />
           <Toggle label="Debug: Граф активности (Activity)" checked={dbg.activity} onChange={(v) => patch('activity', v)} />
           <Toggle label="Debug: Якоря декора и фасады (Anchors)" checked={dbg.anchors} onChange={(v) => patch('anchors', v)} />
+          <Toggle label="Debug: Функциональные сцены" checked={dbg.scenes} onChange={(v) => patch('scenes', v)} />
           <Toggle label="Debug: Городское освещение (Lighting)" checked={dbg.lighting} onChange={(v) => patch('lighting', v)} />
         </>;
       })()}

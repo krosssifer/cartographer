@@ -452,6 +452,8 @@ export interface SettlementDebugLayers {
   activity?: boolean;
   anchors?: boolean;
   lighting?: boolean;
+  /** Границы, детали, рабочие зоны и отказы функциональных сцен. */
+  scenes?: boolean;
 }
 
 export interface RenderSettings {
