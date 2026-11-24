@@ -1,4 +1,5 @@
 import { Perlin } from './noise';
+import { clampMapDimensions, isValidMapDimensions } from './mapDimensions';
 import { cryptBlueprint, decorateCrypt } from './cryptLayout';
 import { repairMap } from './gen/repair';
 import { normalizeTerrain } from './gen/normalize';
@@ -42,7 +43,10 @@ const isBuilding = (t: Terrain) => t === 'floor' || t === 'wall' || t === 'door'
  * через валидатор и починку. Так будущие эксперименты с алгоритмами не могут
  * тихо сломать проходимость или поставить объект в воду.
  */
-export function generateMap(s: GenSettings): MapData {
+export function generateMap(inputSettings: GenSettings): MapData {
+  const s = isValidMapDimensions(inputSettings.width, inputSettings.height)
+    ? inputSettings
+    : { ...inputSettings, ...clampMapDimensions(inputSettings.width, inputSettings.height) };
   const raw = generateMapRaw(s);
   // Нормализация террейна до починки: убираем изолированные лужи, мосты без воды,
   // оторванные куски дороги и случайные пятна земли — они читаются как баги.

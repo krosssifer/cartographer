@@ -3,20 +3,16 @@ import { hash2 } from './random';
 import type { MapData, RenderSettings, Terrain } from './types';
 
 /**
- * Слой мелкого декора: пучки травы, цветы, листья, камешки, веточки, мох,
- * трещины, снежные пятна. Рисуется процедурно поверх земли, но под объектами,
- * и не меняет данные карты — поэтому генерация и сохранения остаются прежними.
- *
- * Если в наборе есть картинки `decor-<name>.webp`, используются они; иначе
- * рисуется векторный запасной вариант, так что слой работает уже сейчас.
+ * Слой мелкого декора и наземных декалей (Sheet 06: decal*):
+ * пучки травы, цветы, листья, камешки, веточки, мох, колеи телег, просыпанная
+ * солома, мох в швах плит, опавшая листва и мелкие бытовые следы в поселениях.
+ * Рисуется процедурно поверх земли, но под объектами, и не меняет данные карты.
  */
 type DecorKind = 'tuft' | 'flower' | 'leaf' | 'pebble' | 'twig' | 'moss' | 'crack' | 'snow' | 'litter' | 'shroom';
 
 interface DecorRule {
-  /** Среднее число объектов на клетку. */
   density: number;
   kinds: DecorKind[];
-  /** Минимальный и максимальный размер в долях клетки. */
   size: [number, number];
 }
 
@@ -24,7 +20,7 @@ const RULES: Partial<Record<Terrain, DecorRule>> = {
   grass: { density: 1.35, kinds: ['tuft', 'tuft', 'tuft', 'flower', 'leaf'], size: [0.11, 0.27] },
   darkGrass: { density: 0.95, kinds: ['tuft', 'leaf', 'moss'], size: [0.1, 0.24] },
   dirt: { density: 0.36, kinds: ['pebble', 'twig', 'leaf'], size: [0.06, 0.15] },
-  road: { density: 0.3, kinds: ['pebble', 'twig'], size: [0.05, 0.13] },
+  road: { density: 0.26, kinds: ['pebble', 'twig'], size: [0.05, 0.12] },
   mud: { density: 0.5, kinds: ['moss', 'twig', 'pebble'], size: [0.09, 0.2] },
   sand: { density: 0.28, kinds: ['pebble', 'leaf'], size: [0.05, 0.12] },
   snow: { density: 0.45, kinds: ['snow', 'twig'], size: [0.12, 0.3] },
@@ -33,7 +29,7 @@ const RULES: Partial<Record<Terrain, DecorRule>> = {
   caveFloor: { density: 0.32, kinds: ['pebble', 'moss', 'shroom', 'crack'], size: [0.06, 0.16] },
   caveWall: { density: 0.18, kinds: ['moss', 'crack'], size: [0.07, 0.16] },
   floor: { density: 0.13, kinds: ['pebble', 'twig'], size: [0.045, 0.1] },
-  plaza: { density: 0.18, kinds: ['pebble', 'crack'], size: [0.045, 0.1] },
+  plaza: { density: 0.16, kinds: ['pebble', 'crack'], size: [0.045, 0.1] },
   buildingFloor: { density: 0.1, kinds: ['pebble', 'twig'], size: [0.045, 0.09] },
 };
 
@@ -50,7 +46,44 @@ const ART: Record<DecorKind, string> = {
   shroom: 'decor-shroom',
 };
 
-/** Биомные поправки: где цветы уместны, а где только сухостой и снег. */
+const ROAD_DECALS_DIRT = [
+  'decalCartTracksStraight',
+  'decalCartTracksTurn',
+  'decalBootFootprintsMud',
+  'decalHoofprints',
+  'decalMudSplashes',
+  'decalWetPatch',
+  'decalStraw',
+  'decalManure',
+] as const;
+
+const ROAD_DECALS_URBAN = [
+  'decalCobbleCracks',
+  'decalMissingCobble',
+  'decalWeedsInCracks',
+  'decalStraw',
+  'decalCartTracksStraight',
+  'decalWetPatch',
+] as const;
+
+const PLAZA_DECALS = [
+  'decalCobbleCracks',
+  'decalWeedsInCracks',
+  'decalMissingCobble',
+  'decalBrokenPottery',
+  'decalStraw',
+] as const;
+
+const YARD_DECALS = [
+  'decalStraw',
+  'decalWoodChips',
+  'decalTrampledGrass',
+  'decalBrokenPottery',
+  'decalSootStain',
+  'decalWetPatch',
+  'decalRopeDrag',
+] as const;
+
 function flavour(biome: MapData['biome'], kind: DecorKind): DecorKind | null {
   if (biome === 'desert' && (kind === 'flower' || kind === 'moss' || kind === 'shroom')) return 'pebble';
   if (biome === 'snow' && (kind === 'flower' || kind === 'shroom')) return 'twig';
@@ -59,7 +92,6 @@ function flavour(biome: MapData['biome'], kind: DecorKind): DecorKind | null {
   return kind;
 }
 
-/** Векторный запасной вариант, пока нет нарисованных `decor-*` картинок. */
 function drawVector(ctx: CanvasRenderingContext2D, kind: DecorKind, size: number) {
   const s = size / 2;
   switch (kind) {
@@ -82,7 +114,7 @@ function drawVector(ctx: CanvasRenderingContext2D, kind: DecorKind, size: number
       ctx.beginPath(); ctx.moveTo(0, s * 0.6); ctx.lineTo(0, -s * 0.15); ctx.stroke();
       ctx.fillStyle = '#e8d9a4';
       for (let i = 0; i < 5; i++) {
-        const a = i / 5 * Math.PI * 2;
+        const a = (i / 5) * Math.PI * 2;
         ctx.beginPath(); ctx.arc(Math.cos(a) * s * 0.34, -s * 0.4 + Math.sin(a) * s * 0.34, s * 0.26, 0, Math.PI * 2); ctx.fill();
       }
       ctx.fillStyle = '#c9a14a';
@@ -114,7 +146,7 @@ function drawVector(ctx: CanvasRenderingContext2D, kind: DecorKind, size: number
     case 'moss': {
       ctx.fillStyle = 'rgba(88,104,58,.55)';
       for (let i = 0; i < 3; i++) {
-        const a = i / 3 * Math.PI * 2;
+        const a = (i / 3) * Math.PI * 2;
         ctx.beginPath();
         ctx.arc(Math.cos(a) * s * 0.34, Math.sin(a) * s * 0.28, s * 0.6, 0, Math.PI * 2);
         ctx.fill();
@@ -148,7 +180,7 @@ function drawVector(ctx: CanvasRenderingContext2D, kind: DecorKind, size: number
     case 'litter': {
       ctx.fillStyle = 'rgba(70,60,42,.45)';
       for (let i = 0; i < 4; i++) {
-        const a = i * 1.7, d = (i + 1) / 5 * s;
+        const a = i * 1.7, d = ((i + 1) / 5) * s;
         ctx.beginPath(); ctx.arc(Math.cos(a) * d, Math.sin(a) * d, s * 0.14, 0, Math.PI * 2); ctx.fill();
       }
       break;
@@ -163,14 +195,73 @@ function drawVector(ctx: CanvasRenderingContext2D, kind: DecorKind, size: number
   }
 }
 
-/**
- * Рисует мелкий декор по всей карте. Количество деталей зависит от типа земли,
- * а вид — от биома: в пустыне вместо цветов камешки, в снегу — сухие веточки.
- */
+function paintSettlementGroundDecals(ctx: CanvasRenderingContext2D, map: MapData, cs: number) {
+  const art = getAssets().art;
+  const isTown = map.biome === 'town';
+  const isSettlementMap = isTown || map.biome === 'village';
+  for (let y = 1; y < map.height - 1; y++) {
+    for (let x = 1; x < map.width - 1; x++) {
+      const tr = map.cells[y][x].terrain;
+      const roll = hash2(x, y, 19421);
+      let pool: readonly string[] | undefined;
+      let chance = 0;
+      let spanCells = 0.72;
+      let baseAlpha = 0.38;
+
+      if (tr === 'road') {
+        pool = isTown ? ROAD_DECALS_URBAN : ROAD_DECALS_DIRT;
+        chance = isSettlementMap ? 0.11 : 0.07;
+        spanCells = 0.78;
+        baseAlpha = 0.34;
+      } else if (isSettlementMap && tr === 'plaza') {
+        pool = PLAZA_DECALS;
+        chance = 0.09;
+        spanCells = 0.68;
+        baseAlpha = 0.34;
+      } else if (isSettlementMap && (tr === 'dirt' || tr === 'floor')) {
+        pool = YARD_DECALS;
+        chance = 0.085;
+        spanCells = 0.65;
+        baseAlpha = 0.36;
+      }
+
+      if (!pool || roll > chance) continue;
+      const pickIdx = Math.min(pool.length - 1, Math.floor(hash2(x, y, 27103) * pool.length));
+      const decalName = pool[pickIdx];
+      const img = art[decalName];
+      if (!img) continue;
+
+      // Для колей телег ориентируем декаль вдоль соседних клеток дороги:
+      let rot = (hash2(x, y, 33107) - 0.5) * Math.PI * 2;
+      if (decalName === 'decalCartTracksStraight' || decalName === 'decalRopeDrag') {
+        const horiz = map.cells[y][x - 1]?.terrain === 'road' || map.cells[y][x + 1]?.terrain === 'road';
+        const vert = map.cells[y - 1]?.[x]?.terrain === 'road' || map.cells[y + 1]?.[x]?.terrain === 'road';
+        rot = horiz && !vert ? 0 : vert && !horiz ? Math.PI / 2 : rot * 0.25;
+      }
+
+      const px = (x + 0.3 + hash2(x, y, 4199) * 0.4) * cs;
+      const py = (y + 0.3 + hash2(x, y, 6131) * 0.4) * cs;
+      const drawW = spanCells * cs * (0.85 + hash2(x, y, 8821) * 0.3);
+
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(rot);
+      ctx.globalAlpha = baseAlpha + hash2(x, y, 9521) * 0.14;
+      ctx.drawImage(img, -drawW / 2, -drawW / 2, drawW, drawW);
+      ctx.restore();
+    }
+  }
+}
+
 export function paintDecor(ctx: CanvasRenderingContext2D, map: MapData, rs: RenderSettings) {
   if (rs.showDecor === false) return;
   const cs = rs.cellSize;
   const art = getAssets().art;
+
+  if (rs.texture && (map.biome === 'village' || map.biome === 'town' || map.road.length > 0)) {
+    paintSettlementGroundDecals(ctx, map, cs);
+  }
+
   for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
     const rule = RULES[map.cells[y][x].terrain];
     if (!rule) continue;

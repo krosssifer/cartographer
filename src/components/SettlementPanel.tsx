@@ -36,7 +36,7 @@ function MarketSummary({ map }: { map: MapData }) {
   if (!market) return null;
   const requested = market.requested ? getMarketArchetype(market.requested)?.label : undefined;
   return <p className="tool-hint" aria-live="polite">
-    Рынок на карте: «{market.label}», торговых мест: {market.placed}{requested ? ` (вместо «${requested}»: не подходит месту)` : ''}.
+    Рынок на карте: «{market.label}», торговых мест: {market.placed}, объектов: {market.objects}{requested ? ` (вместо «${requested}»: не подходит месту)` : ''}.
   </p>;
 }
 
@@ -97,7 +97,7 @@ export default function SettlementPanel({ gen, map, settings: s, layoutLocked, o
   settingsRef.current = onSettings;
   const toolRef = useRef(onTool);
   toolRef.current = onTool;
-  const [civicGroup, setCivicGroup] = useState<'city' | 'market'>('city');
+  const [civicGroup, setCivicGroup] = useState<(typeof CIVIC_GROUPS)[number]['id']>('city');
   const civicGrid = useMemo(() => {
     const kinds = CIVIC_GROUPS.find((group) => group.id === civicGroup)?.kinds ?? CIVIC_GROUPS[0].kinds;
     return kinds.map((kind) => {

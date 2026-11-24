@@ -134,6 +134,21 @@ export interface MarketPlanRequest extends MarketTerrain {
 
 export type MarketItemRole = 'centre' | 'main' | 'shade' | 'stock' | 'cart' | 'decor' | 'seat';
 
+export type MarketFallbackStep = 'full' | 'medium' | 'compact' | 'micro_row' | 'single_stall';
+
+export type MarketRejectionReason =
+  | 'out_of_bounds'
+  | 'occupied'
+  | 'building_collision'
+  | 'road_blocked'
+  | 'water'
+  | 'cliff'
+  | 'wall'
+  | 'overlap'
+  | 'invalid_anchor'
+  | 'missing_asset'
+  | 'unknown';
+
 export interface MarketItem extends CivicObject {
   role: MarketItemRole;
   /** Индекс торгового места или −1 для центра/декора. */
@@ -200,6 +215,14 @@ export interface MarketPlan {
   paths: { points: Point[]; width: number }[];
   richness: number;
   notes: string[];
+  /** Использованный уровень 5-ступенчатого fallback планировки рынка. */
+  fallbackStep?: MarketFallbackStep;
+  /** Сколько позиций-кандидатов проверено планировщиком рынка. */
+  candidatesEvaluated?: number;
+  /** Суммарное число отклонённых попыток размещения объектов рынка. */
+  rejectedCount?: number;
+  /** Структурированные причины отказа размещения рыночных объектов. */
+  rejectionReasons?: Partial<Record<MarketRejectionReason, number>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -267,33 +290,79 @@ export function chooseMarketSite(req: MarketSiteRequest): MarketSite | undefined
   // Порт вытянут вдоль берега.
   if (anchorShore !== undefined && (anchorShore % 2 === 1) === (tw > th)) [tw, th] = [th, tw];
   const notes: string[] = [];
-  for (let shrink = 0; shrink <= 5; shrink++) {
-    const w = tw - shrink, h = th - Math.round(shrink * .7);
-    if (w < 7 || h < 6) break;
-    let best: { rect: Selection; score: number; slope: number; minWater: number } | undefined;
-    for (let y = 1; y + h <= H - 1; y++) for (let x = 1; x + w <= W - 1; x++) {
-      let ok = true, lo = 1, hi = 0, flood = 0, minWater = 999;
-      for (let yy = y; yy < y + h && ok; yy++) for (let xx = x; xx < x + w; xx++) {
-        if (!usableCell(req, xx, yy)) { ok = false; break; }
-        const c = cells[yy][xx], d = toWater[yy * W + xx];
-        lo = Math.min(lo, c.height); hi = Math.max(hi, c.height);
-        if (d < minWater) minWater = d;
-        // Порту сырость у самой воды привычна; сырой низиной считаем только береговую кромку.
-        if (c.moisture > .68 && d < (port ? 3 : 6)) flood++;
+
+  // 2D префиксные суммы для O(1) отсечения занятых/мокрых прямоугольников на картах до 200×160.
+  const stride = W + 1;
+  const badPref = new Int32Array(stride * (H + 1));
+  const floodPref = new Int32Array(stride * (H + 1));
+  for (let y = 0; y < H; y++) {
+    let rowBad = 0;
+    let rowFlood = 0;
+    for (let x = 0; x < W; x++) {
+      const d = toWater[y * W + x];
+      const bad = !usableCell(req, x, y) || d < 2 ? 1 : 0;
+      const c = cells[y][x];
+      const fl = c.moisture > .68 && d < (port ? 3 : 6) ? 1 : 0;
+      rowBad += bad;
+      rowFlood += fl;
+      const idx = (y + 1) * stride + (x + 1);
+      badPref[idx] = badPref[y * stride + (x + 1)] + rowBad;
+      floodPref[idx] = floodPref[y * stride + (x + 1)] + rowFlood;
+    }
+  }
+  const rectSum = (pref: Int32Array, x: number, y: number, w: number, h: number) =>
+    pref[(y + h) * stride + (x + w)] - pref[y * stride + (x + w)] - pref[(y + h) * stride + x] + pref[y * stride + x];
+
+  const searchWithSlope = (maxSlope: number, maxShrink: number, minW: number, minH: number) => {
+    for (let shrink = 0; shrink <= maxShrink; shrink++) {
+      const w = tw - shrink, h = th - Math.round(shrink * .7);
+      if (w < minW || h < minH) break;
+      let best: { rect: Selection; score: number; slope: number; minWater: number; shrink: number } | undefined;
+      for (let y = 1; y + h <= H - 1; y++) {
+        for (let x = 1; x + w <= W - 1; x++) {
+          if (rectSum(badPref, x, y, w, h) > 0) continue;
+          const flood = rectSum(floodPref, x, y, w, h);
+          let lo = 1, hi = 0, minWater = 999, steep = false;
+          for (let yy = y; yy < y + h && !steep; yy++) {
+            const row = cells[yy];
+            const base = yy * W;
+            for (let xx = x; xx < x + w; xx++) {
+              const ch = row[xx].height;
+              if (ch < lo) lo = ch;
+              if (ch > hi) hi = ch;
+              if (hi - lo > maxSlope) { steep = true; break; }
+              const d = toWater[base + xx];
+              if (d < minWater) minWater = d;
+            }
+          }
+          if (steep || minWater < 2 || hi - lo > maxSlope) continue;
+          const cx = x + w / 2, cy = y + h / 2;
+          let score = Math.hypot(cx - req.anchor.x, cy - req.anchor.y) * .35 + (hi - lo) * 9 + flood * .25 + unit(req.seed, 11, x, y) * .6;
+          if (port) score += minWater > 6 ? 60 : Math.abs(minWater - 2.5) * 4;
+          if (!best || score < best.score) best = { rect: { x, y, w, h }, score, slope: hi - lo, minWater, shrink };
+        }
       }
-      if (!ok || minWater < 2 || hi - lo > .3) continue;
-      const cx = x + w / 2, cy = y + h / 2;
-      let score = Math.hypot(cx - req.anchor.x, cy - req.anchor.y) * .35 + (hi - lo) * 9 + flood * .25 + unit(req.seed, 11, x, y) * .6;
-      if (port) score += minWater > 6 ? 60 : Math.abs(minWater - 2.5) * 4;
-      if (!best || score < best.score) best = { rect: { x, y, w, h }, score, slope: hi - lo, minWater };
+      if (best) return best;
     }
-    if (best) {
-      if (shrink) notes.push(`площадь уменьшена до ${best.rect.w}×${best.rect.h}: не хватило ровного сухого места`);
-      const centre = { x: best.rect.x + best.rect.w / 2, y: best.rect.y + best.rect.h / 2 };
-      const shore = port ? shoreSideOf(req, toWater, centre, Math.max(best.rect.w, best.rect.h) / 2 + 6) : undefined;
-      if (port && shore === undefined) notes.push('вода далеко: портовый рынок без набережной');
-      return { bounds: best.rect, shore, slope: best.slope, notes };
-    }
+    return undefined;
+  };
+
+  let chosen = searchWithSlope(.3, 5, 7, 6);
+  if (!chosen) {
+    // Компактный шаг fallback при нехватке места (6×5 при нормальном уклоне).
+    chosen = searchWithSlope(.3, 7, 6, 5);
+  }
+  if (!chosen) {
+    // Экстремальный горный рельеф: умеренная терраса (до 0.38) лучше полной потери рынка.
+    chosen = searchWithSlope(.38, 7, 6, 5);
+    if (chosen) notes.push('площадь адаптирована к склону рельефа');
+  }
+  if (chosen) {
+    if (chosen.shrink) notes.push(`площадь уменьшена до ${chosen.rect.w}×${chosen.rect.h}: не хватило ровного сухого места`);
+    const centre = { x: chosen.rect.x + chosen.rect.w / 2, y: chosen.rect.y + chosen.rect.h / 2 };
+    const shore = port ? shoreSideOf(req, toWater, centre, Math.max(chosen.rect.w, chosen.rect.h) / 2 + 6) : undefined;
+    if (port && shore === undefined) notes.push('вода далеко: портовый рынок без набережной');
+    return { bounds: chosen.rect, shore, slope: chosen.slope, notes };
   }
   return undefined;
 }
@@ -439,6 +508,25 @@ export function planMarket(req: MarketPlanRequest): MarketPlan {
   const inMap = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H;
 
   // ---- 2. Контур ------------------------------------------------------------
+  const rejectionReasons: Partial<Record<MarketRejectionReason, number>> = {};
+  let candidatesEvaluated = 0;
+  let rejectedCount = 0;
+  const noteRejection = (reason: MarketRejectionReason) => {
+    rejectionReasons[reason] = (rejectionReasons[reason] ?? 0) + 1;
+    rejectedCount++;
+  };
+  const classifyCellRejection = (x: number, y: number): MarketRejectionReason => {
+    if (!inMap(x, y) || !area[id(x, y)]) return 'out_of_bounds';
+    const tr = req.cells[y][x].terrain;
+    if (wet(tr)) return 'water';
+    if (tr === 'rock') return 'cliff';
+    if (tr === 'wall') return 'wall';
+    if (req.blocked(x, y)) return 'building_collision';
+    if (lane[id(x, y)] !== LANE.none) return 'road_blocked';
+    return 'overlap';
+  };
+
+  const tinySquare = Math.min(B.w, B.h) <= 7;
   const area = new Uint8Array(W * H);
   {
     const shapeRng = stream(seed, 21);
@@ -447,10 +535,12 @@ export function planMarket(req: MarketPlanRequest): MarketPlan {
     for (let y = B.y; y < B.y + B.h; y++) for (let x = B.x; x < B.x + B.w; x++) {
       if (!usableCell(req, x, y)) continue;
       let inside = true;
-      if (a.shape === 'rounded') {
+      // На малых площадях (<=7 клеток поперёк) сохраняем углы прямоугольника,
+      // иначе срез углов съедает единственные карманы 2×2 под прилавки!
+      if (!tinySquare && a.shape === 'rounded') {
         const r = 2.2, ex = Math.max(0, Math.abs(x + .5 - cx) - (B.w / 2 - r)), ey = Math.max(0, Math.abs(y + .5 - cy) - (B.h / 2 - r));
         inside = Math.hypot(ex, ey) <= r;
-      } else if (a.shape === 'blob') {
+      } else if (!tinySquare && a.shape === 'blob') {
         const nx = (x + .5 - cx) / (B.w / 2), ny = (y + .5 - cy) / (B.h / 2);
         const ang = Math.atan2(ny, nx);
         const radius = 1 + amp * Math.sin(3 * ang + ph1) + amp * .7 * Math.sin(5 * ang + ph2);
@@ -500,18 +590,38 @@ export function planMarket(req: MarketPlanRequest): MarketPlan {
   let centreKind: MarketCentreKind = weighted(centreOptions.length ? centreOptions : [['well', 1] as const], centreRng());
   if (small && centreKind === 'open') centreKind = 'well';
   if (small && centreKind === 'fountain') centreKind = 'well';
-  const centreRect: Selection = { x: ccx - 1, y: ccy - 1, w: 2, h: 2 };
-  // Сдвигаем центр внутрь, если угол 2×2 вылез за контур.
+  // На тесной площади <= 7 клеток поперёк центр 2×2 с обходом 4×4 оставляет лишь по 1 клетке сверху/снизу,
+  // куда физически не помещается ни один прилавок 2×2; компактный колодец 1×1 с обходом 3×3 освобождает полосу 2 клетки!
+  if (crossSpan <= 7 && (centreKind === 'well' || centreKind === 'board')) {
+    centreKind = 'smallWell';
+  }
+  const centreSpan = centreKind === 'smallWell' ? 1 : 2;
+  const centreRect: Selection = {
+    x: centreSpan === 1 ? Math.min(B.x + B.w - 2, Math.max(B.x + 1, ccx)) : ccx - 1,
+    y: centreSpan === 1 ? Math.min(B.y + B.h - 2, Math.max(B.y + 1, ccy)) : ccy - 1,
+    w: centreSpan,
+    h: centreSpan,
+  };
+  // Сдвигаем центр внутрь, если угол вылез за контур.
   for (let tries = 0; tries < 6; tries++) {
-    const bad = [[0, 0], [1, 0], [0, 1], [1, 1]].find(([dx, dy]) => !inArea(centreRect.x + dx, centreRect.y + dy));
+    const checkOffsets = centreSpan === 1 ? [[0, 0]] : [[0, 0], [1, 0], [0, 1], [1, 1]];
+    const bad = checkOffsets.find(([dx, dy]) => !inArea(centreRect.x + dx, centreRect.y + dy));
     if (!bad) break;
     centreRect.x += bad[0] ? -1 : 1;
     centreRect.y += bad[1] ? -1 : 1;
   }
   const openRadius = centreKind === 'open' ? clamp(Math.round(crossSpan * a.openShare), 1, 4) : 0;
   const clearance = centreKind === 'open' ? openRadius : a.aisle.main >= 2 && crossSpan >= (layout === 'rows' ? 15 : 9) ? 2 : 1;
-  const clear: Selection = { x: centreRect.x - clearance, y: centreRect.y - clearance, w: 2 + clearance * 2, h: 2 + clearance * 2 };
-  const ctr = { x: centreRect.x + 1, y: centreRect.y + 1 };
+  const clear: Selection = {
+    x: centreRect.x - clearance,
+    y: centreRect.y - clearance,
+    w: centreSpan + clearance * 2,
+    h: centreSpan + clearance * 2,
+  };
+  const ctr = {
+    x: centreRect.x + Math.floor(centreSpan / 2),
+    y: centreRect.y + Math.floor(centreSpan / 2),
+  };
 
   // ---- 4. Входы -------------------------------------------------------------------
   const lane = new Uint8Array(W * H);
@@ -600,8 +710,8 @@ export function planMarket(req: MarketPlanRequest): MarketPlan {
       if (s % 2 === 0) { const y = s === 0 ? B.y + k : B.y + B.h - 1 - k; for (let x = B.x; x < B.x + B.w; x++) mark(x, y, LANE.unload); }
       else { const x = s === 3 ? B.x + k : B.x + B.w - 1 - k; for (let y = B.y; y < B.y + B.h; y++) mark(x, y, LANE.unload); }
     }
-  } else if ((a.service === 'gate' || a.service === 'edge') && mainEntrance) {
-    // Двор у въезда (караван) или место для телеги у входа (деревня, город).
+  } else if ((a.service === 'gate' || a.service === 'edge') && mainEntrance && B.w * B.h > 52) {
+    // Двор у въезда (караван) или место для телеги у входа (деревня, город) — только если площадь > 52 кл.
     const e = a.service === 'gate' ? mainEntrance : entrances[Math.floor(unit(seed, 61) * entrances.length)];
     const [ix, iy] = DIRS[(e.side + 2) % 4];
     const along = e.side % 2 === 0 ? [1, 0] : [0, 1];
@@ -911,14 +1021,29 @@ export function planMarket(req: MarketPlanRequest): MarketPlan {
       };
       let placed = false;
       for (const tpl of templatesFor(spec, structure, slotRng)) {
-        if (pos + tpl.w > cells.length) continue;
+        candidatesEvaluated++;
+        if (pos + tpl.w > cells.length) {
+          noteRejection('out_of_bounds');
+          continue;
+        }
         let fits = true;
+        let failReason: MarketRejectionReason = 'occupied';
         for (let u = 0; u < tpl.w && fits; u++) {
           const c = cells[pos + u];
-          if (c.x !== anchor.x + dirU.x * u || c.y !== anchor.y + dirU.y * u) fits = false;
-          else if (probe(u) < tpl.d) fits = false;
+          if (c.x !== anchor.x + dirU.x * u || c.y !== anchor.y + dirU.y * u) {
+            fits = false;
+            failReason = 'invalid_anchor';
+          } else if (probe(u) < tpl.d) {
+            fits = false;
+            const probeX = anchor.x + dirU.x * u - fx * probe(u);
+            const probeY = anchor.y + dirU.y * u - fy * probe(u);
+            failReason = classifyCellRejection(probeX, probeY);
+          }
         }
-        if (!fits) continue;
+        if (!fits) {
+          noteRejection(failReason);
+          continue;
+        }
         // Рамка места и его предметы в мировых координатах.
         const cellAt = (u: number, v: number): Point => ({ x: anchor.x + dirU.x * u - fx * v, y: anchor.y + dirU.y * u - fy * v });
         const corners = [cellAt(0, 0), cellAt(tpl.w - 1, tpl.d - 1)];
@@ -995,6 +1120,105 @@ export function planMarket(req: MarketPlanRequest): MarketPlan {
       entry.parts.push({ rect: piece.rect, kind: piece.kind, role: 'stock', t: .55 + (i / pieces.length) * .4, rotation });
     });
   }
+
+  // ---- 7b. Многоступенчатый fallback (micro_row / single_stall) на тесных площадях ----
+  let fallbackStep: MarketFallbackStep =
+    tinySquare ? 'compact' : crossSpan < 11 ? 'medium' : 'full';
+
+  if (clusters.length < 2) {
+    // Шаг 4 (micro_row): мини-прилавки 2×1 / 1×2 вдоль любого свободного фронта прохода.
+    const fbSpecPool = specEntries.map(([spec]) => spec);
+    for (let y = B.y; y < B.y + B.h && clusters.length < 3; y++) {
+      for (let x = B.x; x < B.x + B.w && clusters.length < 3; x++) {
+        if (!free(x, y)) continue;
+        for (const f of [0, 1, 2, 3] as Side[]) {
+          const [fx, fy] = DIRS[f];
+          if (!inArea(x + fx, y + fy) || lane[id(x + fx, y + fy)] === LANE.none) continue;
+          const horiz = f % 2 === 0;
+          const nx = x + (horiz ? 1 : 0);
+          const ny = y + (horiz ? 0 : 1);
+          candidatesEvaluated++;
+          if (free(nx, ny) && inArea(nx + fx, ny + fy) && lane[id(nx + fx, ny + fy)] !== LANE.none) {
+            const spec = fbSpecPool[clusters.length % fbSpecPool.length];
+            const sDef = MARKET_SPECIALITIES[spec];
+            const longKind: CivicKind = sDef.stock21[0] ?? 'marketBarrelPair';
+            const rect: Selection = horiz ? { x, y, w: 2, h: 1 } : { x, y, w: 1, h: 2 };
+            const rot: ChestRotation = horiz ? FACING_ROTATION[f] : 90;
+            const index = clusters.length;
+            occ[id(x, y)] = index;
+            occ[id(nx, ny)] = index;
+            const cluster: MarketCluster = {
+              id: index,
+              speciality: spec,
+              zone: sDef.zone,
+              structure: 'special',
+              rect,
+              facing: f,
+              front: [{ x: x + fx, y: y + fy }, { x: nx + fx, y: ny + fy }],
+              skeleton: false,
+              threshold: 0,
+            };
+            clusters.push(cluster);
+            raw.push({
+              cluster,
+              parts: [{ rect, kind: longKind, role: 'main', t: 0, rotation: rot }],
+            });
+            used[spec] = (used[spec] ?? 0) + 1;
+            fallbackStep = 'micro_row';
+            break;
+          }
+        }
+      }
+    }
+    if (fallbackStep === 'micro_row') {
+      notes.push('компактный ряд 2×1: на малой площади использована облегчённая раскладка');
+    }
+  }
+
+  if (clusters.length === 0) {
+    // Шаг 5 (single_stall): одиночные торговые точки 1×1 у доступного прохода.
+    const fbSpecPool = specEntries.map(([spec]) => spec);
+    for (let y = B.y; y < B.y + B.h && clusters.length < 2; y++) {
+      for (let x = B.x; x < B.x + B.w && clusters.length < 2; x++) {
+        if (!free(x, y)) continue;
+        const f = ([0, 1, 2, 3] as Side[]).find((side) => {
+          const [fx, fy] = DIRS[side];
+          return inArea(x + fx, y + fy) && lane[id(x + fx, y + fy)] !== LANE.none;
+        });
+        if (f === undefined) continue;
+        candidatesEvaluated++;
+        const [fx, fy] = DIRS[f];
+        const spec = fbSpecPool[clusters.length % fbSpecPool.length];
+        const sDef = MARKET_SPECIALITIES[spec];
+        const kind11: CivicKind = sDef.stock11[0] ?? 'marketCrates';
+        const rect: Selection = { x, y, w: 1, h: 1 };
+        const index = clusters.length;
+        occ[id(x, y)] = index;
+        const cluster: MarketCluster = {
+          id: index,
+          speciality: spec,
+          zone: sDef.zone,
+          structure: 'special',
+          rect,
+          facing: f,
+          front: [{ x: x + fx, y: y + fy }],
+          skeleton: false,
+          threshold: 0,
+        };
+        clusters.push(cluster);
+        raw.push({
+          cluster,
+          parts: [{ rect, kind: kind11, role: 'main', t: 0, rotation: FACING_ROTATION[f] }],
+        });
+        used[spec] = (used[spec] ?? 0) + 1;
+        fallbackStep = 'single_stall';
+      }
+    }
+    if (fallbackStep === 'single_stall') {
+      notes.push('одиночная торговая точка: минимальный fallback на сверхтесной площади');
+    }
+  }
+
   // Скелет: первые места по ценности фронта есть при любой насыщенности.
   const skeletonCount = Math.min(clusters.length, Math.max(Math.min(clusters.length, 2), Math.round(clusters.length * a.skeleton)));
   clusters.forEach((cluster, k) => {
@@ -1025,7 +1249,15 @@ export function planMarket(req: MarketPlanRequest): MarketPlan {
   const decorLimit = Math.max(2, Math.round(clusters.length * a.decor.max));
   let decorCount = 0;
   const decorFits = (r: Selection) => {
-    for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) if (!free(x, y)) return false;
+    candidatesEvaluated++;
+    for (let y = r.y; y < r.y + r.h; y++) {
+      for (let x = r.x; x < r.x + r.w; x++) {
+        if (!free(x, y)) {
+          noteRejection(classifyCellRejection(x, y));
+          return false;
+        }
+      }
+    }
     return true;
   };
   const occupyDecor = (r: Selection) => { for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) occ[id(x, y)] = 999; };
@@ -1145,7 +1377,14 @@ export function planMarket(req: MarketPlanRequest): MarketPlan {
     }
   }
   const dropped = new Set<number>();
-  if (entrances.length) for (const cluster of clusters) if (!cluster.front.some((p) => inArea(p.x, p.y) && reach[id(p.x, p.y)])) dropped.add(cluster.id);
+  if (entrances.length) {
+    for (const cluster of clusters) {
+      if (!cluster.front.some((p) => inArea(p.x, p.y) && reach[id(p.x, p.y)])) {
+        dropped.add(cluster.id);
+        noteRejection('road_blocked');
+      }
+    }
+  }
   if (dropped.size) notes.push(`убрано мест без доступа: ${dropped.size}`);
   const finalItems = allItems.filter((it) => it.cluster < 0 || !dropped.has(it.cluster));
   const finalClusters = clusters.filter((c) => !dropped.has(c.id));
@@ -1160,6 +1399,10 @@ export function planMarket(req: MarketPlanRequest): MarketPlan {
     entrances, zones, clusters: finalClusters, allItems: finalItems,
     items: finalItems.filter((it) => it.threshold <= richness + 1e-9),
     trees, paths, richness, notes,
+    fallbackStep,
+    candidatesEvaluated,
+    rejectedCount,
+    rejectionReasons,
   };
 }
 
@@ -1283,7 +1526,7 @@ export function validateMarket(plan: MarketPlan, archetype: MarketArchetypeDef, 
   return { ok: issues.length === 0, issues, checks };
 }
 
-/** Краткий отчёт для панели и тестов (без масок). */
+/** Краткий отчёт для панели и тестов (без масок), расширенный диагностикой размещения. */
 export interface MarketReport {
   generator: number;
   archetype: MarketArchetypeId;
@@ -1307,6 +1550,24 @@ export interface MarketReport {
   valid: boolean;
   issues: string[];
   notes: string[];
+  /** Создана ли валидная зона рынка. */
+  marketZoneCreated?: boolean;
+  /** Уровень многоступенчатого fallback планировки рынка. */
+  fallbackStep?: MarketFallbackStep;
+  /** Обязательная инфраструктура рынка (центр + скелетные прилавки с threshold === 0). */
+  mandatoryObjects?: { planned: number; placed: number };
+  /** Опциональная инфраструктура рынка (вторичные ряды, запасы, телеги, лавочки, декор). */
+  optionalObjects?: { planned: number; placed: number };
+  /** Сколько позиций-кандидатов проверено планировщиком. */
+  candidatesEvaluated?: number;
+  /** Разбивка размещённых объектов по ролям. */
+  placedByCategory?: Partial<Record<MarketItemRole, number>>;
+  /** Суммарное количество отклонённых попыток и отсевов после плана. */
+  rejectedCount?: number;
+  /** Структурированные причины отказа размещения. */
+  rejectionReasons?: Partial<Record<MarketRejectionReason, number>>;
+  /** Сколько предметов плана отсеялось при переносе на финальную карту (коллизии с домами/дверями). */
+  droppedAfterPlan?: number;
 }
 
 export function marketReport(plan: MarketPlan, validation: MarketValidation): MarketReport {
@@ -1315,13 +1576,36 @@ export function marketReport(plan: MarketPlan, validation: MarketValidation): Ma
   const specialities: Partial<Record<MarketSpecialityId, number>> = {};
   for (const c of placed) specialities[c.speciality] = (specialities[c.speciality] ?? 0) + 1;
   let aisleCells = 0;
-  for (let i = 0; i < plan.lanes.length; i++) if (plan.area[i] && plan.lanes[i]) aisleCells++;
+  let areaCells = 0;
+  for (let i = 0; i < plan.lanes.length; i++) {
+    if (plan.area[i]) {
+      areaCells++;
+      if (plan.lanes[i]) aisleCells++;
+    }
+  }
+  const mandatoryPlanned = plan.allItems.filter((it) => it.threshold === 0).length;
+  const mandatoryPlaced = plan.items.filter((it) => it.threshold === 0).length;
+  const optionalPlanned = plan.allItems.filter((it) => it.threshold > 0).length;
+  const optionalPlaced = plan.items.filter((it) => it.threshold > 0).length;
+  const placedByCategory: Partial<Record<MarketItemRole, number>> = {};
+  for (const it of plan.items) {
+    placedByCategory[it.role] = (placedByCategory[it.role] ?? 0) + 1;
+  }
   return {
     generator: plan.version, archetype: plan.archetype, label: plan.label, requested: plan.requested, reason: plan.reason,
     layout: plan.layout, surface: plan.surface, bounds: plan.bounds, centre: plan.centre.kind, entrances: plan.entrances.length,
     shore: plan.shore !== undefined, zones: plan.zones, clusters: plan.clusters.length, placed: placed.length,
     skeleton: plan.clusters.filter((c) => c.skeleton).length, specialities, objects: plan.items.length, aisleCells,
     valid: validation.ok, issues: validation.issues, notes: plan.notes,
+    marketZoneCreated: areaCells > 0,
+    fallbackStep: plan.fallbackStep ?? 'full',
+    mandatoryObjects: { planned: mandatoryPlanned, placed: mandatoryPlaced },
+    optionalObjects: { planned: optionalPlanned, placed: optionalPlaced },
+    candidatesEvaluated: plan.candidatesEvaluated ?? 0,
+    placedByCategory,
+    rejectedCount: plan.rejectedCount ?? 0,
+    rejectionReasons: { ...(plan.rejectionReasons ?? {}) },
+    droppedAfterPlan: 0,
   };
 }
 

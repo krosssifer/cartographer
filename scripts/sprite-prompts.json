@@ -6,37 +6,100 @@
       "name": "rocks-2",
       "prompt": "Four separate rock assets seen from directly above: (1) a large grey granite boulder with mossy top, (2) a small cluster of three rounded stones, (3) a jagged rocky outcrop, (4) a scattering of loose scree pebbles. Top-down view, natural stone colors.",
       "mode": "quad",
-      "names": ["rock", "smallRock", "rock", "rock"]
+      "names": [
+        "rock",
+        "smallRock",
+        "rock",
+        "rock"
+      ]
     },
     {
       "name": "trees-3",
       "prompt": "Four separate tree canopies seen from directly above: (1) a light birch tree, (2) a wide willow with long hanging branches, (3) a tall dark spruce, (4) a bare dead tree with twisted branches. Top-down view, natural greens and browns.",
       "mode": "quad",
-      "names": ["oak", "oak", "pine", "dead"]
+      "names": [
+        "oak",
+        "oak",
+        "pine",
+        "dead"
+      ]
     },
     {
       "name": "walls-2",
       "prompt": "Four separate stone wall pieces seen from directly above for a dungeon floor: (1) a straight stone wall strip running horizontally across its quadrant, (2) the same stone wall overgrown with ivy, (3) a stone wall corner turn, (4) a short ruined wall stub with rubble. Top-down view, flat, no perspective, grey stone blocks.",
       "mode": "quad",
-      "names": ["wall-straight", "wall-straightIvy", "wall-column", "wall-end"]
+      "names": [
+        "wall-straight",
+        "wall-straightIvy",
+        "wall-column",
+        "wall-end"
+      ]
     },
     {
       "name": "dungeon-traps",
       "prompt": "Four separate dungeon trap assets seen from directly above: (1) a square floor pit filled with rusty iron spikes, (2) a round stone pressure plate, (3) a wall section with small dart holes and protruding darts, (4) an iron portcullis grate. Top-down view, grey stone and dark iron.",
       "mode": "quad",
-      "names": ["crypt-pitSpikes", "crypt-pressurePlateRound", "crypt-dartHoleWall", "crypt-portcullis"]
+      "names": [
+        "crypt-pitSpikes",
+        "crypt-pressurePlateRound",
+        "crypt-dartHoleWall",
+        "crypt-portcullis"
+      ]
     },
     {
       "name": "decor-grass",
       "prompt": "Four separate small ground decorations seen from directly above, each tiny and simple: (1) a tuft of grass blades, (2) a small cluster of white and yellow wildflowers, (3) a single fallen dry leaf, (4) a patch of moss. Top-down view, natural colors, isolated on white.",
       "mode": "quad",
-      "names": ["decor-tuft", "decor-flower", "decor-leaf", "decor-moss"]
+      "names": [
+        "decor-tuft",
+        "decor-flower",
+        "decor-leaf",
+        "decor-moss"
+      ]
     },
     {
       "name": "decor-stone",
       "prompt": "Four separate small ground decorations seen from directly above, each tiny and simple: (1) a single small pebble with shadow, (2) a dry twig, (3) a thin crack in stone, (4) a small patch of white snow. Top-down view, natural colors, isolated on white.",
       "mode": "quad",
-      "names": ["decor-pebble", "decor-twig", "decor-crack", "decor-snow"]
+      "names": [
+        "decor-pebble",
+        "decor-twig",
+        "decor-crack",
+        "decor-snow"
+      ]
+    },
+    {
+      "name": "urban-street",
+      "prompt": "Four separate street-furniture assets seen from directly above: (1) a wrought-iron street lantern on a short stone base, warm glass, (2) a hanging tavern signboard on a small wooden bracket, (3) a wooden signpost with two crossed direction arrows, (4) a long wooden horse trough with water inside. Top-down view, weathered wood and dark iron, painterly fantasy town props.",
+      "mode": "quad",
+      "names": [
+        "urbanLamp",
+        "urbanSign",
+        "urbanSignpost",
+        "urbanTrough"
+      ]
+    },
+    {
+      "name": "urban-craft",
+      "prompt": "Four separate craft-workshop assets seen from directly above: (1) a black iron anvil on a wooden stump, (2) a heavy wooden workbench with scattered tools, (3) a stone forge hearth with glowing coals and a bellows, (4) a neat stack of chopped firewood logs. Top-down view, workshop props, warm dark palette.",
+      "mode": "quad",
+      "names": [
+        "urbanAnvil",
+        "urbanWorkbench",
+        "urbanForge",
+        "urbanWoodpile"
+      ]
+    },
+    {
+      "name": "urban-goods",
+      "prompt": "Four separate trade-goods assets seen from directly above: (1) a stack of sawn timber planks, (2) a heap of black charcoal lumps, (3) a low wooden frame with stretched animal hides, (4) a cluster of clay pots and jugs. Top-down view, market goods, earthy palette.",
+      "mode": "quad",
+      "names": [
+        "urbanPlanks",
+        "urbanCoal",
+        "urbanHides",
+        "urbanPots"
+      ]
     }
   ]
 }

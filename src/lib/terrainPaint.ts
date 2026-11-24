@@ -1,20 +1,41 @@
 import { ART_SCALE, getAssets, TILE_ART, type Material } from './assets';
 import { Perlin } from './noise';
 import { TERRAIN_COLORS, type RGB } from './palette';
+import { ROAD_MATERIAL_IDS, selectCellRoadMaterial, type RoadMaterialId } from './roadMaterials';
 import type { MapData, RenderSettings, Terrain } from './types';
 
 const names = Object.keys(TERRAIN_COLORS) as Terrain[];
 const index = Object.fromEntries(names.map((t, i) => [t, i])) as Record<Terrain, number>;
 const materials = names.map((name) => TILE_ART[name]);
-const rigid = names.map((name) => ['floor', 'wall', 'door', 'void', 'buildingFloor', 'buildingWall', 'roof'].includes(name));
-const wet = names.map((name) => name === 'water' || name === 'deepWater' || name === 'bridge');
+const baseCount = names.length;
+const roadSlotIndex = Object.fromEntries(
+  ROAD_MATERIAL_IDS.map((id, i) => [id, baseCount + i]),
+) as Record<RoadMaterialId, number>;
+
+const ROAD_FALLBACK_RGB: Record<RoadMaterialId, RGB> = {
+  road_packed_dirt: [148, 113, 76],
+  road_gravel: [152, 126, 94],
+  road_old_cobblestone: [138, 133, 121],
+  road_worn_cobblestone: [132, 128, 118],
+  road_noble_paving: [184, 173, 152],
+  road_damaged_stone: [132, 123, 108],
+};
+
+const rigid = [
+  ...names.map((name) => ['floor', 'wall', 'door', 'void', 'buildingFloor', 'buildingWall', 'roof'].includes(name)),
+  ...ROAD_MATERIAL_IDS.map(() => false),
+];
+const wet = [
+  ...names.map((name) => name === 'water' || name === 'deepWater' || name === 'bridge'),
+  ...ROAD_MATERIAL_IDS.map(() => false),
+];
 const tint: Partial<Record<Terrain, RGB>> = {
   grass: [0.89, 1.015, 0.91], darkGrass: [0.66, 0.84, 0.76],
-  dirt: [1.04, 0.99, 0.93], road: [1.19, 1.09, 0.91], sand: [1.07, 1.00, 0.84],
+  dirt: [1.04, 0.99, 0.93], road: [1.0, 1.0, 1.0], sand: [1.07, 1.00, 0.84],
   water: [0.84, 1.02, 1.00], deepWater: [0.61, 0.79, 0.86], ice: [0.74, 0.93, 1.02],
   caveFloor: [1.13, 1.055, 0.96], caveWall: [0.43, 0.41, 0.38], floor: [1.14, 1.12, 1.01],
   wall: [0.61, 0.57, 0.51], door: [1.12, 1.08, 0.96], void: [0.61, 0.57, 0.51],
-  plaza: [1.1, 1.08, 1.02], buildingFloor: [1.05, 1.0, 0.92], buildingWall: [1.06, 1.02, 0.94], roof: [1.1, 1.04, 0.96],
+  plaza: [1.06, 1.04, 0.99], buildingFloor: [1.05, 1.0, 0.92], buildingWall: [1.06, 1.02, 0.94], roof: [1.1, 1.04, 0.96],
 };
 
 const limit = (v: number, low: number, high: number) => Math.min(high, Math.max(low, v));
@@ -46,44 +67,65 @@ interface Paint {
   offset?: number;
   tileWidth?: number;
   tileHeight?: number;
+  pavedRoad?: boolean;
+}
+
+function bakeMaterial(
+  kind: Material,
+  samples: number,
+  seed: number,
+  cache: Map<Material, Pick<Paint, 'source' | 'stepX' | 'stepY' | 'offset' | 'tileWidth' | 'tileHeight'>>,
+) {
+  if (cache.has(kind)) return cache.get(kind);
+  const art = getAssets().materials[kind];
+  if (!art) return undefined;
+  const span = ART_SCALE[kind] * samples;
+  const factor = Math.max(1, Math.round(art.width / span));
+  const baked = factor > 1 ? downsample(art, factor) : art;
+  const stepX = baked.width / span, stepY = baked.height / span;
+  const offset = ((seed >>> 0) % 97) * 11;
+  const entry = {
+    source: baked.data,
+    stepX,
+    stepY,
+    offset,
+    tileWidth: baked.width,
+    tileHeight: baked.height,
+  };
+  cache.set(kind, entry);
+  return entry;
 }
 
 function buildPaint(samples: number, textured: boolean, seed: number, biome: MapData['biome']): Paint[] {
   const materialSamples = new Map<Material, Pick<Paint, 'source' | 'stepX' | 'stepY' | 'offset' | 'tileWidth' | 'tileHeight'>>();
-  const assets = getAssets();
-  return names.map((name, i) => {
+  const basePaints: Paint[] = names.map((name, i) => {
     const kind = name === 'bridge' ? 'water'
       : name === 'door' ? 'flagstone'
       : name === 'sand' && biome === 'desert' ? 'dunes'
       : name === 'water' && (biome === 'cave' || biome === 'dungeon') ? 'waterRapids'
       : materials[i];
-    const art = kind && textured ? assets.materials[kind] : undefined;
-    const info: Paint = { rgb: TERRAIN_COLORS[name === 'bridge' ? 'water' : name === 'door' ? 'floor' : name], tint: tint[name] ?? [1, 1, 1] };
-    if (!kind || !art) return info;
-    if (!materialSamples.has(kind)) {
-      const span = ART_SCALE[kind] * samples;
-      // Текстура семплируется в ART_SCALE раз мельче, чем её родное разрешение:
-      // без предварительного уменьшения это даёт алиасинг (муар, «полосы»).
-      // Поэтому сначала один раз боксим материал до плотности ~1 тексель/пиксель.
-      const factor = Math.max(1, Math.round(art.width / span));
-      const baked = factor > 1 ? downsample(art, factor) : art;
-      const stepX = baked.width / span, stepY = baked.height / span;
-      const offset = ((seed >>> 0) % 97) * 11;
-      // Обычная циклическая (wrap) развёртка: текстуры готовятся скриптом
-      // scripts/make-seamless.py так, что их кромки совпадают точно, поэтому шва
-      // нет. Прежняя mirror-развёртка давала 4-кратную симметрию — на снегу,
-      // воде и дорогах это читалось как «калейдоскоп» из ромбов.
-      materialSamples.set(kind, {
-        source: baked.data,
-        stepX,
-        stepY,
-        offset,
-        tileWidth: baked.width,
-        tileHeight: baked.height,
-      });
-    }
-    return { ...info, ...materialSamples.get(kind) };
+    const info: Paint = {
+      rgb: TERRAIN_COLORS[name === 'bridge' ? 'water' : name === 'door' ? 'floor' : name],
+      tint: tint[name] ?? [1, 1, 1],
+    };
+    if (!kind || !textured) return info;
+    const sample = bakeMaterial(kind, samples, seed, materialSamples);
+    return sample ? { ...info, ...sample } : info;
   });
+
+  const roadPaints: Paint[] = ROAD_MATERIAL_IDS.map((roadMat) => {
+    const pavedRoad = roadMat !== 'road_packed_dirt' && roadMat !== 'road_gravel';
+    const info: Paint = {
+      rgb: ROAD_FALLBACK_RGB[roadMat],
+      tint: [1, 1, 1],
+      pavedRoad,
+    };
+    if (!textured) return info;
+    const sample = bakeMaterial(roadMat, samples, seed, materialSamples);
+    return sample ? { ...info, ...sample } : info;
+  });
+
+  return [...basePaints, ...roadPaints];
 }
 
 /** Усреднение блоков factor×factor — один раз на материал, чтобы убрать алиасинг. */
@@ -108,15 +150,23 @@ function downsample(art: { width: number; height: number; data: Uint8ClampedArra
 
 let last: { cells: MapData['cells']; key: string; image: ImageData } | undefined;
 
-/**
- * Один ImageData на каждый холст. На предыдущем этапе была двойная версия
- * для «западной и северной» перспективы, от неё отказались, как было показано
- * на примере Sol Max.
- */
 export function paintTerrain(map: MapData, settings: RenderSettings, seed: number): ImageData {
   const { width, height } = map;
   const samples = Math.max(14, Math.min(settings.cellSize, Math.floor(Math.sqrt(22_000_000 / (width * height)))));
-  const key = `${seed}:${samples}:${settings.texture}:${settings.shading}:${settings.showStructures}:${getAssets().ready}:${map.plan?.settlement?.fortification ? 1 : 0}`;
+  const sMeta = map.plan?.settlement;
+  const key = [
+    seed,
+    samples,
+    settings.texture,
+    settings.shading,
+    settings.showStructures,
+    settings.roadMaterial ?? 'auto',
+    getAssets().ready,
+    sMeta?.fortification ? 1 : 0,
+    sMeta?.type ?? '',
+    sMeta?.character ?? '',
+    sMeta?.districts?.length ?? 0,
+  ].join(':');
   if (last?.cells === map.cells && last.key === key) return last.image;
 
   const w = width * samples, h = height * samples;
@@ -125,20 +175,21 @@ export function paintTerrain(map: MapData, settings: RenderSettings, seed: numbe
   const tiles = new Uint8Array(width * height);
   const light = new Float32Array(width * height);
   const fallbackLand = index[map.biome === 'cave' ? 'caveFloor' : map.biome === 'dungeon' ? 'floor' : map.biome === 'snow' ? 'snow' : map.biome === 'swamp' ? 'mud' : map.biome === 'village' || map.biome === 'town' ? 'plaza' : 'sand'];
-  const fortified = map.plan?.settlement?.fortification !== undefined;
+  const fortified = sMeta?.fortification !== undefined;
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     const at = y * width + x;
     const { terrain, height: elevation } = map.cells[y][x];
-    // Стены нельзя заливать цветом «пустоты»: в подземелье void — это массив
-    // камня вокруг залов, а на поверхности wall — обычная каменная кладка.
-    // Раньше wall → void давало чёрные квадраты вокруг домов и руин.
     const underground = map.biome === 'dungeon' || map.biome === 'cave';
-    // Под стеной поселения — земля: саму стену рисует townWallPaint лентой.
     const shown = terrain === 'wall' && fortified ? 'grass'
       : !settings.showStructures && (terrain === 'wall' || terrain === 'door')
       ? 'floor'
       : terrain === 'wall' ? (underground ? 'caveWall' : 'wall') : terrain;
-    tiles[at] = index[shown];
+    if (shown === 'road') {
+      const roadMat = selectCellRoadMaterial(map, x, y, settings.roadMaterial);
+      tiles[at] = roadSlotIndex[roadMat];
+    } else {
+      tiles[at] = index[shown];
+    }
     if (settings.shading && !rigid[tiles[at]]) {
       const nw = map.cells[Math.max(0, y - 1)][Math.max(0, x - 1)].height;
       const se = map.cells[Math.min(height - 1, y + 1)][Math.min(width - 1, x + 1)].height;
@@ -151,7 +202,7 @@ export function paintTerrain(map: MapData, settings: RenderSettings, seed: numbe
   const dxFrac = Float32Array.from({ length: w }, (_, x) => x * 4 / samples - dxIndex[x] / 3);
   const slots = new Int32Array(4), weights = new Float32Array(4);
 
-  // Интерполируем из центров клеток, искажая только нарисованные края; сама сетка остаётся точной.
+  // Непрерывная выборка в мировых координатах: ни один дорожный материал не сбрасывает UV по клеткам.
   for (let py = 0; py < h; py++) {
     const vy = py / samples;
     const dy = Math.floor(vy * 4), dyFrac = vy * 4 - dy;
@@ -160,16 +211,13 @@ export function paintTerrain(map: MapData, settings: RenderSettings, seed: numbe
     for (let px = 0; px < w; px++) {
       const vx = px / samples;
       const at = nearestRow + Math.floor(vx);
-      // Старый «двухлистовой» вид больше не нужен: сетка остаётся неподвижной.
       const here = tiles[at];
       const ix = dxIndex[px], fx = dxFrac[px];
       const nw = pRow + ix, sw = nRow + ix;
       let p0 = (1 - dyFrac) * (1 - fx), p1 = (1 - dyFrac) * fx, p2 = dyFrac * (1 - fx), p3 = dyFrac * fx;
-      // Лёгкое обострение весов: граница грунтов читается, но без клеточной «лестницы».
       const sumSq = p0 * p0 + p1 * p1 + p2 * p2 + p3 * p3;
       if (sumSq > 0) { const inv = 1 / sumSq; p0 *= p0 * inv; p1 *= p1 * inv; p2 *= p2 * inv; p3 *= p3 * inv; }
       const wash = drift[nw + 2] * p0 + drift[nw + 5] * p1 + drift[sw + 2] * p2 + drift[sw + 5] * p3;
-      // Плавное смещение UV (в клетках): разрывает строгую периодичность тайла.
       const washX = (drift[nw] * p0 + drift[nw + 3] * p1 + drift[sw] * p2 + drift[sw + 3] * p3) * 0.65;
       const washY = (drift[nw + 1] * p0 + drift[nw + 4] * p1 + drift[sw + 1] * p2 + drift[sw + 4] * p3) * 0.65;
       let r = 0, g = 0, b = 0, wetR = 0, wetG = 0, wetB = 0, water = 0, land = 0, shade = light[at];
@@ -202,11 +250,10 @@ export function paintTerrain(map: MapData, settings: RenderSettings, seed: numbe
         const mat = paint[tile];
         let a: number, c: number, d: number;
         if (mat.source && mat.stepX !== undefined && mat.stepY !== undefined) {
-          // Мировые координаты (с шумовым смещением для нежёстких поверхностей)
-          // вместо координат пикселя: рисунок больше не повторяется сеткой.
-          // UV считается в пикселях растра (как раньше), а смещение wash — в клетках.
-          const ux = rigid[tile] ? px : px + washX * samples;
-          const uy = rigid[tile] ? py : py + washY * samples;
+          // Для каменной мостовой используем минимальное смещение геометрии швов, чтобы камни не «плыли».
+          const uvJitter = rigid[tile] ? 0 : mat.pavedRoad ? 0.12 : 1;
+          const ux = px + washX * samples * uvJitter;
+          const uy = py + washY * samples * uvJitter;
           const tw = mat.tileWidth!;
           const th = mat.tileHeight!;
           let tx = Math.floor(ux * mat.stepX) + mat.offset!;
@@ -227,7 +274,8 @@ export function paintTerrain(map: MapData, settings: RenderSettings, seed: numbe
         }
       }
 
-      const lighting = 1 + shade + (settings.texture ? wash * (rigid[here] ? 0.13 : 0.27) : 0);
+      const herePaved = paint[here]?.pavedRoad ?? false;
+      const lighting = 1 + shade + (settings.texture ? wash * (rigid[here] || herePaved ? 0.11 : 0.27) : 0);
       const out = (py * w + px) * 4;
       const dry = land > 0.0001 ? lighting / land : 0;
       r *= dry; g *= dry; b *= dry;

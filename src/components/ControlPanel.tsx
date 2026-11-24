@@ -1,4 +1,17 @@
-import type { MapData, Biome, CryptArchetype, GenSettings, RenderSettings } from '../lib/types';
+import type { MapData, Biome, CityCondition, CryptArchetype, GenSettings, RenderSettings, SettlementDebugLayers, TimeOfDay } from '../lib/types';
+import {
+  clampMapDimensions,
+  detectMapSizeProfile,
+  MAP_SIZE_PROFILE_LABELS,
+  MAP_SIZE_PROFILE_ORDER,
+  MAP_SIZE_PROFILES,
+  MAX_CUSTOM_SLIDER_HEIGHT,
+  MAX_CUSTOM_SLIDER_WIDTH,
+  MAX_MAP_CELLS,
+  MIN_MAP_DIM,
+  type MapSizeProfile,
+} from '../lib/mapDimensions';
+import { DEFAULT_SETTLEMENT_DEBUG } from '../lib/gen/urban/debug';
 import { BIOME_LABELS, CRYPT_ARCHETYPE_IDS, CRYPT_ARCHETYPE_LABELS, PRESETS } from '../lib/presets';
 import { Slider, Toggle, pct } from './controls';
 import { DensitySlider, SettlementChoices } from './SettlementPanel';
@@ -8,6 +21,7 @@ import { DungeonLayoutOptions } from './DungeonLayoutPanel';
 import { isComplexArchetype } from '../lib/gen/complex/registry';
 import { SettlementTypeOptions } from './SettlementTypePanel';
 import { isSettlementType } from '../lib/gen/settlementTypes';
+import type { CastleWallMaterialSetting, RoadMaterialSetting } from '../lib/roadMaterials';
 import { getArchetype } from '../lib/gen/archetypes';
 import Icon from './Icon';
 
@@ -52,7 +66,25 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
   return <>
     <div className="sidebar-section generation-fields">
       <div className="section-heading"><h2>Генерация</h2><Icon name="sparkles" size={17} className="section-symbol" /></div>
-      <label className="field-label">Биом<select aria-label="Биом" value={gen.biome} onChange={(e) => onGen({ biome: e.target.value as Biome })}>
+      <label className="field-label">Биом<select aria-label="Биом" value={gen.biome} onChange={(e) => {
+        const nextBiome = e.target.value as Biome;
+        if ((nextBiome === 'town' || nextBiome === 'village') && gen.settlementType === undefined) {
+          const defaultProfile = gen.mapSizeProfile ?? (gen.width <= 44 && gen.height <= 30 ? 'standard' : detectMapSizeProfile(gen.width, gen.height));
+          const nextDims = defaultProfile !== 'custom'
+            ? { width: MAP_SIZE_PROFILES[defaultProfile].width, height: MAP_SIZE_PROFILES[defaultProfile].height }
+            : clampMapDimensions(gen.width, gen.height);
+          onGen({
+            biome: nextBiome,
+            settlement: nextBiome,
+            settlementType: nextBiome === 'town' ? 'trade_town' : 'large_village',
+            density: Math.max(gen.density, 0.64),
+            ...nextDims,
+            mapSizeProfile: defaultProfile,
+          });
+        } else {
+          onGen({ biome: nextBiome });
+        }
+      }}>
         {Object.entries(BIOME_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select></label>
       <label className="field-label">Пресет<select aria-label="Пресет" value="" onChange={(e) => {
@@ -67,9 +99,49 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
       {history.length > 0 && <select aria-label="Недавние seed" value="" onChange={(e) => onGen({ seed: Number(e.target.value) })}>
         <option value="" disabled>Недавние seed</option>{history.map((seed) => <option key={seed} value={seed}>{seed}</option>)}
       </select>}
-      <Slider label="Ширина (клеток)" value={gen.width} min={10} max={100} onChange={(width) => onGen({ width })} />
-      <Slider label="Высота (клеток)" value={gen.height} min={10} max={80} onChange={(height) => onGen({ height })} />
-      <p className="size-note">До 100 × 80 клеток · большие карты автоматически оптимизируют детализацию</p>
+      <label className="field-label">
+        Профиль размера
+        <select
+          aria-label="Профиль размера"
+          value={gen.mapSizeProfile === 'custom' ? 'custom' : detectMapSizeProfile(gen.width, gen.height)}
+          onChange={(e) => {
+            const profile = e.target.value as MapSizeProfile;
+            if (profile === 'custom') {
+              onGen({ mapSizeProfile: 'custom' });
+            } else {
+              const spec = MAP_SIZE_PROFILES[profile];
+              onGen({ width: spec.width, height: spec.height, mapSizeProfile: profile });
+            }
+          }}
+        >
+          {MAP_SIZE_PROFILE_ORDER.map((profile) => (
+            <option key={profile} value={profile}>{MAP_SIZE_PROFILE_LABELS[profile]}</option>
+          ))}
+        </select>
+      </label>
+      <Slider
+        label="Ширина (клеток)"
+        value={gen.width}
+        min={MIN_MAP_DIM}
+        max={MAX_CUSTOM_SLIDER_WIDTH}
+        onChange={(rawWidth) => {
+          const next = clampMapDimensions(rawWidth, gen.height, 'width');
+          onGen({ ...next, mapSizeProfile: detectMapSizeProfile(next.width, next.height) });
+        }}
+      />
+      <Slider
+        label="Высота (клеток)"
+        value={gen.height}
+        min={MIN_MAP_DIM}
+        max={MAX_CUSTOM_SLIDER_HEIGHT}
+        onChange={(rawHeight) => {
+          const next = clampMapDimensions(gen.width, rawHeight, 'height');
+          onGen({ ...next, mapSizeProfile: detectMapSizeProfile(next.width, next.height) });
+        }}
+      />
+      <p className="size-note">
+        {(gen.width * gen.height).toLocaleString('ru-RU')} из {MAX_MAP_CELLS.toLocaleString('ru-RU')} клеток (макс. 200 × 160) · профили Standard / Large / Epic
+      </p>
       <button type="button" className="action-btn primary-btn generate-btn" onClick={onRandomSeed}><Icon name="dice" size={17} /> Сгенерировать</button>
     </div>
     {isOverland && structured && <details open className="sidebar-section generation-fields">
@@ -86,6 +158,31 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
       {!isSettlementType(gen.settlementType) && <SettlementChoices style={gen.biome === 'town' ? 'town' : 'village'} onStyle={(style) => onGen({ biome: style, settlement: style })} />}
       <DensitySlider density={gen.density} onDensity={(density) => onGen({ density })} />
       <Toggle label="Площади и городские детали" checked={gen.publicSpaces} onChange={(publicSpaces) => onGen({ publicSpaces })} />
+      {isSettlementType(gen.settlementType) && (
+        <>
+          <Slider
+            label="Городская среда"
+            value={gen.urbanDressing ?? 0.6}
+            min={0}
+            max={1}
+            step={0.05}
+            format={pct}
+            onChange={(urbanDressing) => onGen({ urbanDressing })}
+          />
+          <label className="field-label">
+            Состояние города
+            <select
+              aria-label="Состояние города"
+              value={gen.cityCondition ?? 'lived_in'}
+              onChange={(event) => onGen({ cityCondition: event.target.value as CityCondition })}
+            >
+              <option value="pristine">Чистый</option>
+              <option value="lived_in">Жилой</option>
+              <option value="worn">Изношенный</option>
+            </select>
+          </label>
+        </>
+      )}
       <Toggle label="Река" checked={gen.river} onChange={(river) => onGen({ river })} />
       <Toggle label="Сеть улиц" checked={gen.road} onChange={(road) => onGen({ road })} />
     </div>}
@@ -130,7 +227,40 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
     <details className="sidebar-section generation-fields">
       <summary className="section-heading"><h2>Сетка и вид</h2><Icon name="chevron" size={15} className="section-symbol" /></summary>
       <Slider label="Разрешение клетки (px)" value={render.cellSize} min={16} max={72} step={2} onChange={(cellSize) => onRender({ cellSize })} />
-      {isDungeon && <Slider label="Толщина стен" value={render.wallThickness} min={0.15} max={1.2} step={0.01} format={(v) => v.toFixed(2) + ' кл.'} onChange={(wallThickness) => onRender({ wallThickness })} />}
+      {(isDungeon || Boolean(map.plan?.settlement?.fortification)) && (
+        <Slider label="Толщина стен" value={render.wallThickness} min={0.15} max={1.2} step={0.01} format={(v) => v.toFixed(2) + ' кл.'} onChange={(wallThickness) => onRender({ wallThickness })} />
+      )}
+      {(isSettlement || map.road.length > 0) && (
+        <label className="field-label">Покрытие дорог
+          <select
+            aria-label="Покрытие дорог"
+            value={render.roadMaterial ?? 'auto'}
+            onChange={(e) => onRender({ roadMaterial: e.target.value as RoadMaterialSetting })}
+          >
+            <option value="auto">Авто (по кварталам и биомам)</option>
+            <option value="road_packed_dirt">Утрамбованная земля</option>
+            <option value="road_gravel">Гравийный тракт</option>
+            <option value="road_old_cobblestone">Старая брусчатка</option>
+            <option value="road_worn_cobblestone">Изношенная мостовая</option>
+            <option value="road_noble_paving">Парадные каменные плиты</option>
+            <option value="road_damaged_stone">Разбитая каменная кладка</option>
+          </select>
+        </label>
+      )}
+      {map.plan?.settlement?.fortification?.kind === 'stone' && (
+        <label className="field-label">Кладка крепостной стены
+          <select
+            aria-label="Кладка крепостной стены"
+            value={render.castleWallMaterial ?? 'auto'}
+            onChange={(e) => onRender({ castleWallMaterial: e.target.value as CastleWallMaterialSetting })}
+          >
+            <option value="auto">Авто (по богатству и возрасту)</option>
+            <option value="castle_wall_stone">Крепостной известняк</option>
+            <option value="castle_wall_dressed_stone">Тёсаный цитадельный камень</option>
+            <option value="castle_wall_weathered">Старая выветренная кладка</option>
+          </select>
+        </label>
+      )}
       <Toggle label="Сетка" checked={render.showGrid} onChange={(showGrid) => onRender({ showGrid })} />
       {render.showGrid && <>
         <label className="field-label">Тип сетки<select aria-label="Тип сетки" value={render.gridType} onChange={(e) => onRender({ gridType: e.target.value === 'hex' ? 'hex' : 'square' })}><option value="square">Квадратная</option><option value="hex">Гексагональная</option></select></label>
@@ -143,7 +273,44 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
       <Toggle label="Растительность" checked={render.showTrees} onChange={(showTrees) => onRender({ showTrees })} />
       <Toggle label="Камни" checked={render.showRocks} onChange={(showRocks) => onRender({ showRocks })} />
       <Toggle label="Мелкий декор" checked={render.showDecor !== false} onChange={(showDecor) => onRender({ showDecor })} />
-        <Toggle label="Разметка генерации (debug)" checked={render.showDebug === true} onChange={(showDebug) => onRender({ showDebug })} />
+      <Toggle label="Разметка генерации (debug)" checked={render.showDebug === true} onChange={(showDebug) => onRender({ showDebug })} />
+      {render.showDebug === true && isSettlement && map.plan?.settlement && (() => {
+        const dbg: Required<SettlementDebugLayers> = { ...DEFAULT_SETTLEMENT_DEBUG, ...(render.settlementDebug ?? {}) };
+        const patch = (key: keyof SettlementDebugLayers, val: boolean) =>
+          onRender({ settlementDebug: { ...dbg, [key]: val } });
+        return <>
+          <Toggle label="Debug: Граница города (Footprint)" checked={dbg.footprint} onChange={(v) => patch('footprint', v)} />
+          <Toggle label="Debug: Плотность (Urban Density)" checked={dbg.density} onChange={(v) => patch('density', v)} />
+          <Toggle label="Debug: Районы (Districts)" checked={dbg.districts} onChange={(v) => patch('districts', v)} />
+          <Toggle label="Debug: Кварталы (Blocks)" checked={dbg.blocks} onChange={(v) => patch('blocks', v)} />
+          <Toggle label="Debug: Участки (Plots)" checked={dbg.plots} onChange={(v) => patch('plots', v)} />
+          <Toggle label="Debug: Иерархия дорог (4 ур.)" checked={dbg.roadHierarchy} onChange={(v) => patch('roadHierarchy', v)} />
+          <Toggle label="Debug: Фасады зданий (Frontage)" checked={dbg.frontage} onChange={(v) => patch('frontage', v)} />
+          <Toggle label="Debug: Дворы и флигели (Courtyards)" checked={dbg.courtyards} onChange={(v) => patch('courtyards', v)} />
+          <Toggle label="Debug: Открытые зоны (Empty Areas)" checked={dbg.emptyAreas} onChange={(v) => patch('emptyAreas', v)} />
+          <Toggle label="Debug: Доступность (Accessibility)" checked={dbg.accessibility} onChange={(v) => patch('accessibility', v)} />
+          <Toggle label="Debug: Влияние реки (River Influence)" checked={dbg.riverInfluence} onChange={(v) => patch('riverInfluence', v)} />
+          <Toggle label="Debug: Ориентиры и цепочки" checked={dbg.landmarks} onChange={(v) => patch('landmarks', v)} />
+          <Toggle label="Debug: Подписи районов" checked={dbg.districtLabels} onChange={(v) => patch('districtLabels', v)} />
+          <Toggle label="Debug: Рынок и диагностика (Market)" checked={dbg.market} onChange={(v) => patch('market', v)} />
+          <Toggle label="Debug: Граф активности (Activity)" checked={dbg.activity} onChange={(v) => patch('activity', v)} />
+          <Toggle label="Debug: Якоря декора и фасады (Anchors)" checked={dbg.anchors} onChange={(v) => patch('anchors', v)} />
+          <Toggle label="Debug: Городское освещение (Lighting)" checked={dbg.lighting} onChange={(v) => patch('lighting', v)} />
+        </>;
+      })()}
+      {isSettlement && (
+        <label className="field-label">Время суток
+          <select
+            aria-label="Время суток"
+            value={render.timeOfDay ?? 'day'}
+            onChange={(e) => onRender({ timeOfDay: e.target.value as TimeOfDay })}
+          >
+            <option value="day">День</option>
+            <option value="dusk">Сумерки</option>
+            <option value="night">Ночь</option>
+          </select>
+        </label>
+      )}
       <Toggle label="Постройки" checked={render.showStructures} onChange={(showStructures) => onRender({ showStructures })} />
       {isDungeon && <Toggle label="Метки ловушек" checked={render.showSecrets} onChange={(showSecrets) => onRender({ showSecrets })} />}
       {(isSettlement || (map.civic?.length ?? 0) > 0) && <Toggle label="Городские объекты" checked={render.showCivic} onChange={(showCivic) => onRender({ showCivic })} />}

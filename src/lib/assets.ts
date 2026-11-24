@@ -22,13 +22,19 @@ for (const kind of CRYPT_KINDS) {
 export const artUrl = (name: string) => files[`../assets/cartography/${name}.webp`] ?? furnitureVectors[name] ?? cryptVectors[name] ?? chestVectors[name] ?? synthesized[name];
 export const CHEST_ART = chest;
 
-export const MATERIALS = ['grass', 'earth', 'bank', 'water', 'waterDeep', 'waterRapids', 'flagstone', 'bedrock', 'snow', 'peat', 'caveSoil', 'dunes', 'hatching', 'cobbles', 'thatch', 'shingles', 'terracotta', 'slate'] as const;
+export const MATERIALS = [
+  'grass', 'earth', 'bank', 'water', 'waterDeep', 'waterRapids',
+  'flagstone', 'bedrock', 'snow', 'peat', 'caveSoil', 'dunes', 'hatching', 'cobbles',
+  'road_packed_dirt', 'road_gravel', 'road_old_cobblestone',
+  'road_worn_cobblestone', 'road_noble_paving', 'road_damaged_stone',
+  'thatch', 'shingles', 'terracotta', 'slate',
+] as const;
 export type Material = typeof MATERIALS[number];
 
 export const ROOFS = ['thatch', 'shingles', 'terracotta', 'slate'] as const;
 
 export const TILE_ART: Partial<Record<Terrain, Material>> = {
-  grass: 'grass', darkGrass: 'grass', dirt: 'earth', road: 'bank', sand: 'bank', mud: 'peat',
+  grass: 'grass', darkGrass: 'grass', dirt: 'earth', road: 'road_packed_dirt', sand: 'bank', mud: 'peat',
   rock: 'bedrock', caveFloor: 'caveSoil', caveWall: 'bedrock', floor: 'flagstone', wall: 'bedrock', void: undefined,
   plaza: 'cobbles', buildingFloor: 'flagstone', buildingWall: 'bedrock', roof: 'thatch',
   water: 'water', deepWater: 'waterDeep', ice: 'snow', snow: 'snow',
@@ -37,7 +43,10 @@ export const TILE_ART: Partial<Record<Terrain, Material>> = {
 export const ART_SCALE: Record<Material, number> = {
   grass: 5.9, earth: 3.6, bank: 6.8, water: 7.5, waterDeep: 6.2, waterRapids: 7.0,
   flagstone: 4.4, bedrock: 6.0, snow: 7.5, peat: 5.9,
-  caveSoil: 5.8, dunes: 6.7, hatching: 8.1, cobbles: 4.1, thatch: 2.8, shingles: 2.2, terracotta: 2.6, slate: 2.4,
+  caveSoil: 5.8, dunes: 6.7, hatching: 8.1, cobbles: 4.1,
+  road_packed_dirt: 4.8, road_gravel: 4.6, road_old_cobblestone: 4.3,
+  road_worn_cobblestone: 4.4, road_noble_paving: 4.5, road_damaged_stone: 4.4,
+  thatch: 2.8, shingles: 2.2, terracotta: 2.6, slate: 2.4,
 };
 
 /**
@@ -80,7 +89,7 @@ export function artPick(name: string, hash: number): HTMLImageElement | undefine
   return assets.art[list[index]] ?? assets.art[name];
 }
 
-const isMarketAsset = (path: string) => /\/market[A-Z][^/]*\.webp$/.test(path);
+const isMarketAsset = (path: string) => /\/market(?:Tent|Stall|Wagon|Wheelbarrow|Crates|Barrels|Sacks|Rope|Chest|Baskets|Barrel|Notice|Well|Hay|Bench|Table|Fence)[^/]*\.webp$/.test(path);
 
 async function loadImage(src: string) {
   const img = new Image();

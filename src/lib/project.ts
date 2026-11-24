@@ -15,7 +15,9 @@ import { MAX_DUNGEON_LEVELS } from './gen/dungeonArchitect';
 import { DOOR_KINDS } from './doors';
 import { isComplexArchetype, isGeometrySetting, isTopologySetting } from './gen/complex/registry';
 import { FLOOR_CODE_PATTERN, isConditionSetting, isStyleSetting } from './gen/complex/styles';
-import { isSettlementLayout, isSettlementType } from './gen/settlementTypes';
+import { isSettlementLayout, isSettlementType, isUrbanCharacterSetting } from './gen/settlementTypes';
+import { detectMapSizeProfile, isMapSizeProfile, isValidMapDimensions } from './mapDimensions';
+import { isCastleWallMaterialSetting, isRoadMaterialSetting } from './roadMaterials';
 import type { DoorKind, ObjectDimensions } from './types';
 
 export interface Project {
@@ -29,7 +31,7 @@ export interface Project {
 type NewEditorFields = 'roofMaterial' | 'roofShape' | 'civicKind' | 'stampRotation' | 'buildingSize' | 'civicSize' | 'chestRotation' | 'furnitureKind' | 'furnitureErase'
   | 'furnitureFinish' | 'furnitureSprite' | 'cryptKind' | 'cryptErase' | 'cryptConceal' | 'chestKind' | 'objectSizes' | 'sizeLock' | 'sizeUnit';
 type NewRenderFields = 'showChests' | 'showRoofs' | 'showCivic' | 'showCrypt' | 'showSecrets' | 'wallThickness';
-type NewGenFields = 'density' | 'settlement' | 'publicSpaces' | 'marketStyle' | 'marketRichness' | 'cryptDetail' | 'cryptTraps' | 'cryptChasms' | 'cryptArchetype';
+type NewGenFields = 'density' | 'settlement' | 'publicSpaces' | 'marketStyle' | 'marketRichness' | 'cryptDetail' | 'cryptTraps' | 'cryptChasms' | 'cryptArchetype' | 'urbanDressing' | 'cityCondition';
 type ImportProject = Omit<Project, 'gen' | 'map' | 'render' | 'editor'> & {
   gen: Omit<GenSettings, NewGenFields> & Partial<Pick<GenSettings, NewGenFields>>;
   map: (Omit<MapData, 'chests'> & { chests?: MapData['chests'] }) | null;
@@ -50,7 +52,8 @@ export function validateProject(v: unknown): v is ImportProject {
   if (!record(v) || v.version !== 1 || !record(v.gen) || !record(v.render)) return false;
   const g = v.gen, r = v.render;
   if (!integer(g.seed, 0, 4294967295) || typeof g.biome !== 'string' || !Object.prototype.hasOwnProperty.call(BIOME_LABELS, g.biome)) return false;
-  if (!integer(g.width, 10, 100) || !integer(g.height, 10, 80)) return false;
+  if (!isValidMapDimensions(g.width, g.height)) return false;
+  if (g.mapSizeProfile !== undefined && !isMapSizeProfile(g.mapSizeProfile)) return false;
   if (!finite(g.roughness, 0, 1) || !finite(g.waterLevel, 0, 0.7) || !finite(g.vegetation, 0, 1) || !finite(g.rocks, 0, 1)) return false;
   if (!integer(g.structures, 0, 6) || !integer(g.rooms, 2, 14) || !finite(g.caveOpenness, 0, 1)) return false;
   if (g.density !== undefined && !finite(g.density, 0, 1)) return false;
@@ -60,6 +63,8 @@ export function validateProject(v: unknown): v is ImportProject {
   if (g.marketStyle !== undefined && !['auto', 'rows', 'ring', 'fair'].includes(String(g.marketStyle))) return false;
   if (g.marketRichness !== undefined && !finite(g.marketRichness, 0, 1)) return false;
   if (g.marketArchetype !== undefined && !isMarketArchetypeSetting(g.marketArchetype)) return false;
+  if (g.urbanDressing !== undefined && !finite(g.urbanDressing, 0, 1)) return false;
+  if (g.cityCondition !== undefined && g.cityCondition !== 'pristine' && g.cityCondition !== 'lived_in' && g.cityCondition !== 'worn') return false;
   if (g.cryptDetail !== undefined && !finite(g.cryptDetail, 0, 1)) return false;
   if (g.cryptArchetype !== undefined && !['tomb', 'catacombs', 'temple', 'archive', 'prison'].includes(String(g.cryptArchetype))) return false;
   if (![g.cryptTraps, g.cryptChasms].every((v) => v === undefined || bool(v))) return false;
@@ -74,20 +79,32 @@ export function validateProject(v: unknown): v is ImportProject {
   if (g.dungeonCondition !== undefined && !isConditionSetting(g.dungeonCondition)) return false;
   if (g.settlementType !== undefined && g.settlementType !== 'classic' && !isSettlementType(g.settlementType)) return false;
   if (g.settlementLayout !== undefined && !isSettlementLayout(g.settlementLayout)) return false;
+  if (g.settlementCharacter !== undefined && !isUrbanCharacterSetting(g.settlementCharacter)) return false;
   if (g.sceneArchetype !== undefined && g.sceneArchetype !== 'auto' && !isArchetypeId(g.sceneArchetype)) return false;
   if (g.generationEngine !== undefined && g.generationEngine !== 'legacy' && g.generationEngine !== 'structured') return false;
   if (!integer(r.cellSize, 16, 72) || !finite(r.gridOpacity, 0, 1) || typeof r.gridColor !== 'string' || !/^#[0-9a-f]{6}$/i.test(r.gridColor)) return false;
   if (!['square', 'hex'].includes(String(r.gridType))) return false;
   if (![r.showGrid, r.shading, r.texture, r.showTrees, r.showRocks, r.showStructures, r.vignette].every(bool)) return false;
-  if (![r.showChests, r.showCivic, r.showRoofs, r.showCrypt, r.showSecrets].every((value) => value === undefined || bool(value))) return false;
+  if (![r.showChests, r.showCivic, r.showRoofs, r.showCrypt, r.showSecrets, r.showDebug, r.showDecor].every((value) => value === undefined || bool(value))) return false;
+  if (r.timeOfDay !== undefined && !['day', 'dusk', 'night'].includes(String(r.timeOfDay))) return false;
+  if (r.settlementDebug !== undefined && (!record(r.settlementDebug) || !Object.entries(r.settlementDebug).every(([k, v]) =>
+    [
+      'footprint', 'density', 'districts', 'blocks', 'plots', 'roadHierarchy',
+      'frontage', 'courtyards', 'emptyAreas', 'accessibility', 'riverInfluence',
+      'terrainInfluence', 'districtLabels', 'primaryRoads', 'secondaryRoads',
+      'footprints', 'landmarks', 'urbanAge', 'market', 'activity', 'anchors', 'lighting',
+    ].includes(k)
+    && (v === undefined || bool(v))))) return false;
   if (r.wallThickness !== undefined && !finite(r.wallThickness, 0.15, 1.2)) return false;
+  if (r.roadMaterial !== undefined && !isRoadMaterialSetting(r.roadMaterial)) return false;
+  if (r.castleWallMaterial !== undefined && !isCastleWallMaterialSetting(r.castleWallMaterial)) return false;
   if (v.map !== null) {
     const m = v.map;
     if (!record(m) || m.width !== g.width || m.height !== g.height || m.biome !== g.biome) return false;
     if (!Array.isArray(m.cells) || m.cells.length !== m.height || !m.cells.every((row) => Array.isArray(row) && row.length === m.width && row.every((c: unknown) => record(c) && typeof c.terrain === 'string' && Object.prototype.hasOwnProperty.call(TERRAIN_LABELS, c.terrain) && finite(c.height, -2, 2) && finite(c.moisture, -2, 2)))) return false;
-    if (!Array.isArray(m.trees) || m.trees.length > 20000 || !m.trees.every((t: unknown) => record(t) && optionalSize(t) && finite(t.x, -2, m.width as number + 2) && finite(t.y, -2, m.height as number + 2) && finite(t.r, 0.01, 5) && finite(t.v, 0, 1) && ['oak', 'pine', 'bush', 'dead', 'cactus', 'mushroom', 'reed'].includes(String(t.kind)))) return false;
-    if (!Array.isArray(m.rocks) || m.rocks.length > 20000 || !m.rocks.every((r: unknown) => record(r) && optionalSize(r) && finite(r.x, -2, m.width as number + 2) && finite(r.y, -2, m.height as number + 2) && finite(r.r, 0.01, 5) && finite(r.v, 0, 1) && Array.isArray(r.pts) && r.pts.length >= 3 && r.pts.length <= 20 && r.pts.every((p: unknown) => Array.isArray(p) && p.length === 2 && p.every((n) => finite(n, -5, 5))))) return false;
-    if (!Array.isArray(m.structures) || m.structures.length > 2000 || !m.structures.every((s: unknown) => record(s)
+    if (!Array.isArray(m.trees) || m.trees.length > 32000 || !m.trees.every((t: unknown) => record(t) && optionalSize(t) && finite(t.x, -2, m.width as number + 2) && finite(t.y, -2, m.height as number + 2) && finite(t.r, 0.01, 5) && finite(t.v, 0, 1) && ['oak', 'pine', 'bush', 'dead', 'cactus', 'mushroom', 'reed'].includes(String(t.kind)))) return false;
+    if (!Array.isArray(m.rocks) || m.rocks.length > 32000 || !m.rocks.every((r: unknown) => record(r) && optionalSize(r) && finite(r.x, -2, m.width as number + 2) && finite(r.y, -2, m.height as number + 2) && finite(r.r, 0.01, 5) && finite(r.v, 0, 1) && Array.isArray(r.pts) && r.pts.length >= 3 && r.pts.length <= 20 && r.pts.every((p: unknown) => Array.isArray(p) && p.length === 2 && p.every((n) => finite(n, -5, 5))))) return false;
+    if (!Array.isArray(m.structures) || m.structures.length > 4000 || !m.structures.every((s: unknown) => record(s)
       && integer(s.x, 0, Number(g.width) - 1) && integer(s.y, 0, Number(g.height) - 1)
       && integer(s.w, 1, Number(g.width) - Number(s.x)) && integer(s.h, 1, Number(g.height) - Number(s.y)) && bool(s.ruin))) return false;
     if (![m.river, m.road].every((p) => Array.isArray(p) && p.length <= Number(g.width) * Number(g.height) * 2 && p.every((pt: unknown) => record(pt)
@@ -102,22 +119,40 @@ export function validateProject(v: unknown): v is ImportProject {
         spriteIds.add(p.id);
       }
     }
-    if (m.buildings !== undefined && (!Array.isArray(m.buildings) || m.buildings.length > 3000 || !m.buildings.every((b: unknown) => record(b)
+    if (m.buildings !== undefined && (!Array.isArray(m.buildings) || m.buildings.length > 6000 || !m.buildings.every((b: unknown) => record(b)
       && integer(b.x, 0, Number(g.width) - 1) && integer(b.y, 0, Number(g.height) - 1)
       && integer(b.w, 1, Number(g.width) - Number(b.x)) && integer(b.h, 1, Number(g.height) - Number(b.y))
       && ['village', 'town'].includes(String(b.style)) && ['house', 'hall', 'tower', 'shop', 'tavern'].includes(String(b.kind))
       && integer(b.roof, 0, ROOF_KIT.length - 1) && (b.shape === undefined || shape(b.shape)) && (b.source === undefined || b.source === 'layout' || b.source === 'manual')
       && (b.facing === undefined || CHEST_ROTATIONS.includes(b.facing as ChestRotation))
+      && (b.annex === undefined || ['porch', 'wing', 'awning', 'dormer', 'battlement'].includes(String(b.annex)))
+      && (b.role === undefined || [
+        'house', 'workshop', 'shop', 'warehouse', 'tavern', 'town_hall', 'temple',
+        'minor_temple', 'citadel', 'barracks', 'prison', 'smithy', 'mill', 'baths',
+        'stable', 'manor', 'shed', 'barn', 'guildhall', 'shrine',
+      ].includes(String(b.role)))
       && (b.furniture === undefined || Array.isArray(b.furniture) && b.furniture.length <= 4000 && b.furniture.every((f: unknown) => record(f)
         && optionalSize(f) && FURNITURE_KINDS.includes(f.kind as EditorSettings['furnitureKind']) && finite(f.x, 0, Number(b.w)) && finite(f.y, 0, Number(b.h))
         && CHEST_ROTATIONS.includes(f.rotation as ChestRotation) && (f.finish === undefined || FURNITURE_FINISH_KEYS.includes(f.finish as EditorSettings['furnitureFinish']))
         && (f.sprite === undefined || typeof f.sprite === 'string' && spriteIds.has(f.sprite))))
+      && (b.attachments === undefined || Array.isArray(b.attachments) && b.attachments.length <= 16 && b.attachments.every((att: unknown) => record(att)
+        && ['shop_sign', 'tavern_sign', 'awning', 'wall_lantern', 'flower_box', 'banner', 'cargo_winch', 'shrine_niche'].includes(String(att.kind))
+        && CHEST_ROTATIONS.includes(att.side as ChestRotation) && finite(att.offset, -0.5, 0.5)
+        && (att.variant === undefined || integer(att.variant, 0, 7))
+        && (att.emitsLight === undefined || bool(att.emitsLight))))
+      && (b.patina === undefined || record(b.patina) && finite(b.patina.age, 0, 1) && finite(b.patina.wealth, 0, 1) && finite(b.patina.maintenance, 0, 1))
       && record(b.door) && integer(b.door.x, Number(b.x), Number(b.x) + Number(b.w) - 1) && integer(b.door.y, Number(b.y), Number(b.y) + Number(b.h) - 1)))) return false;
+    if (m.lights !== undefined && (!Array.isArray(m.lights) || m.lights.length > 8000 || !m.lights.every((lt: unknown) => record(lt)
+      && finite(lt.x, 0, Number(g.width)) && finite(lt.y, 0, Number(g.height))
+      && finite(lt.radius, 0.5, 32) && finite(lt.intensity, 0, 2)
+      && typeof lt.color === 'string' && lt.color.length <= 32
+      && ['street_lantern', 'brazier', 'wall_sconce', 'window_glow', 'gate_torch', 'pier_lantern', 'shrine_flame'].includes(String(lt.kind))))) return false;
     if (m.civic !== undefined && (!Array.isArray(m.civic) || m.civic.length > Number(g.width) * Number(g.height) || !m.civic.every((p: unknown) => record(p)
       && finite(p.x, 0, Number(g.width) - .15) && finite(p.y, 0, Number(g.height) - .15)
-      && finite(p.w, .15, Math.min(20, Number(g.width) - Number(p.x))) && finite(p.h, .15, Math.min(20, Number(g.height) - Number(p.y)))
+      && finite(p.w, .15, p.kind === 'square' ? Number(g.width) - Number(p.x) : Math.min(24, Number(g.width) - Number(p.x)))
+      && finite(p.h, .15, p.kind === 'square' ? Number(g.height) - Number(p.y) : Math.min(24, Number(g.height) - Number(p.y)))
       && CIVIC_KINDS.includes(p.kind as EditorSettings['civicKind']) && CHEST_ROTATIONS.includes(p.rotation as ChestRotation)
-      && integer(p.variant, 0, 1) && (p.source === 'layout' || p.source === 'manual')))) return false;
+      && integer(p.variant, 0, 7) && (p.source === 'layout' || p.source === 'manual')))) return false;
     const rectangle = (p: Record<string, unknown>) => finite(p.x, 0, Number(g.width) - .15) && finite(p.y, 0, Number(g.height) - .15)
       && finite(p.w, .15, Number(g.width) - Number(p.x)) && finite(p.h, .15, Number(g.height) - Number(p.y));
     if (m.cryptRooms !== undefined && (!Array.isArray(m.cryptRooms) || m.cryptRooms.length > 100 || !m.cryptRooms.every((p: unknown) => record(p) && rectangle(p)
@@ -185,12 +220,14 @@ export function parseProject(value: unknown): Project | null {
     version: 1,
     gen: {
       cryptDetail: DEFAULT_GEN.cryptDetail, cryptTraps: true, cryptChasms: true, cryptArchetype: 'tomb',
+    urbanDressing: DEFAULT_GEN.urbanDressing, cityCondition: DEFAULT_GEN.cityCondition,
       ...value.gen,
       settlement: value.gen.settlement ?? (value.gen.biome === 'town' ? 'town' : 'village'),
       density: value.gen.density ?? 0.42,
       publicSpaces: value.gen.publicSpaces ?? true,
       marketStyle: value.gen.marketStyle ?? 'auto',
       marketRichness: value.gen.marketRichness ?? 0.62,
+      mapSizeProfile: value.gen.mapSizeProfile ?? detectMapSizeProfile(value.gen.width, value.gen.height),
     },
     map: value.map ? { ...value.map, chests: value.map.chests ?? [] } : null,
     render: { showRoofs: true, showCivic: true, showChests: true, showCrypt: true, showSecrets: true, wallThickness: DEFAULT_RENDER.wallThickness, ...value.render },

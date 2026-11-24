@@ -2,7 +2,7 @@ import { getAssets } from './assets';
 import { paintDecor } from './decor';
 import { drawLooked, spriteLook } from './spriteLook';
 import { cryptPainter } from './cryptPaint';
-import { settlementPainter } from './settlementPaint';
+import { setCivicRenderDiagnostics, settlementPainter } from './settlementPaint';
 import { hash2 } from './random';
 import { paintTerrain } from './terrainPaint';
 import { chaikin } from './pathSmooth';
@@ -12,6 +12,8 @@ import { treeDimensions, rockDimensions } from './objectSizing';
 import { drawWalls } from './wallPaint';
 import { paintFloorLayer } from './floorPaint';
 import { drawFortification, fortificationOf } from './townWallPaint';
+import { ROAD_MATERIAL_IDS, resolveLaneRoadMaterial, selectCellRoadMaterial, type RoadMaterialId } from './roadMaterials';
+import { drawSettlementDebugOverlay } from './gen/urban/debug';
 import { drawFurnishing } from './interiorPaint';
 import { interiorOf } from './interiors';
 import { furnitureBounds } from './furnitureKit';
@@ -315,20 +317,77 @@ function drawRiverRibbon(ctx: CanvasRenderingContext2D, map: MapData, cs: number
   ctx.restore();
 }
 
-function drawRoadRibbons(ctx: CanvasRenderingContext2D, map: MapData, cs: number) {
+const ROAD_PATTERN_TILE: Record<RoadMaterialId, number> = {
+  road_packed_dirt: 135,
+  road_gravel: 142,
+  road_old_cobblestone: 164,
+  road_worn_cobblestone: 156,
+  road_noble_paving: 158,
+  road_damaged_stone: 156,
+};
+
+const ROAD_PATTERN_FALLBACK: Record<RoadMaterialId, string> = {
+  road_packed_dirt: "#94714c",
+  road_gravel: "#987e5e",
+  road_old_cobblestone: "#8a8579",
+  road_worn_cobblestone: "#848076",
+  road_noble_paving: "#b8ad98",
+  road_damaged_stone: "#847b6c",
+};
+
+function splitRoadPoints(
+  map: MapData,
+  points: { x: number; y: number }[],
+  allowBridges: boolean,
+  isPlazaLane: boolean,
+): { x: number; y: number }[][] {
+  const spans: { x: number; y: number }[][] = [];
+  let cur: { x: number; y: number }[] = [];
+  for (const pt of points) {
+    const tr = map.cells[pt.y]?.[pt.x]?.terrain;
+    const isWater = tr === "water" || tr === "deepWater";
+    const skipWater = isWater && !allowBridges;
+    // Сохраняем собственное покрытие рыночных и гражданских площадей (§2.6):
+    // дорожная лента плавно доходит до кромки площади, но не закрашивает саму площадь.
+    const skipPlaza = !isPlazaLane && tr === "plaza";
+    if (skipWater || skipPlaza) {
+      if (cur.length > 0) {
+        // Добавляем граничную точку для бесшовного стыка у кромки площади/берега:
+        if (skipPlaza) cur.push(pt);
+        if (cur.length >= 2) spans.push(cur);
+        cur = skipPlaza ? [pt] : [];
+      }
+      continue;
+    }
+    cur.push(pt);
+  }
+  if (cur.length >= 2) spans.push(cur);
+  return spans;
+}
+
+function drawRoadRibbons(ctx: CanvasRenderingContext2D, map: MapData, cs: number, rs: RenderSettings) {
   const roads = map.plan?.roads ?? [];
   if (!roads.length) return;
   const assets = getAssets();
+  const textured = rs.texture;
   const style = (image: CanvasImageSource | undefined, tile: number, fallback: string): string | CanvasPattern => {
-    if (!image) return fallback;
+    if (!textured || !image) return fallback;
     const pattern = ctx.createPattern(image, "repeat");
     if (!pattern) return fallback;
+    // Единое мировое начало координат (0, 0): бесшовное повторение без сброса по клеткам или сегментам.
     pattern.setTransform(new DOMMatrix([cs / tile, 0, 0, cs / tile, 0, 0]));
     return pattern;
   };
-  const earthStyle = style(assets.art["earth"], 200, "#8f7350");
-  const bankStyle = style(assets.art["bank"], 210, "#c8ad80");
-  const cobbleStyle = style(assets.art["cobbles"], 190, "#b8b0a2");
+
+  const roadStyles = Object.fromEntries(
+    ROAD_MATERIAL_IDS.map((id) => [
+      id,
+      style(assets.art[id], ROAD_PATTERN_TILE[id], ROAD_PATTERN_FALLBACK[id]),
+    ]),
+  ) as Record<RoadMaterialId, string | CanvasPattern>;
+  const earthStyle = roadStyles.road_packed_dirt;
+  const plazaStyle = style(assets.art["flagstone"] ?? assets.art["cobbles"], 165, "#afa695");
+
   const isRoad = (terrain: Terrain): boolean => terrain === "road" || terrain === "bridge";
   const nearRoad = (x: number, y: number): boolean => {
     for (let dy = -1; dy <= 1; dy += 1) {
@@ -344,48 +403,83 @@ function drawRoadRibbons(ctx: CanvasRenderingContext2D, map: MapData, cs: number
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
 
-  // Мягкое пятно по клеткам дороги и обочины: сглаживает клеточный край под лентой.
-  traceCellBlobs(ctx, map, cs, (terrain, x, y) => isRoad(terrain) || (terrain === "dirt" && nearRoad(x, y)), cs * 0.72);
+  // Мягкое пятно по клеткам дороги и обочины: органично сглаживает переход в траву/землю.
+  const centerMat = selectCellRoadMaterial(map, Math.floor(map.width / 2), Math.floor(map.height / 2), rs.roadMaterial);
+  const baseShoulderStyle = centerMat === "road_packed_dirt" ? earthStyle : roadStyles.road_gravel;
+  traceCellBlobs(ctx, map, cs, (terrain, x, y) => isRoad(terrain) || (terrain === "dirt" && nearRoad(x, y)), cs * 0.7);
   ctx.filter = "blur(" + Math.max(1, cs * 0.3).toFixed(1) + "px)";
-  ctx.globalAlpha = 0.18;
-  ctx.fillStyle = earthStyle;
+  ctx.globalAlpha = 0.16;
+  ctx.fillStyle = baseShoulderStyle;
   ctx.fill();
   ctx.filter = "none";
   ctx.globalAlpha = 1;
 
   for (const road of roads) {
-    const points = chaikin(road.points, 3);
-    if (points.length < 2) continue;
+    const isPlazaLane = road.surface === "plaza";
+    const { surface, shoulder, paved } = resolveLaneRoadMaterial(map, road, rs.roadMaterial);
+    const bodyStyle = isPlazaLane ? plazaStyle : roadStyles[surface];
+    const shoulderStyle = roadStyles[shoulder];
     const base = Math.max(1, road.width) * cs;
-    const trace = () => {
-      ctx.beginPath();
-      points.forEach((point, index) => {
-        const px = (point.x + 0.5) * cs;
-        const py = (point.y + 0.5) * cs;
-        if (index === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      });
-    };
-    const stroke = (lineWidth: number, strokeStyle: string | CanvasPattern, alpha: number, blur: number) => {
-      trace();
-      ctx.filter = blur > 0 ? "blur(" + blur.toFixed(1) + "px)" : "none";
-      ctx.globalAlpha = alpha;
-      ctx.lineWidth = lineWidth;
-      ctx.strokeStyle = strokeStyle;
-      ctx.stroke();
-      ctx.filter = "none";
-      ctx.globalAlpha = 1;
-    };
-    const plaza = road.surface === "plaza";
-    const body = plaza ? cobbleStyle : bankStyle;
-    // Обочина: три убывающих по ширине и растущих по плотности прохода.
-    stroke(base + cs * 1.25, earthStyle, 0.2, cs * 0.5);
-    stroke(base + cs * 0.62, earthStyle, 0.42, cs * 0.2);
-    stroke(base + cs * 0.3, earthStyle, 0.55, cs * 0.08);
-    // Полотно и утоптанная середина.
-    stroke(base + cs * 0.06, body, 0.6, cs * 0.12);
-    stroke(base - cs * 0.12, body, 0.85, cs * 0.03);
-    if (!plaza) stroke(base * 0.42, earthStyle, 0.14, cs * 0.24);
+    const hLvl = road.hierarchy;
+
+    const spans = splitRoadPoints(map, road.points, Boolean(road.bridges), isPlazaLane);
+    for (const rawSpan of spans) {
+      const points = chaikin(rawSpan, 3);
+      if (points.length < 2) continue;
+      const trace = () => {
+        ctx.beginPath();
+        points.forEach((point, index) => {
+          const px = (point.x + 0.5) * cs;
+          const py = (point.y + 0.5) * cs;
+          if (index === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        });
+      };
+      const stroke = (lineWidth: number, strokeStyle: string | CanvasPattern, alpha: number, blur: number) => {
+        trace();
+        ctx.filter = blur > 0 ? "blur(" + blur.toFixed(1) + "px)" : "none";
+        ctx.globalAlpha = alpha;
+        ctx.lineWidth = lineWidth;
+        ctx.strokeStyle = strokeStyle;
+        ctx.stroke();
+        ctx.filter = "none";
+        ctx.globalAlpha = 1;
+      };
+
+      if (hLvl !== undefined) {
+        if (hLvl === 1) {
+          // Уровень 1 (магистраль): мягкая обочина, деликатная кромка и чёткая бесшовная текстура.
+          stroke(base + cs * 0.98, earthStyle, 0.2, cs * 0.42);
+          stroke(base + cs * 0.38, shoulderStyle, 0.44, cs * 0.13);
+          if (paved) stroke(base + cs * 0.14, "rgba(44, 38, 30, 0.42)", 0.48, cs * 0.02);
+          stroke(base + cs * 0.04, bodyStyle, 0.96, paved ? 0 : cs * 0.02);
+        } else if (hLvl === 2) {
+          // Уровень 2 (районная улица): мягкий переход в прилегающий квартал и чёткая кладка.
+          stroke(base + cs * 0.84, earthStyle, 0.18, cs * 0.38);
+          stroke(base + cs * 0.3, shoulderStyle, 0.42, cs * 0.12);
+          if (paved) stroke(base + cs * 0.1, "rgba(44, 38, 30, 0.3)", 0.38, cs * 0.02);
+          stroke(base, bodyStyle, 0.93, paved ? 0 : cs * 0.03);
+        } else if (hLvl === 3) {
+          // Уровень 3 (местная жилая улочка): чуть уже и мягче по краям.
+          const w3 = base * 0.82;
+          stroke(w3 + cs * 0.56, earthStyle, 0.22, cs * 0.26);
+          stroke(w3 + cs * 0.18, shoulderStyle, 0.46, cs * 0.08);
+          stroke(w3 - cs * 0.06, bodyStyle, 0.88, paved ? 0 : cs * 0.03);
+        } else {
+          // Уровень 4–5 (переулок / дворовый проход): узкая тропа с контекстным покрытием.
+          const w4 = Math.max(cs * 0.46, base * 0.58);
+          stroke(w4 + cs * 0.3, earthStyle, 0.32, cs * 0.14);
+          stroke(w4, bodyStyle, 0.82, paved ? 0 : cs * 0.03);
+        }
+      } else {
+        // Сельские дороги и классические поселения: плавная многослойная обочина + бесшовное полотно.
+        stroke(base + cs * 1.12, earthStyle, 0.18, cs * 0.45);
+        stroke(base + cs * 0.54, shoulderStyle, 0.38, cs * 0.18);
+        stroke(base + cs * 0.24, shoulderStyle, 0.52, cs * 0.07);
+        if (paved) stroke(base + cs * 0.08, "rgba(44, 38, 30, 0.3)", 0.36, cs * 0.02);
+        stroke(base - cs * 0.04, bodyStyle, 0.94, paved ? 0 : cs * 0.02);
+      }
+    }
   }
   ctx.restore();
 }
@@ -408,7 +502,18 @@ function terrainLayerKey(map: MapData, rs: RenderSettings, seed: number, W: numb
       hash = Math.imul(hash, 16777619) >>> 0;
     }
   }
-  return [W, H, seed, map.biome, rs.texture ? 1 : 0, rs.shading ? 1 : 0, hash >>> 0].join('|');
+  return [
+    W,
+    H,
+    seed,
+    map.biome,
+    rs.texture ? 1 : 0,
+    rs.shading ? 1 : 0,
+    rs.roadMaterial ?? 'auto',
+    map.plan?.settlement?.type ?? '',
+    map.plan?.settlement?.character ?? '',
+    hash >>> 0,
+  ].join('|');
 }
 
 function terrainLayer(map: MapData, rs: RenderSettings, seed: number, W: number, H: number): HTMLCanvasElement {
@@ -622,7 +727,7 @@ function paintGround(ctx: CanvasRenderingContext2D, map: MapData, rs: RenderSett
   // Покрытие пола архитектурного комплекса: материалы, бордюры, орнаменты.
   if (map.floorLayer) paintFloorLayer(ctx, map, cs, seed);
   if (map.plan?.river?.length) drawRiverRibbon(ctx, map, cs);
-  if (map.plan?.roads?.length) drawRoadRibbons(ctx, map, cs);
+  if (map.plan?.roads?.length) drawRoadRibbons(ctx, map, cs, rs);
   if (map.plan?.roads?.length) drawBridgeDecks(ctx, map, cs);
   cryptPainter(ctx, map, rs, seed).depth();
 }
@@ -645,7 +750,7 @@ function paintStructures(ctx: CanvasRenderingContext2D, map: MapData, rs: Render
   // Укрепления поселения по типу рисуются лентой вдоль кольца, а не клетками.
   const fortified = fortificationOf(map) !== undefined;
   const spriteWalls = fortified || drawWalls(ctx, map, cs, seed, rs.shading, rs.wallThickness);
-  if (fortified && rs.showStructures) drawFortification(ctx, map, cs, seed);
+  if (fortified && rs.showStructures) drawFortification(ctx, map, cs, seed, rs);
   if (!spriteWalls && rs.shading) {
     eachStructure(map, (terrainKind, x, y) => {
       if (terrainKind !== "wall") return;
@@ -685,7 +790,7 @@ function drawStructures(ctx: CanvasRenderingContext2D, map: MapData, rs: RenderS
   if (W * H > CACHE_LIMIT) { paintStructures(ctx, map, rs, seed); return; }
   // Виды дверей и видимость потайных меняют слой построек.
   const doorKey = map.doors ? `|${rs.showSecrets ? 1 : 0}|${map.doors.map((door) => `${door.x},${door.y},${door.kind}`).join(";")}` : "";
-  const key = `${cellKey}|${rs.wallThickness}${doorKey}`;
+  const key = `${cellKey}|${rs.wallThickness}|${rs.castleWallMaterial ?? 'auto'}|${rs.texture ? 1 : 0}|${rs.shading ? 1 : 0}${doorKey}`;
   if (!structureCache || structureCache.key !== key || structureCache.plan !== map.plan) {
     const layer = layerCanvas(W, H);
     if (!layer.ctx) { paintStructures(ctx, map, rs, seed); return; }
@@ -726,7 +831,21 @@ export function renderMap(canvas: HTMLCanvasElement, map: MapData, rs: RenderSet
   if (rs.showStructures) drawStructures(ctx, map, rs, seed, W, H, cellKey);
 
   const city = settlementPainter(ctx, rs, seed, map.furnitureSprites);
-  if (rs.showCivic) for (const item of map.civic ?? []) if (item.kind === "square") city.civic(item);
+  const civicDiag = {
+    reachedRender: map.civic?.length ?? 0,
+    renderedSprite: 0,
+    renderedProcedural: 0,
+    skippedMissingAsset: 0,
+    skippedByLayerToggle: !rs.showCivic,
+  };
+  if (rs.showCivic) {
+    for (const item of map.civic ?? []) {
+      if (item.kind === "square") {
+        city.civic(item);
+        civicDiag.renderedProcedural++;
+      }
+    }
+  }
   if (rs.showStructures) for (const building of map.buildings ?? []) city.building(building);
 
   paintDecor(ctx, map, rs);
@@ -749,10 +868,89 @@ export function renderMap(canvas: HTMLCanvasElement, map: MapData, rs: RenderSet
     }
   }
 
-  if (rs.showCivic) for (const item of map.civic ?? []) if (item.kind !== "square") objects.push({ y: (item.y + item.h) * cs, paint: () => city.civic(item) });
+  if (rs.showCivic) {
+    for (const item of map.civic ?? []) {
+      if (item.kind !== "square") {
+        objects.push({
+          y: (item.y + item.h) * cs,
+          paint: () => {
+            const out = city.civic(item);
+            if (out === 'sprite') civicDiag.renderedSprite++;
+            else if (out === 'procedural') civicDiag.renderedProcedural++;
+            else civicDiag.skippedMissingAsset++;
+          },
+        });
+      }
+    }
+    // На классических картах деревень и городов (без settlementType) добавляем при отрисовке
+    // ненавязчивые дворовые и уличные детали вокруг домов, не меняя данные карты (golden seeds неизменны):
+    if (!map.plan?.settlement && rs.showDecor !== false && (map.biome === 'village' || map.biome === 'town')) {
+      const villagePool = [
+        'yardWaterPail', 'yardChoppingBlock', 'yardBeehive', 'yardWashTub',
+        'yardFlowerPots', 'urbanHandPump', 'yardBroomRake', 'urbanHitchingPost',
+      ] as const;
+      const townPool = [
+        'lampStreetIron', 'yardWaterPail', 'greenStonePlanterRound', 'greenFlowerUrn',
+        'urbanHandPump', 'urbanHitchingPost', 'yardFlowerPots', 'urbanStonePlanter',
+      ] as const;
+      const pool = map.biome === 'town' ? townPool : villagePool;
+      const occupied = new Set<number>();
+      for (const b of map.buildings ?? []) {
+        for (let yy = b.y; yy < b.y + b.h; yy++) {
+          for (let xx = b.x; xx < b.x + b.w; xx++) occupied.add(yy * map.width + xx);
+        }
+        occupied.add(b.door.y * map.width + b.door.x);
+      }
+      for (const c of map.civic ?? []) {
+        for (let yy = Math.floor(c.y); yy < Math.ceil(c.y + c.h); yy++) {
+          for (let xx = Math.floor(c.x); xx < Math.ceil(c.x + c.w); xx++) occupied.add(yy * map.width + xx);
+        }
+      }
+      for (const b of map.buildings ?? []) {
+        const hRoll = hash2(b.x, b.y, seed + 51803);
+        if (hRoll > 0.68) continue;
+        const candidates: [number, number][] = [
+          [b.x - 1, b.y + Math.floor(b.h / 2)],
+          [b.x + b.w, b.y + Math.floor(b.h / 2)],
+          [b.x + Math.floor(b.w / 2), b.y - 1],
+        ];
+        for (const [cx, cy] of candidates) {
+          if (cx < 1 || cy < 1 || cx >= map.width - 1 || cy >= map.height - 1) continue;
+          const idx = cy * map.width + cx;
+          if (occupied.has(idx)) continue;
+          const tr = map.cells[cy][cx].terrain;
+          if (tr !== 'grass' && tr !== 'dirt' && tr !== 'sand' && tr !== 'plaza') continue;
+          if (Math.abs(cx - b.door.x) <= 1 && Math.abs(cy - b.door.y) <= 1) continue;
+          occupied.add(idx);
+          const pick = pool[Math.floor(hash2(cx, cy, seed + 7717) * pool.length)];
+          objects.push({
+            y: (cy + 1) * cs,
+            paint: () => {
+              city.civic({
+                x: cx,
+                y: cy,
+                w: 1,
+                h: 1,
+                kind: pick,
+                rotation: 0,
+                variant: (cx + cy) % 4,
+                source: 'layout',
+              });
+            },
+          });
+          break;
+        }
+      }
+    }
+  }
   objects.sort((a, b) => a.y - b.y).forEach((item) => item.paint());
+  setCivicRenderDiagnostics(map, civicDiag);
 
   if (rs.showChests) for (const chest of map.chests) drawChest(ctx, chest, cs, rs.shading);
+
+  if (rs.timeOfDay === 'dusk' || rs.timeOfDay === 'night') {
+    drawUrbanLightingPass(ctx, map, rs.timeOfDay, cs, W, H);
+  }
 
   if (rs.vignette) {
     const edge = ctx.createRadialGradient(W * 0.43, H * 0.42, Math.min(W, H) * 0.34, W * 0.49, H * 0.48, Math.hypot(W, H) * 0.54);
@@ -948,6 +1146,9 @@ function drawDebugOverlay(ctx: CanvasRenderingContext2D, map: MapData, rs: Rende
     ctx.arc(poi.x * cs, poi.y * cs, Math.max(4, (poi.radius ?? 2) * cs), 0, Math.PI * 2);
     ctx.stroke();
   }
+  if (plan.settlement) {
+    drawSettlementDebugOverlay(ctx, map, cs, rs.settlementDebug);
+  }
   ctx.restore();
 }
 
@@ -1136,6 +1337,81 @@ function drawRock(ctx: CanvasRenderingContext2D, rock: Rock, cs: number) {
     contour(ctx, rock.pts.map(([x, y]) => [(rock.x + x) * cs, (rock.y + y) * cs]));
     ctx.fillStyle = '#817c6f'; ctx.fill();
     ctx.strokeStyle = '#463f35'; ctx.lineWidth = cs * 0.035; ctx.stroke();
+  }
+}
+
+function drawUrbanLightingPass(
+  ctx: CanvasRenderingContext2D,
+  map: MapData,
+  mode: 'dusk' | 'night',
+  cs: number,
+  W: number,
+  H: number,
+) {
+  const lights = map.lights ?? [];
+  const veilAlpha = mode === 'night' ? 0.68 : 0.36;
+  const veilColor = mode === 'night' ? `rgba(10, 14, 30, ${veilAlpha})` : `rgba(26, 24, 48, ${veilAlpha})`;
+
+  let drewOffscreenVeil = false;
+  if (typeof document !== 'undefined') {
+    const mask = document.createElement('canvas');
+    // Рисуем маску освещения в половинном разрешении для высокой скорости даже на картах 200×160!
+    const scale = 0.5;
+    mask.width = Math.max(1, Math.round(W * scale));
+    mask.height = Math.max(1, Math.round(H * scale));
+    const mctx = mask.getContext('2d');
+    if (mctx) {
+      mctx.fillStyle = veilColor;
+      mctx.fillRect(0, 0, mask.width, mask.height);
+      mctx.globalCompositeOperation = 'destination-out';
+      for (const lt of lights) {
+        const lx = lt.x * cs * scale;
+        const ly = lt.y * cs * scale;
+        const lr = Math.max(4, lt.radius * cs * scale);
+        const punch = Math.min(0.96, lt.intensity * (mode === 'night' ? 0.94 : 0.82));
+        const g = mctx.createRadialGradient(lx, ly, lr * 0.08, lx, ly, lr);
+        g.addColorStop(0, `rgba(0,0,0,${punch.toFixed(3)})`);
+        g.addColorStop(0.55, `rgba(0,0,0,${(punch * 0.48).toFixed(3)})`);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        mctx.fillStyle = g;
+        mctx.beginPath();
+        mctx.arc(lx, ly, lr, 0, Math.PI * 2);
+        mctx.fill();
+      }
+      ctx.save();
+      ctx.drawImage(mask, 0, 0, W, H);
+      ctx.restore();
+      drewOffscreenVeil = true;
+    }
+  }
+
+  if (!drewOffscreenVeil) {
+    ctx.save();
+    ctx.fillStyle = veilColor;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+
+  // Тёплые ореолы вокруг фонарей, факелов, жаровен и жилых окон:
+  if (lights.length > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const glowScale = mode === 'night' ? 0.28 : 0.18;
+    for (const lt of lights) {
+      const lx = lt.x * cs;
+      const ly = lt.y * cs;
+      const lr = Math.max(4, lt.radius * cs * 0.72);
+      const alpha = Math.min(0.45, lt.intensity * glowScale);
+      const g = ctx.createRadialGradient(lx, ly, lr * 0.04, lx, ly, lr);
+      g.addColorStop(0, `rgba(255, 214, 138, ${alpha.toFixed(3)})`);
+      g.addColorStop(0.45, `rgba(255, 162, 74, ${(alpha * 0.42).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(255, 140, 50, 0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(lx, ly, lr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 }
 

@@ -8,6 +8,7 @@ import {
   type SettlementCompositionInput,
 } from './gen/composition';
 import { CIVIC_KIT, contains, intersects } from './settlementKit';
+import { SpatialHash } from './gen/urban/spatialHash';
 import { buildTypedPlan, type SettlementReport } from './gen/settlementPlanner';
 import { isSettlementType } from './gen/settlementTypes';
 import { modernMarket } from './gen/marketArchetypes';
@@ -30,7 +31,7 @@ interface Plan {
   road: Point[];
   river: Point[];
   /** Осевые линии улиц: по ним рендер рисует гладкие ленты. */
-  lanes: { points: Point[]; width: number; surface: 'road' | 'plaza' }[];
+  lanes: { points: Point[]; width: number; surface: 'road' | 'plaza'; hierarchy?: 1 | 2 | 3 | 4 | 5 }[];
   /** Новый рынок (marketArchetype ≠ 'classic'): план, проверка, отчёт. */
   market?: MarketOutcome;
   /** Деревья, которые ставит рынок (дерево в центре деревенской площади). */
@@ -223,7 +224,18 @@ function buildPlan(s: GenSettings, style: SettlementStyle): Plan {
     for (const p of waterfront.pier) { cells[p.y][p.x].terrain = 'bridge'; streets[id(p.x, p.y)] = 1; }
     if (waterfront.pier.length) lanes.push({ points: [...waterfront.quay.slice(-1), ...waterfront.pier], width: 1, surface: 'road' });
     for (const it of waterfront.cargo) if (it.threshold <= plan.richness + 1e-9) add(it.kind, it.x, it.y, it.w, it.h, it.variant, it.rotation);
-    for (const it of plan.items) if (!add(it.kind, it.x, it.y, it.w, it.h, it.variant, it.rotation)) market.report.notes.push(`не поставлен ${it.kind} (${it.x},${it.y})`);
+    for (const it of plan.items) {
+      if (!add(it.kind, it.x, it.y, it.w, it.h, it.variant, it.rotation)) {
+        market.report.notes.push(`не поставлен ${it.kind} (${it.x},${it.y})`);
+        market.report.droppedAfterPlan = (market.report.droppedAfterPlan ?? 0) + 1;
+        market.report.rejectedCount = (market.report.rejectedCount ?? 0) + 1;
+        market.report.rejectionReasons = {
+          ...(market.report.rejectionReasons ?? {}),
+          building_collision: (market.report.rejectionReasons?.building_collision ?? 0) + 1,
+        };
+        market.report.objects = Math.max(0, market.report.objects - 1);
+      }
+    }
     marketTrees.push(...plan.trees);
     if (!compact) for (const [x, y] of [[Math.round(w * .13), Math.round(h * .13)], [Math.round(w * .69), Math.round(h * .82)], [Math.round(w * .26), Math.round(h * .76)]]) {
       if (!streets[id(x, y)] && add('garden', x, y, 3, 2)) {
@@ -421,6 +433,7 @@ function settlementComposition(
   s: GenSettings,
   layout: Plan,
   buildings: Building[],
+  urbanZoneAt?: Uint8Array,
 ): { trees: Tree[]; rocks: MapData['rocks']; plan: GenerationPlan } {
   const { width: w, height: h } = s;
   const rng = new SeededRandom(s.seed, 3301);
@@ -461,6 +474,12 @@ function settlementComposition(
   }
 
   const zoneOf = (x: number, y: number): ZoneType => {
+    if (urbanZoneAt) {
+      const uZone = urbanZoneAt[y * w + x] ?? 5;
+      if (uZone >= 5) return streetDist[y * w + x] <= 1 ? 'roadside' : 'sparse_forest';
+      if (streetDist[y * w + x] <= 2 && uZone >= 2) return 'roadside';
+      return 'meadow';
+    }
     const edge = Math.min(y, x, w - x - 1, h - y - 1);
     if (streetDist[y * w + x] <= 2) return 'roadside';
     if (edge <= 3) return 'sparse_forest';
@@ -526,8 +545,11 @@ function settlementComposition(
   const composition = buildSettlementComposition(compositionInput);
   plan.composition = composition;
 
+  const treeHash = new SpatialHash<Tree>(w, h, 4);
+  const rockHash = new SpatialHash<MapData['rocks'][number]>(w, h, 4);
+
   const tooClose = (x: number, y: number, min: number): boolean =>
-    trees.some((tree) => Math.hypot(tree.x - x, tree.y - y) < min);
+    treeHash.hasWithinRadius(x, y, Math.max(0.01, min - 1e-6));
 
   const plant = (kind: Tree['kind'], cx: number, cy: number, tight: boolean): Tree | null => {
     const x = Math.round(cx);
@@ -538,6 +560,7 @@ function settlementComposition(
     if (tooClose(cx, cy, tight ? 0.75 : 1.1)) return null;
     const tree: Tree = { x: cx, y: cy, r: kind === 'bush' ? rng.range(0.26, 0.38) : rng.range(0.34, 0.52), kind, v: rng.next() };
     trees.push(tree);
+    treeHash.insert(tree, cx, cy, 0, 0);
     return tree;
   };
 
@@ -547,9 +570,11 @@ function settlementComposition(
     if (x < 1 || y < 1 || x >= w - 1 || y >= h - 1) return;
     if (occupied(x, y)) return;
     if (insideOpenSpace(composition, cx, cy, 0.2)) return;
-    if (rocks.some((rock) => Math.hypot(rock.x - cx, rock.y - cy) < 0.8)) return;
+    if (rockHash.hasWithinRadius(cx, cy, 0.8 - 1e-9)) return;
     const r = rng.range(0.16, 0.26);
-    rocks.push({ x: cx, y: cy, r, v: rng.next(), pts: [[-r, 0], [-r * 0.2, -r], [r, -r * 0.4], [r * 0.6, r * 0.7], [-r * 0.5, r]] });
+    const rock = { x: cx, y: cy, r, v: rng.next(), pts: [[-r, 0], [-r * 0.2, -r], [r, -r * 0.4], [r * 0.6, r * 0.7], [-r * 0.5, r]] as [number, number][] };
+    rocks.push(rock);
+    rockHash.insert(rock, cx, cy, 0, 0);
   };
 
   // ---- Композиционные центры: рощи на опушке и зелёная площадь ----
@@ -582,9 +607,11 @@ function settlementComposition(
     groupPlan('forest_cluster', poi.x, poi.y, placed);
   }
 
-  // ---- Кусты вдоль улиц ----
+  // ---- Кусты вдоль улиц (в старом каменном ядре дикие кусты не растут!) ----
   const streetCells: number[] = [];
-  for (let at = 0; at < w * h; at += 1) if (streetDist[at] === 1) streetCells.push(at);
+  for (let at = 0; at < w * h; at += 1) {
+    if (streetDist[at] === 1 && (!urbanZoneAt || urbanZoneAt[at] >= 2)) streetCells.push(at);
+  }
   for (let i = 0; i < 4 && streetCells.length; i += 1) {
     const at = streetCells[Math.floor(rng.next() * streetCells.length)];
     const x = at % w;
@@ -600,9 +627,11 @@ function settlementComposition(
   for (let y = 1; y < h - 1; y += 1) {
     for (let x = 1; x < w - 1; x += 1) {
       if (occupied(x, y)) continue;
+      if (urbanZoneAt && urbanZoneAt[y * w + x] <= 1) continue;
       const type = zoneList[zoneAt[y * w + x]];
       const base = DENSITY[type] ?? 0;
-      const chance = base * (0.35 + s.vegetation * 0.9);
+      const zoneScale = urbanZoneAt && urbanZoneAt[y * w + x] === 2 ? 0.45 : 1;
+      const chance = base * zoneScale * (0.35 + s.vegetation * 0.9);
       if (!rng.chance(chance * 0.55)) continue;
       const kind: Tree['kind'] = rng.chance(0.55) ? 'bush' : rng.chance(0.7) ? 'oak' : 'pine';
       plant(kind, x + 0.5 + rng.range(-0.35, 0.35), y + 0.5 + rng.range(-0.35, 0.35), false);
@@ -625,11 +654,12 @@ function settlementComposition(
   // Улицы — такие же ленты, как тракты в дикой природе: рендер рисует их гладко.
   const streetPaths = layout.lanes.map((lane, index) => ({
     id: `street_${index}`,
-    type: 'main' as const,
+    type: lane.hierarchy && lane.hierarchy >= 4 ? ('trail' as const) : ('main' as const),
     width: lane.width,
     points: lane.points,
     bridges: 0,
     surface: lane.surface,
+    ...(lane.hierarchy ? { hierarchy: lane.hierarchy } : {}),
   }));
   plan.roads = [...(plan.roads ?? []), ...streetPaths];
   return { trees, rocks, plan };
@@ -651,16 +681,69 @@ export const typedSettlement = (s: Pick<GenSettings, 'settlementType'>): boolean
 export function generateSettlement(s: GenSettings): MapData {
   const style = s.biome === 'town' ? 'town' : 'village';
   const typed = typedSettlement(s) ? buildTypedPlan(s, style) : undefined;
-  const plan: Plan = typed ?? buildPlan(s, style);
+  const rawPlan: Plan = typed ?? buildPlan(s, style);
   const density = between(s.density ?? .42, 0, 1);
-  const count = density === 0 ? 0 : Math.min(plan.plots.length, Math.max(1, Math.round(plan.plots.length * density ** 1.18)));
-  const buildings = plan.plots.slice(0, count);
+  const count = density === 0 ? 0 : Math.min(rawPlan.plots.length, Math.max(1, Math.round(rawPlan.plots.length * density ** 1.18)));
+  const activeCivic = typed ? typed.rankedCivic.filter((rc) => rc.plotRank < count).map((rc) => rc.item) : rawPlan.civic;
+  // Состояние города: изношенные дома получают дешёвую или мшистую крышу и метку износа.
+  // Клонируем объекты — массив приходит из кэша buildTypedPlan и общий для всех генераций.
+  const cityCondition = s.cityCondition ?? 'lived_in';
+  let buildings = rawPlan.plots.slice(0, count);
+  if (cityCondition === 'worn') {
+    buildings = buildings.map((building) => {
+      if (hash2(building.x, building.y, s.seed + 0x2101) < 0.55) return building;
+      const cheap: RoofMaterial = hash2(building.x, building.y, s.seed + 0x2102) > 0.7 ? 7 : 0;
+      return { ...building, roof: building.roof > 1 ? cheap : building.roof, cityCondition: 'worn' as const };
+    });
+  } else if (cityCondition === 'pristine') {
+    buildings = buildings.map((building) => ({ ...building, cityCondition: 'pristine' as const }));
+  }
+  const plan: Plan = typed
+    ? { ...typed, cells: typed.cells.map((row) => row.map((c) => ({ ...c }))), civic: activeCivic }
+    : rawPlan;
   const { width, height, seed } = s;
+
+  // Оформление мощения и утоптанного грунта активных городских дворов (Section 4 & 8):
+  // В плотном центре и рабочих/постоялых дворах не должно быть «дикого газона»!
+  if (typed && count > 0) {
+    const builtMask = new Uint8Array(width * height);
+    for (const b of buildings) {
+      for (let yy = b.y; yy < b.y + b.h; yy++) {
+        for (let xx = b.x; xx < b.x + b.w; xx++) builtMask[yy * width + xx] = 1;
+      }
+    }
+    for (let i = 0; i < count; i++) {
+      const plot = typed.placedPlots[i];
+      if (!plot) continue;
+      const ck = plot.courtyardKind;
+      const box = plot.bounds;
+      const isTrodden = plot.zone === 'old_core'
+        || plot.zone === 'inner_city'
+        || ck === 'temple_courtyard'
+        || ck === 'enclosed_courtyard'
+        || ck === 'workshop_yard'
+        || ck === 'trade_courtyard'
+        || ck === 'inn_yard';
+      if (!isTrodden) continue;
+
+      for (let yy = box.y; yy < box.y + box.h; yy++) {
+        for (let xx = box.x; xx < box.x + box.w; xx++) {
+          const idx = yy * width + xx;
+          if (builtMask[idx] || typed.waterDist[idx] < 2) continue;
+          const tr = plan.cells[yy][xx].terrain;
+          if (tr === 'grass' || tr === 'darkGrass') {
+            plan.cells[yy][xx].terrain = 'dirt';
+          }
+        }
+      }
+    }
+  }
+
   let trees: Tree[] = [];
   let rocks: MapData['rocks'] = [];
   let generationPlan: GenerationPlan | undefined;
   if ((s.generationEngine ?? 'structured') === 'structured') {
-    const composition = settlementComposition(s, plan, buildings);
+    const composition = settlementComposition(s, plan, buildings, typed?.urbanZoneAt);
     trees = composition.trees;
     rocks = composition.rocks;
     generationPlan = composition.plan;
@@ -681,12 +764,24 @@ export function generateSettlement(s: GenSettings): MapData {
   }
 
   if (typed) {
+    // Добавляем тематические деревья/надгробия (например, на кладбище), избегая крыш.
+    for (const ut of typed.urbanTrees) {
+      if (!buildings.some((b) => contains({ x: b.x - 1, y: b.y - 1, w: b.w + 2, h: b.h + 2 }, Math.floor(ut.x), Math.floor(ut.y)))) {
+        trees.push(ut);
+      }
+    }
+    for (const ur of typed.urbanRocks) {
+      if (!buildings.some((b) => contains(b, Math.floor(ur.x), Math.floor(ur.y)))) {
+        rocks.push(ur);
+      }
+    }
     // Отчёт считает только поставленные плотностью постройки.
     const placed = typed.plotDistrict.slice(0, count);
     const settlement: SettlementReport = {
       ...typed.report,
       districts: typed.report.districts.map((district, index) => ({ ...district, buildings: placed.filter((d) => d === index).length })),
       buildings: buildings.reduce<SettlementReport['buildings']>((acc, b) => ({ ...acc, [b.kind]: (acc[b.kind] ?? 0) + 1 }), {}),
+      ...(typed.report.plots ? { plots: { ...typed.report.plots, built: buildings.length } } : {}),
     };
     generationPlan = { ...(generationPlan ?? { version: 1, engine: 'structured', zones: [], poi: [], groups: [] }), settlement };
   }
@@ -695,5 +790,20 @@ export function generateSettlement(s: GenSettings): MapData {
     // Дерево в центре деревенской площади — обычное дерево слоя деревьев (его можно двигать и удалять).
     trees = [...trees, ...(plan.marketTrees ?? [])];
   }
-  return { width, height, biome: style, cells: plan.cells, road: plan.road, river: plan.river, trees, rocks, structures: [], buildings, civic: plan.civic, chests: [], plan: generationPlan };
+  return {
+    width,
+    height,
+    biome: style,
+    cells: plan.cells,
+    road: plan.road,
+    river: plan.river,
+    trees,
+    rocks,
+    structures: [],
+    buildings,
+    civic: plan.civic,
+    ...(typed?.lights && typed.lights.length ? { lights: typed.lights } : {}),
+    chests: [],
+    plan: generationPlan,
+  };
 }

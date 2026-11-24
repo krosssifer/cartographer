@@ -41,6 +41,8 @@ export const DEFAULT_GEN: GenSettings = {
   publicSpaces: true,
   marketStyle: 'auto',
   marketRichness: 0.62,
+  urbanDressing: 0.6,
+  cityCondition: 'lived_in',
   // Новые карты получают рынок по архетипу; проекты без поля остаются на прежнем рынке.
   marketArchetype: 'auto',
   cryptDetail: .67,
@@ -50,7 +52,17 @@ export const DEFAULT_GEN: GenSettings = {
   sceneArchetype: 'auto',
 };
 
-export const STARTER_SETTLEMENT: GenSettings = { ...DEFAULT_GEN, biome: 'town', settlement: 'town', width: 48, height: 32, density: 0.58, vegetation: 0.65 };
+export const STARTER_SETTLEMENT: GenSettings = {
+  ...DEFAULT_GEN,
+  biome: 'town',
+  settlement: 'town',
+  settlementType: 'trade_town',
+  width: 100,
+  height: 80,
+  mapSizeProfile: 'standard',
+  density: 0.65,
+  vegetation: 0.6,
+};
 export const STARTER_CRYPT: GenSettings = { ...DEFAULT_GEN, biome: 'dungeon', width: 44, height: 30, rooms: 8, cryptDetail: .72, rocks: .22 };
 
 export const DEFAULT_RENDER: RenderSettings = {
@@ -111,10 +123,38 @@ export const PRESETS: Preset[] = [
   },
   {
     name: 'Деревня у брода',
-    gen: { biome: 'village', settlement: 'village', width: 44, height: 30, density: 0.34, vegetation: 0.7, rocks: 0.25, river: true, road: true, publicSpaces: true },
+    gen: {
+      biome: 'village',
+      settlement: 'village',
+      settlementType: 'river_village',
+      width: 56,
+      height: 38,
+      density: 0.62,
+      vegetation: 0.65,
+      rocks: 0.25,
+      river: true,
+      road: true,
+      publicSpaces: true,
+    },
   },
   {
     name: 'Торговый город',
-    gen: { ...STARTER_SETTLEMENT, width: 56, height: 38, density: 0.48 },
+    gen: { ...STARTER_SETTLEMENT, settlementType: 'trade_town', width: 100, height: 80, mapSizeProfile: 'standard', density: 0.68 },
+  },
+  {
+    name: 'Портовый город',
+    gen: { ...STARTER_SETTLEMENT, settlementType: 'port', width: 100, height: 80, mapSizeProfile: 'standard', density: 0.68 },
+  },
+  {
+    name: 'Укреплённый город',
+    gen: { ...STARTER_SETTLEMENT, settlementType: 'fortified_town', width: 100, height: 80, mapSizeProfile: 'standard', density: 0.7 },
+  },
+  {
+    name: 'Крупный город (Large)',
+    gen: { ...STARTER_SETTLEMENT, settlementType: 'small_city', width: 160, height: 120, mapSizeProfile: 'large', density: 0.7 },
+  },
+  {
+    name: 'Столица (Epic)',
+    gen: { ...STARTER_SETTLEMENT, settlementType: 'large_city', width: 200, height: 160, mapSizeProfile: 'epic', density: 0.72 },
   },
 ];

@@ -12,6 +12,7 @@ import { EMPTY_LEVEL_EDITS, isLevelSwitch, recallLevel, stashLevel } from './lib
 import { highResSettings, renderMap, renderPixelRatio } from './lib/render';
 import { TERRAIN_COLORS, TERRAIN_LABELS } from './lib/palette';
 import { loadAssets, loadMarketAssets } from './lib/assets';
+import { safeExportCellSize } from './lib/mapDimensions';
 import { CHEST_ROTATIONS, copyArea, eraseArea } from './lib/edits';
 import { BIOME_LABELS, DEFAULT_RENDER, STARTER_CRYPT } from './lib/presets';
 import { CORRUPT_SESSION_KEY, downloadJson, parseProject, readSession, saveSession, sessionWasQuarantined } from './lib/project';
@@ -401,9 +402,14 @@ export default function App() {
 
   async function exportPng() {
     try {
-      await Promise.all([loadAssets(), loadFurnitureSprites(map.furnitureSprites ?? [])]);
+      await Promise.all([
+        loadAssets(),
+        loadFurnitureSprites(map.furnitureSprites ?? []),
+        ...(needsMarket ? [loadMarketAssets()] : []),
+      ]);
       const canvas = document.createElement('canvas');
-      renderMap(canvas, map, { ...highResSettings(map, render), cellSize: render.cellSize * 2 }, gen.seed);
+      const exportCs = safeExportCellSize(map.width, map.height, render.cellSize * 2);
+      renderMap(canvas, map, { ...highResSettings(map, render), cellSize: exportCs }, gen.seed);
       canvas.toBlob((blob) => {
         if (!blob) { setToast('Не удалось создать PNG'); return; }
         const url = URL.createObjectURL(blob);
@@ -419,11 +425,16 @@ export default function App() {
 
   async function sendToTable() {
     try {
-      await Promise.all([loadAssets(), loadFurnitureSprites(map.furnitureSprites ?? [])]);
+      await Promise.all([
+        loadAssets(),
+        loadFurnitureSprites(map.furnitureSprites ?? []),
+        ...(needsMarket ? [loadMarketAssets()] : []),
+      ]);
       const canvas = document.createElement('canvas');
+      const exportCs = safeExportCellSize(map.width, map.height, render.cellSize * 2);
       // В стол уходит «игровой» вид: без сетки (сетку рисует сам стол),
       // без скрытых меток ведущего и без крыш (интерьеры должны быть проходимы).
-      renderMap(canvas, map, { ...highResSettings(map, render), cellSize: render.cellSize * 2, showGrid: false, showSecrets: false, showRoofs: false }, gen.seed);
+      renderMap(canvas, map, { ...highResSettings(map, render), cellSize: exportCs, showGrid: false, showSecrets: false, showRoofs: false }, gen.seed);
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
       if (!blob) { setToast('Не удалось создать PNG'); return; }
       const walls = extractWalls(map, render.cellSize);
@@ -449,7 +460,7 @@ export default function App() {
 
   async function importFile(file: File) {
     try {
-      if (file.size > 8 * 1024 * 1024) throw new Error('Файл больше 8 МБ');
+      if (file.size > 32 * 1024 * 1024) throw new Error('Файл больше 32 МБ');
       const project = parseProject(JSON.parse(await file.text()));
       if (!project) throw new Error('Неверный формат проекта. Выберите JSON из Картографа.');
       if (project.map?.furnitureSprites?.length) { setSpritesReady(false); await loadFurnitureSprites(project.map.furnitureSprites); setSpritesReady(true); }

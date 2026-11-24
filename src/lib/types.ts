@@ -16,8 +16,37 @@ export type CivicKind = 'market' | 'square' | 'well' | 'fountain' | 'cart' | 'ga
   | 'marketCrates' | 'marketBarrels' | 'marketSacks' | 'marketRope' | 'marketChest'
   | 'marketChestOpen' | 'marketBaskets' | 'marketBarrelPair' | 'marketNoticeBoard'
   | 'marketWell' | 'marketHay' | 'marketBarrelLying'
-  | 'marketBench' | 'marketTable' | 'marketTableLong' | 'marketFence' | 'marketHayLarge' | 'marketTableSet';
+  | 'marketBench' | 'marketTable' | 'marketTableLong' | 'marketFence' | 'marketHayLarge' | 'marketTableSet'
+  // городская среда (Urban Dressing): уличная мебель, мастерские, товары
+  | 'urbanLamp' | 'urbanSign' | 'urbanSignpost' | 'urbanTrough'
+  | 'urbanAnvil' | 'urbanWorkbench' | 'urbanForge' | 'urbanWoodpile'
+  | 'urbanPlanks' | 'urbanCoal' | 'urbanHides' | 'urbanPots'
+  // пакет 160 спрайтов: уличный декор, ремёсла, освещение, дворы, зелень, товары
+  | 'urbanHandPump' | 'urbanHitchingPost' | 'urbanHitchingRail'
+  | 'urbanStoneBollard' | 'urbanMilestone' | 'urbanDrainGrate' | 'urbanManholeCover'
+  | 'urbanWaterBasin' | 'urbanWashTub' | 'urbanBucketStand' | 'urbanStreetShrine'
+  | 'urbanStonePlanter' | 'urbanRoadBarrier' | 'urbanStreetBroom'
+  | 'urbanBellows' | 'urbanToolRack' | 'urbanGrindingWheel' | 'urbanSawhorse'
+  | 'urbanPotteryWheel' | 'urbanPotteryKiln' | 'urbanDyeVat' | 'urbanLoom'
+  | 'lampStreetIron' | 'lampStreetWood' | 'lampStreetStone' | 'lampStreetFancy'
+  | 'lampBrazierSquare' | 'lampBrazierRound' | 'lampTorchStand' | 'lampFireBasket'
+  | 'lampOilLantern' | 'lampCandleLantern' | 'lampHarborLantern' | 'lampSignalBeacon'
+  | 'yardLaundryLine' | 'yardWashTub' | 'yardWashboard' | 'yardWaterPail'
+  | 'yardChoppingBlock' | 'yardFirewoodRack' | 'yardBroomRake' | 'yardCompostBin'
+  | 'yardChickenCoop' | 'yardFeedTrough' | 'yardBeehive' | 'yardDoghouse'
+  | 'yardHerbBed' | 'yardVegetableBed' | 'yardFlowerPots' | 'yardOutdoorCookstove'
+  | 'greenStonePlanterRound' | 'greenStonePlanterRect' | 'greenFlowerUrn' | 'greenHerbPot'
+  | 'greenTopiaryCone' | 'greenTopiaryBall' | 'greenHedgeBox' | 'greenPottedCypress'
+  | 'greenRoseTrellis' | 'greenGrapeTrellis' | 'greenFlowerBed' | 'greenVegetableHerbBox'
+  | 'greenOrnamentalShrubPot' | 'greenSmallGardenStatue'
+  | 'marketScale' | 'marketWeights' | 'marketCoins' | 'marketLedger'
+  | 'marketSpiceBowls' | 'marketSpiceRack' | 'marketHerbBundles' | 'marketHoneyJars'
+  | 'marketSmokedFishRack' | 'marketMeatHooks' | 'marketCheeseWheels' | 'marketSaltMeasure'
+  | 'marketGlassVials' | 'marketCandleBundles' | 'marketFabricBolts' | 'marketFlowerBundles';
 export type MarketStyle = 'auto' | 'rows' | 'ring' | 'fair';
+
+/** Визуальное состояние города для городского декора (Urban Dressing). */
+export type CityCondition = 'pristine' | 'lived_in' | 'worn';
 export type CryptKind =
   | 'chasm' | 'pit' | 'grate' | 'bridge' | 'spikeGlyph' | 'pressureTile' | 'runeTrap' | 'fallSeal'
   | 'skeleton' | 'bones' | 'urns' | 'coffin' | 'openCoffin' | 'altar' | 'lectern' | 'runeCircle' | 'steps' | 'pillar' | 'statue' | 'brazier'
@@ -124,6 +153,38 @@ export interface Structure {
   ruin: boolean;
 }
 
+export type BuildingAnnex = 'porch' | 'wing' | 'awning' | 'dormer' | 'battlement';
+export type BuildingRole =
+  | 'house' | 'workshop' | 'shop' | 'warehouse' | 'tavern'
+  | 'town_hall' | 'temple' | 'minor_temple' | 'citadel' | 'barracks'
+  | 'prison' | 'smithy' | 'mill' | 'baths' | 'stable' | 'manor'
+  | 'shed' | 'barn' | 'guildhall' | 'shrine';
+
+export type BuildingAttachmentKind =
+  | 'shop_sign'
+  | 'tavern_sign'
+  | 'awning'
+  | 'wall_lantern'
+  | 'flower_box'
+  | 'banner'
+  | 'cargo_winch'
+  | 'shrine_niche';
+
+export interface BuildingAttachment {
+  kind: BuildingAttachmentKind;
+  side: ChestRotation;
+  /** Нормализованное смещение вдоль стены фасада (-0.45 .. +0.45). */
+  offset: number;
+  variant?: number;
+  emitsLight?: boolean;
+}
+
+export interface BuildingPatina {
+  age: number;
+  wealth: number;
+  maintenance: number;
+}
+
 export interface Building {
   x: number;
   y: number;
@@ -137,6 +198,16 @@ export interface Building {
   door: Point;
   facing?: ChestRotation;
   furniture?: Furnishing[];
+  /** Небольшой архитектурный выступ/навес/крыльцо (только типизированный генератор). */
+  annex?: BuildingAnnex;
+  /** Городское назначение здания (склад, кузница, ратуша, храм, казарма…). */
+  role?: BuildingRole;
+  /** Визуальное состояние дома в рамках состояния города (износ крыши, трещины). */
+  cityCondition?: CityCondition;
+  /** Фасадные элементы, закреплённые на стене здания (вывески, маркизы, фонари, стяги). */
+  attachments?: BuildingAttachment[];
+  /** Развязанный профиль возраста, богатства и ухоженности дома (Old ≠ Poor, Poor ≠ Ruined). */
+  patina?: BuildingPatina;
 }
 
 export interface Point {
@@ -194,6 +265,27 @@ export interface CryptRoom extends Selection { theme: CryptTheme }
 
 export type LayerId = 'terrain' | 'trees' | 'rocks' | 'structures' | 'civic' | 'chests' | 'crypt';
 
+export type LightSourceKind =
+  | 'street_lantern'
+  | 'brazier'
+  | 'wall_sconce'
+  | 'window_glow'
+  | 'gate_torch'
+  | 'pier_lantern'
+  | 'shrine_flame';
+
+export interface LightSource {
+  x: number;
+  y: number;
+  radius: number;
+  intensity: number;
+  color: string;
+  kind: LightSourceKind;
+  district?: string;
+}
+
+export type TimeOfDay = 'day' | 'dusk' | 'night';
+
 export interface MapData {
   width: number;
   height: number;
@@ -204,6 +296,7 @@ export interface MapData {
   structures: Structure[];
   buildings?: Building[];
   civic?: CivicObject[];
+  lights?: LightSource[];
   crypt?: CryptObject[];
   cryptRooms?: CryptRoom[];
   furnitureSprites?: FurnitureSprite[];
@@ -246,6 +339,10 @@ export interface GenSettings {
   publicSpaces: boolean;
   marketStyle: MarketStyle;
   marketRichness: number;
+  /** Насыщенность городского декора 0..1 (Urban Dressing): 0 — только геометрия, 1 — максимум жизни. */
+  urbanDressing?: number;
+  /** Состояние города: чистый / жилой / изношенный — влияет на мусор и износ декора. */
+  cityCondition?: CityCondition;
   cryptDetail: number;
   cryptTraps: boolean;
   cryptChasms: boolean;
@@ -280,11 +377,15 @@ export interface GenSettings {
   settlementType?: string;
   /** Схема улиц ('auto' — по типу поселения). */
   settlementLayout?: string;
+  /** Исторический характер города ('auto' или отсутствие — по типу поселения). */
+  settlementCharacter?: string;
   /**
    * Архетип рынка: 'auto' — по поселению, воде и размеру; id из
    * gen/marketArchetypes.ts; 'classic' или отсутствие — прежний рынок.
    */
   marketArchetype?: string;
+  /** Профиль размера карты: Standard (100×80), Large (160×120), Epic (200×160), Custom. */
+  mapSizeProfile?: import('./mapDimensions').MapSizeProfile;
 }
 
 export interface Selection {
@@ -326,6 +427,33 @@ export interface EditorSettings {
   doorKind?: DoorKind;
 }
 
+export interface SettlementDebugLayers {
+  footprint?: boolean;
+  density?: boolean;
+  districts?: boolean;
+  blocks?: boolean;
+  plots?: boolean;
+  roadHierarchy?: boolean;
+  frontage?: boolean;
+  courtyards?: boolean;
+  emptyAreas?: boolean;
+  accessibility?: boolean;
+  riverInfluence?: boolean;
+  // Совместимость с дополнительными переключателями:
+  terrainInfluence?: boolean;
+  districtLabels?: boolean;
+  primaryRoads?: boolean;
+  secondaryRoads?: boolean;
+  footprints?: boolean;
+  landmarks?: boolean;
+  urbanAge?: boolean;
+  /** Новые диагностические слои Фаз 3–10: рынок, граф активности, якоря декора и освещение. */
+  market?: boolean;
+  activity?: boolean;
+  anchors?: boolean;
+  lighting?: boolean;
+}
+
 export interface RenderSettings {
   cellSize: number;
   showGrid: boolean;
@@ -344,9 +472,17 @@ export interface RenderSettings {
   showCivic: boolean;
   showCrypt: boolean;
   showSecrets: boolean;
+  /** Время суток для честного прохода городского освещения ('day' по умолчанию). */
+  timeOfDay?: TimeOfDay;
   /** Debug-разметка: зоны, POI, группы и дороги генератора. */
   showDebug?: boolean;
+  /** Индивидуальные слои debug-режима поселения. */
+  settlementDebug?: SettlementDebugLayers;
   /** Мелкий декор (трава, цветы, камешки, мох) — слой поверх земли. */
   showDecor?: boolean;
+  /** Материал дорожного покрытия ('auto' — контекстный выбор по биомам и кварталам). */
+  roadMaterial?: import('./roadMaterials').RoadMaterialSetting;
+  /** Материал каменной крепостной стены поселения ('auto' — по богатству и возрасту). */
+  castleWallMaterial?: import('./roadMaterials').CastleWallMaterialSetting;
   vignette: boolean;
 }

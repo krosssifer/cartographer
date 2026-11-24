@@ -1,0 +1,4051 @@
+[
+  {
+    "id": "urbanTrough",
+    "assetType": "civic_object",
+    "category": "water",
+    "placementContext": [
+      "roadside",
+      "gate_zone",
+      "courtyard"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_street_dressing.png",
+    "cellIndex": 1,
+    "row": 0,
+    "column": 0,
+    "description": "Wooden animal water trough"
+  },
+  {
+    "id": "urbanHandPump",
+    "assetType": "civic_object",
+    "category": "water",
+    "placementContext": [
+      "intersection",
+      "courtyard",
+      "plaza_edge"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_street_dressing.png",
+    "cellIndex": 2,
+    "row": 0,
+    "column": 1,
+    "description": "Traditional iron hand water pump"
+  },
+  {
+    "id": "urbanHitchingPost",
+    "assetType": "civic_object",
+    "category": "traffic",
+    "placementContext": [
+      "facade_front",
+      "roadside",
+      "gate_zone"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_street_dressing.png",
+    "cellIndex": 3,
+    "row": 0,
+    "column": 2,
+    "description": "Wooden horse hitching post"
+  },
+  {
+    "id": "urbanHitchingRail",
+    "assetType": "civic_object",
+    "category": "traffic",
+    "placementContext": [
+      "facade_front",
+      "inn_yard",
+      "gate_zone"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_street_dressing.png",
+    "cellIndex": 4,
+    "row": 0,
+    "column": 3,
+    "description": "Horizontal tethering rail"
+  },
+  {
+    "id": "urbanStoneBollard",
+    "assetType": "civic_object",
+    "category": "traffic",
+    "placementContext": [
+      "intersection",
+      "plaza_edge",
+      "roadside"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_street_dressing.png",
+    "cellIndex": 5,
+    "row": 1,
+    "column": 0,
+    "description": "Weathered stone street bollard"
+  },
+  {
+    "id": "urbanMilestone",
+    "assetType": "civic_object",
+    "category": "traffic",
+    "placementContext": [
+      "gate_zone",
+      "roadside",
+      "intersection"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_street_dressing.png",
+    "cellIndex": 6,
+    "row": 1,
+    "column": 1,
+    "description": "Carved stone milestone without text"
+  },
+  {
+    "id": "urbanDrainGrate",
+    "assetType": "civic_object",
+    "category": "traffic",
+    "placementContext": [
+      "roadside",
+      "alley_back",
+      "plaza_edge"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_street_dressing.png",
+    "cellIndex": 7,
+    "row": 1,
+    "column": 2,
+    "description": "Iron street drainage grate"
+  },
+  {
+    "id": "urbanManholeCover",
+    "assetType": "civic_object",
+    "category": "traffic",
+    "placementContext": [
+      "intersection",
+      "roadside",
+      "alley_back"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_street_dressing.png",
+    "cellIndex": 8,
+    "row": 1,
+    "column": 3,
+    "description": "Stone and iron underground cover"
+  },
+  {
+    "id": "urbanWaterBasin",
+    "assetType": "civic_object",
+    "category": "water",
+    "placementContext": [
+      "plaza_edge",
+      "courtyard",
+      "intersection"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 2
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_street_dressing.png",
+    "cellIndex": 9,
+    "row": 2,
+    "column": 0,
+    "description": "Public stone water basin"
+  },
+  {
+    "id": "urbanWashTub",
+    "assetType": "civic_object",
+    "category": "residential",
+    "placementContext": [
+      "courtyard",
+      "alley_back",
+      "roadside"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_street_dressing.png",
+    "cellIndex": 10,
+    "row": 2,
+    "column": 1,
+    "description": "Wooden public washing tub"
+  },
+  {
+    "id": "urbanBucketStand",
+    "assetType": "civic_object",
+    "category": "water",
+    "placementContext": [
+      "courtyard",
+      "facade_side",
+      "roadside"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_street_dressing.png",
+    "cellIndex": 11,
+    "row": 2,
+    "column": 2,
+    "description": "Stand with wooden water buckets"
+  },
+  {
+    "id": "urbanStreetShrine",
+    "assetType": "civic_object",
+    "category": "decoration",
+    "placementContext": [
+      "intersection",
+      "plaza_edge",
+      "gate_zone"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_street_dressing.png",
+    "cellIndex": 12,
+    "row": 2,
+    "column": 3,
+    "description": "Small roadside stone shrine"
+  },
+  {
+    "id": "urbanStonePlanter",
+    "assetType": "civic_object",
+    "category": "decoration",
+    "placementContext": [
+      "facade_front",
+      "plaza_edge",
+      "courtyard"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_street_dressing.png",
+    "cellIndex": 13,
+    "row": 3,
+    "column": 0,
+    "description": "Rectangular stone planter"
+  },
+  {
+    "id": "urbanRoadBarrier",
+    "assetType": "civic_object",
+    "category": "traffic",
+    "placementContext": [
+      "gate_zone",
+      "roadside"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_street_dressing.png",
+    "cellIndex": 14,
+    "row": 3,
+    "column": 1,
+    "description": "Medieval wooden road barrier"
+  },
+  {
+    "id": "urbanStreetBroom",
+    "assetType": "civic_object",
+    "category": "residential",
+    "placementContext": [
+      "alley_back",
+      "facade_side",
+      "courtyard"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_street_dressing.png",
+    "cellIndex": 15,
+    "row": 3,
+    "column": 2,
+    "description": "Street cleaning broom and tools"
+  },
+  {
+    "id": "urbanSignpost",
+    "assetType": "civic_object",
+    "category": "traffic",
+    "placementContext": [
+      "intersection",
+      "gate_zone"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_street_dressing.png",
+    "cellIndex": 16,
+    "row": 3,
+    "column": 3,
+    "description": "Wooden directional signpost, no lettering"
+  },
+  {
+    "id": "urbanAnvil",
+    "assetType": "civic_object",
+    "category": "workshop",
+    "placementContext": [
+      "workshop_yard",
+      "facade_side"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "craft_workshop.png",
+    "cellIndex": 1,
+    "row": 0,
+    "column": 0,
+    "description": "Blacksmith anvil on a wooden base"
+  },
+  {
+    "id": "urbanWorkbench",
+    "assetType": "civic_object",
+    "category": "workshop",
+    "placementContext": [
+      "workshop_yard",
+      "facade_side"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "craft_workshop.png",
+    "cellIndex": 2,
+    "row": 0,
+    "column": 1,
+    "description": "Rugged artisan workbench"
+  },
+  {
+    "id": "urbanForge",
+    "assetType": "civic_object",
+    "category": "workshop",
+    "placementContext": [
+      "workshop_yard",
+      "courtyard"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 2
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "craft_workshop.png",
+    "cellIndex": 3,
+    "row": 0,
+    "column": 2,
+    "description": "Compact stone and iron forge"
+  },
+  {
+    "id": "urbanBellows",
+    "assetType": "civic_object",
+    "category": "workshop",
+    "placementContext": [
+      "workshop_yard",
+      "facade_side"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "craft_workshop.png",
+    "cellIndex": 4,
+    "row": 0,
+    "column": 3,
+    "description": "Leather and wooden blacksmith bellows"
+  },
+  {
+    "id": "urbanWoodpile",
+    "assetType": "civic_object",
+    "category": "cargo",
+    "placementContext": [
+      "alley_back",
+      "facade_side",
+      "courtyard"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "craft_workshop.png",
+    "cellIndex": 5,
+    "row": 1,
+    "column": 0,
+    "description": "Stacked split firewood"
+  },
+  {
+    "id": "urbanPlanks",
+    "assetType": "civic_object",
+    "category": "cargo",
+    "placementContext": [
+      "workshop_yard",
+      "quayside",
+      "alley_back"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "craft_workshop.png",
+    "cellIndex": 6,
+    "row": 1,
+    "column": 1,
+    "description": "Stack of rough wooden boards"
+  },
+  {
+    "id": "urbanCoal",
+    "assetType": "civic_object",
+    "category": "workshop",
+    "placementContext": [
+      "workshop_yard",
+      "alley_back"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "craft_workshop.png",
+    "cellIndex": 7,
+    "row": 1,
+    "column": 2,
+    "description": "Compact blacksmith coal pile"
+  },
+  {
+    "id": "urbanHides",
+    "assetType": "civic_object",
+    "category": "workshop",
+    "placementContext": [
+      "workshop_yard",
+      "courtyard"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "craft_workshop.png",
+    "cellIndex": 8,
+    "row": 1,
+    "column": 3,
+    "description": "Animal hides on drying rack"
+  },
+  {
+    "id": "urbanPots",
+    "assetType": "civic_object",
+    "category": "cargo",
+    "placementContext": [
+      "facade_front",
+      "workshop_yard",
+      "courtyard"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "craft_workshop.png",
+    "cellIndex": 9,
+    "row": 2,
+    "column": 0,
+    "description": "Rustic clay pottery vessels"
+  },
+  {
+    "id": "urbanToolRack",
+    "assetType": "civic_object",
+    "category": "workshop",
+    "placementContext": [
+      "facade_side",
+      "workshop_yard"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "craft_workshop.png",
+    "cellIndex": 10,
+    "row": 2,
+    "column": 1,
+    "description": "Organized rack of metalworking tools"
+  },
+  {
+    "id": "urbanGrindingWheel",
+    "assetType": "civic_object",
+    "category": "workshop",
+    "placementContext": [
+      "workshop_yard",
+      "facade_side"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "craft_workshop.png",
+    "cellIndex": 11,
+    "row": 2,
+    "column": 2,
+    "description": "Manual grinding wheel"
+  },
+  {
+    "id": "urbanSawhorse",
+    "assetType": "civic_object",
+    "category": "workshop",
+    "placementContext": [
+      "workshop_yard",
+      "alley_back"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "craft_workshop.png",
+    "cellIndex": 12,
+    "row": 2,
+    "column": 3,
+    "description": "Carpenter's wooden sawhorse"
+  },
+  {
+    "id": "urbanPotteryWheel",
+    "assetType": "civic_object",
+    "category": "workshop",
+    "placementContext": [
+      "workshop_yard",
+      "courtyard"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "craft_workshop.png",
+    "cellIndex": 13,
+    "row": 3,
+    "column": 0,
+    "description": "Traditional wooden pottery wheel"
+  },
+  {
+    "id": "urbanPotteryKiln",
+    "assetType": "civic_object",
+    "category": "workshop",
+    "placementContext": [
+      "workshop_yard",
+      "courtyard"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 2
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "craft_workshop.png",
+    "cellIndex": 14,
+    "row": 3,
+    "column": 1,
+    "description": "Compact outdoor pottery kiln"
+  },
+  {
+    "id": "urbanDyeVat",
+    "assetType": "civic_object",
+    "category": "workshop",
+    "placementContext": [
+      "workshop_yard",
+      "courtyard"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 2
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "craft_workshop.png",
+    "cellIndex": 15,
+    "row": 3,
+    "column": 2,
+    "description": "Wooden textile dyeing vat"
+  },
+  {
+    "id": "urbanLoom",
+    "assetType": "civic_object",
+    "category": "workshop",
+    "placementContext": [
+      "workshop_yard",
+      "facade_side"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "craft_workshop.png",
+    "cellIndex": 16,
+    "row": 3,
+    "column": 3,
+    "description": "Compact medieval weaving loom"
+  },
+  {
+    "id": "signTavern",
+    "assetType": "building_attachment",
+    "category": "signs",
+    "placementContext": [
+      "building_wall",
+      "building_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "building_signs.png",
+    "cellIndex": 1,
+    "row": 0,
+    "column": 0,
+    "description": "Hanging beer mug tavern sign",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    }
+  },
+  {
+    "id": "signForge",
+    "assetType": "building_attachment",
+    "category": "signs",
+    "placementContext": [
+      "building_wall",
+      "building_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "building_signs.png",
+    "cellIndex": 2,
+    "row": 0,
+    "column": 1,
+    "description": "Hammer and anvil sign",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    }
+  },
+  {
+    "id": "signBakery",
+    "assetType": "building_attachment",
+    "category": "signs",
+    "placementContext": [
+      "building_wall",
+      "building_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "building_signs.png",
+    "cellIndex": 3,
+    "row": 0,
+    "column": 2,
+    "description": "Bread loaf sign",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    }
+  },
+  {
+    "id": "signButcher",
+    "assetType": "building_attachment",
+    "category": "signs",
+    "placementContext": [
+      "building_wall",
+      "building_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "building_signs.png",
+    "cellIndex": 4,
+    "row": 0,
+    "column": 3,
+    "description": "Meat cleaver sign",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    }
+  },
+  {
+    "id": "signFishmonger",
+    "assetType": "building_attachment",
+    "category": "signs",
+    "placementContext": [
+      "building_wall",
+      "building_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "building_signs.png",
+    "cellIndex": 5,
+    "row": 1,
+    "column": 0,
+    "description": "Fish symbol sign",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    }
+  },
+  {
+    "id": "signHerbalist",
+    "assetType": "building_attachment",
+    "category": "signs",
+    "placementContext": [
+      "building_wall",
+      "building_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "building_signs.png",
+    "cellIndex": 6,
+    "row": 1,
+    "column": 1,
+    "description": "Herb bundle sign",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    }
+  },
+  {
+    "id": "signApothecary",
+    "assetType": "building_attachment",
+    "category": "signs",
+    "placementContext": [
+      "building_wall",
+      "building_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "building_signs.png",
+    "cellIndex": 7,
+    "row": 1,
+    "column": 2,
+    "description": "Potion bottle sign",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    }
+  },
+  {
+    "id": "signClothier",
+    "assetType": "building_attachment",
+    "category": "signs",
+    "placementContext": [
+      "building_wall",
+      "building_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "building_signs.png",
+    "cellIndex": 8,
+    "row": 1,
+    "column": 3,
+    "description": "Fabric and spindle sign",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    }
+  },
+  {
+    "id": "signTailor",
+    "assetType": "building_attachment",
+    "category": "signs",
+    "placementContext": [
+      "building_wall",
+      "building_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "building_signs.png",
+    "cellIndex": 9,
+    "row": 2,
+    "column": 0,
+    "description": "Needle and scissors sign",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    }
+  },
+  {
+    "id": "signCobbler",
+    "assetType": "building_attachment",
+    "category": "signs",
+    "placementContext": [
+      "building_wall",
+      "building_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "building_signs.png",
+    "cellIndex": 10,
+    "row": 2,
+    "column": 1,
+    "description": "Leather boot sign",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    }
+  },
+  {
+    "id": "signCarpenter",
+    "assetType": "building_attachment",
+    "category": "signs",
+    "placementContext": [
+      "building_wall",
+      "building_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "building_signs.png",
+    "cellIndex": 11,
+    "row": 2,
+    "column": 2,
+    "description": "Hand plane and mallet sign",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    }
+  },
+  {
+    "id": "signStable",
+    "assetType": "building_attachment",
+    "category": "signs",
+    "placementContext": [
+      "building_wall",
+      "building_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "building_signs.png",
+    "cellIndex": 12,
+    "row": 2,
+    "column": 3,
+    "description": "Horseshoe and horse emblem",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    }
+  },
+  {
+    "id": "signInn",
+    "assetType": "building_attachment",
+    "category": "signs",
+    "placementContext": [
+      "building_wall",
+      "building_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "building_signs.png",
+    "cellIndex": 13,
+    "row": 3,
+    "column": 0,
+    "description": "Bed symbol sign",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    }
+  },
+  {
+    "id": "signTemple",
+    "assetType": "building_attachment",
+    "category": "signs",
+    "placementContext": [
+      "building_wall",
+      "building_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "building_signs.png",
+    "cellIndex": 14,
+    "row": 3,
+    "column": 1,
+    "description": "Sacred sun religious emblem",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    }
+  },
+  {
+    "id": "signGuild",
+    "assetType": "building_attachment",
+    "category": "signs",
+    "placementContext": [
+      "building_wall",
+      "building_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "building_signs.png",
+    "cellIndex": 15,
+    "row": 3,
+    "column": 2,
+    "description": "Crossed artisan tools emblem",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    }
+  },
+  {
+    "id": "signGeneralStore",
+    "assetType": "building_attachment",
+    "category": "signs",
+    "placementContext": [
+      "building_wall",
+      "building_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "building_signs.png",
+    "cellIndex": 16,
+    "row": 3,
+    "column": 3,
+    "description": "Merchant scales symbol",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    }
+  },
+  {
+    "id": "lampStreetIron",
+    "assetType": "light_fixture",
+    "category": "lighting",
+    "placementContext": [
+      "intersection",
+      "roadside",
+      "plaza_edge"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_lighting.png",
+    "cellIndex": 1,
+    "row": 0,
+    "column": 0,
+    "description": "Wrought iron street lamp",
+    "lightRadius": 5.5,
+    "lightIntensity": 0.9,
+    "lightColor": "#ffb85c",
+    "lightType": "street_lantern"
+  },
+  {
+    "id": "lampStreetWood",
+    "assetType": "light_fixture",
+    "category": "lighting",
+    "placementContext": [
+      "roadside",
+      "intersection",
+      "gate_zone"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_lighting.png",
+    "cellIndex": 2,
+    "row": 0,
+    "column": 1,
+    "description": "Wooden lantern post",
+    "lightRadius": 5.0,
+    "lightIntensity": 0.82,
+    "lightColor": "#ffb357",
+    "lightType": "street_lantern"
+  },
+  {
+    "id": "lampStreetStone",
+    "assetType": "light_fixture",
+    "category": "lighting",
+    "placementContext": [
+      "plaza_edge",
+      "intersection",
+      "courtyard"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_lighting.png",
+    "cellIndex": 3,
+    "row": 0,
+    "column": 2,
+    "description": "Decorative stone street lamp",
+    "lightRadius": 5.5,
+    "lightIntensity": 0.88,
+    "lightColor": "#ffc270",
+    "lightType": "street_lantern"
+  },
+  {
+    "id": "lampStreetFancy",
+    "assetType": "light_fixture",
+    "category": "lighting",
+    "placementContext": [
+      "plaza_edge",
+      "noble_avenue",
+      "intersection"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_lighting.png",
+    "cellIndex": 4,
+    "row": 0,
+    "column": 3,
+    "description": "Ornate wealthy district street lamp",
+    "lightRadius": 6.5,
+    "lightIntensity": 0.96,
+    "lightColor": "#ffd084",
+    "lightType": "street_lantern"
+  },
+  {
+    "id": "lampWallLantern",
+    "assetType": "building_attachment",
+    "category": "lighting",
+    "placementContext": [
+      "building_wall",
+      "building_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "urban_lighting.png",
+    "cellIndex": 5,
+    "row": 1,
+    "column": 0,
+    "description": "Wall-mounted iron lantern",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    },
+    "lightRadius": 4.0,
+    "lightIntensity": 0.78,
+    "lightColor": "#ffc06e",
+    "lightType": "wall_sconce"
+  },
+  {
+    "id": "lampWallTorch",
+    "assetType": "building_attachment",
+    "category": "lighting",
+    "placementContext": [
+      "building_wall",
+      "gate_wall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "urban_lighting.png",
+    "cellIndex": 6,
+    "row": 1,
+    "column": 1,
+    "description": "Wall-mounted torch bracket",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    },
+    "lightRadius": 4.5,
+    "lightIntensity": 0.84,
+    "lightColor": "#ff9947",
+    "lightType": "wall_sconce"
+  },
+  {
+    "id": "lampHangingLantern",
+    "assetType": "building_attachment",
+    "category": "lighting",
+    "placementContext": [
+      "building_eave",
+      "building_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "urban_lighting.png",
+    "cellIndex": 7,
+    "row": 1,
+    "column": 2,
+    "description": "Suspended medieval lantern",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    },
+    "lightRadius": 4.2,
+    "lightIntensity": 0.8,
+    "lightColor": "#ffc478",
+    "lightType": "wall_sconce"
+  },
+  {
+    "id": "lampHangingCage",
+    "assetType": "building_attachment",
+    "category": "lighting",
+    "placementContext": [
+      "building_wall",
+      "gate_arch"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "urban_lighting.png",
+    "cellIndex": 8,
+    "row": 1,
+    "column": 3,
+    "description": "Iron-caged hanging lantern",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    },
+    "lightRadius": 4.0,
+    "lightIntensity": 0.75,
+    "lightColor": "#ffad58",
+    "lightType": "wall_sconce"
+  },
+  {
+    "id": "lampBrazierSquare",
+    "assetType": "light_fixture",
+    "category": "lighting",
+    "placementContext": [
+      "plaza_edge",
+      "gate_zone",
+      "temple_court"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_lighting.png",
+    "cellIndex": 9,
+    "row": 2,
+    "column": 0,
+    "description": "Square stone brazier",
+    "lightRadius": 5.8,
+    "lightIntensity": 0.92,
+    "lightColor": "#ff8c42",
+    "lightType": "brazier"
+  },
+  {
+    "id": "lampBrazierRound",
+    "assetType": "light_fixture",
+    "category": "lighting",
+    "placementContext": [
+      "gate_zone",
+      "plaza_edge",
+      "courtyard"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_lighting.png",
+    "cellIndex": 10,
+    "row": 2,
+    "column": 1,
+    "description": "Round iron brazier",
+    "lightRadius": 5.5,
+    "lightIntensity": 0.9,
+    "lightColor": "#ff8c42",
+    "lightType": "brazier"
+  },
+  {
+    "id": "lampTorchStand",
+    "assetType": "light_fixture",
+    "category": "lighting",
+    "placementContext": [
+      "gate_zone",
+      "courtyard",
+      "roadside"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_lighting.png",
+    "cellIndex": 11,
+    "row": 2,
+    "column": 2,
+    "description": "Freestanding wooden torch stand",
+    "lightRadius": 4.8,
+    "lightIntensity": 0.85,
+    "lightColor": "#ff9848",
+    "lightType": "gate_torch"
+  },
+  {
+    "id": "lampFireBasket",
+    "assetType": "light_fixture",
+    "category": "lighting",
+    "placementContext": [
+      "quayside",
+      "gate_zone",
+      "alley_back"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_lighting.png",
+    "cellIndex": 12,
+    "row": 2,
+    "column": 3,
+    "description": "Iron fire basket",
+    "lightRadius": 5.2,
+    "lightIntensity": 0.88,
+    "lightColor": "#ff853b",
+    "lightType": "brazier"
+  },
+  {
+    "id": "lampOilLantern",
+    "assetType": "light_fixture",
+    "category": "lighting",
+    "placementContext": [
+      "market_table",
+      "courtyard",
+      "facade_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_lighting.png",
+    "cellIndex": 13,
+    "row": 3,
+    "column": 0,
+    "description": "Portable brass oil lantern",
+    "lightRadius": 3.2,
+    "lightIntensity": 0.65,
+    "lightColor": "#ffca7a",
+    "lightType": "street_lantern"
+  },
+  {
+    "id": "lampCandleLantern",
+    "assetType": "light_fixture",
+    "category": "lighting",
+    "placementContext": [
+      "courtyard",
+      "facade_front",
+      "shrine"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_lighting.png",
+    "cellIndex": 14,
+    "row": 3,
+    "column": 1,
+    "description": "Enclosed candle lantern",
+    "lightRadius": 2.8,
+    "lightIntensity": 0.55,
+    "lightColor": "#ffd591",
+    "lightType": "street_lantern"
+  },
+  {
+    "id": "lampHarborLantern",
+    "assetType": "light_fixture",
+    "category": "lighting",
+    "placementContext": [
+      "quayside",
+      "pier_head"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_lighting.png",
+    "cellIndex": 15,
+    "row": 3,
+    "column": 2,
+    "description": "Weatherproof harbor lantern",
+    "lightRadius": 5.6,
+    "lightIntensity": 0.88,
+    "lightColor": "#ffbe6b",
+    "lightType": "pier_lantern"
+  },
+  {
+    "id": "lampSignalBeacon",
+    "assetType": "light_fixture",
+    "category": "lighting",
+    "placementContext": [
+      "wall_tower",
+      "gate_zone",
+      "pier_head"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 2
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_lighting.png",
+    "cellIndex": 16,
+    "row": 3,
+    "column": 3,
+    "description": "Raised signal beacon brazier",
+    "lightRadius": 9.0,
+    "lightIntensity": 1.0,
+    "lightColor": "#ff7b36",
+    "lightType": "brazier"
+  },
+  {
+    "id": "yardLaundryLine",
+    "assetType": "civic_object",
+    "category": "residential",
+    "placementContext": [
+      "courtyard",
+      "alley_back"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "residential_yards.png",
+    "cellIndex": 1,
+    "row": 0,
+    "column": 0,
+    "description": "Laundry line on wooden supports"
+  },
+  {
+    "id": "yardWashTub",
+    "assetType": "civic_object",
+    "category": "residential",
+    "placementContext": [
+      "courtyard",
+      "facade_side"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "residential_yards.png",
+    "cellIndex": 2,
+    "row": 0,
+    "column": 1,
+    "description": "Household washing tub"
+  },
+  {
+    "id": "yardWashboard",
+    "assetType": "civic_object",
+    "category": "residential",
+    "placementContext": [
+      "courtyard",
+      "facade_side"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "residential_yards.png",
+    "cellIndex": 3,
+    "row": 0,
+    "column": 2,
+    "description": "Individual wooden washboard"
+  },
+  {
+    "id": "yardWaterPail",
+    "assetType": "civic_object",
+    "category": "residential",
+    "placementContext": [
+      "courtyard",
+      "facade_side"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "residential_yards.png",
+    "cellIndex": 4,
+    "row": 0,
+    "column": 3,
+    "description": "Water bucket with ladle"
+  },
+  {
+    "id": "yardChoppingBlock",
+    "assetType": "civic_object",
+    "category": "residential",
+    "placementContext": [
+      "courtyard",
+      "alley_back"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "residential_yards.png",
+    "cellIndex": 5,
+    "row": 1,
+    "column": 0,
+    "description": "Wood chopping block with axe"
+  },
+  {
+    "id": "yardFirewoodRack",
+    "assetType": "civic_object",
+    "category": "residential",
+    "placementContext": [
+      "facade_side",
+      "courtyard",
+      "alley_back"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "residential_yards.png",
+    "cellIndex": 6,
+    "row": 1,
+    "column": 1,
+    "description": "Stacked firewood rack"
+  },
+  {
+    "id": "yardBroomRake",
+    "assetType": "civic_object",
+    "category": "residential",
+    "placementContext": [
+      "facade_side",
+      "courtyard"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "residential_yards.png",
+    "cellIndex": 7,
+    "row": 1,
+    "column": 2,
+    "description": "Household cleaning tools"
+  },
+  {
+    "id": "yardCompostBin",
+    "assetType": "civic_object",
+    "category": "farm",
+    "placementContext": [
+      "courtyard",
+      "alley_back"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "residential_yards.png",
+    "cellIndex": 8,
+    "row": 1,
+    "column": 3,
+    "description": "Wooden compost container"
+  },
+  {
+    "id": "yardChickenCoop",
+    "assetType": "civic_object",
+    "category": "farm",
+    "placementContext": [
+      "courtyard",
+      "farm_yard"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "residential_yards.png",
+    "cellIndex": 9,
+    "row": 2,
+    "column": 0,
+    "description": "Small wooden chicken coop"
+  },
+  {
+    "id": "yardFeedTrough",
+    "assetType": "civic_object",
+    "category": "farm",
+    "placementContext": [
+      "courtyard",
+      "farm_yard"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "residential_yards.png",
+    "cellIndex": 10,
+    "row": 2,
+    "column": 1,
+    "description": "Animal feeding trough"
+  },
+  {
+    "id": "yardBeehive",
+    "assetType": "civic_object",
+    "category": "farm",
+    "placementContext": [
+      "garden_yard",
+      "farm_yard"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "residential_yards.png",
+    "cellIndex": 11,
+    "row": 2,
+    "column": 2,
+    "description": "Straw and wooden beehive"
+  },
+  {
+    "id": "yardDoghouse",
+    "assetType": "civic_object",
+    "category": "residential",
+    "placementContext": [
+      "courtyard",
+      "facade_side"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "residential_yards.png",
+    "cellIndex": 12,
+    "row": 2,
+    "column": 3,
+    "description": "Small wooden doghouse"
+  },
+  {
+    "id": "yardHerbBed",
+    "assetType": "civic_object",
+    "category": "farm",
+    "placementContext": [
+      "garden_yard",
+      "courtyard"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "residential_yards.png",
+    "cellIndex": 13,
+    "row": 3,
+    "column": 0,
+    "description": "Compact medicinal herb garden"
+  },
+  {
+    "id": "yardVegetableBed",
+    "assetType": "civic_object",
+    "category": "farm",
+    "placementContext": [
+      "garden_yard",
+      "farm_yard"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 2
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "residential_yards.png",
+    "cellIndex": 14,
+    "row": 3,
+    "column": 1,
+    "description": "Raised vegetable garden"
+  },
+  {
+    "id": "yardFlowerPots",
+    "assetType": "civic_object",
+    "category": "residential",
+    "placementContext": [
+      "facade_front",
+      "courtyard"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "residential_yards.png",
+    "cellIndex": 15,
+    "row": 3,
+    "column": 2,
+    "description": "Group of three clay flower pots"
+  },
+  {
+    "id": "yardOutdoorCookstove",
+    "assetType": "civic_object",
+    "category": "residential",
+    "placementContext": [
+      "courtyard",
+      "inn_yard"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "residential_yards.png",
+    "cellIndex": 16,
+    "row": 3,
+    "column": 3,
+    "description": "Small stone outdoor cooking stove"
+  },
+  {
+    "id": "decalCartTracksStraight",
+    "assetType": "ground_decal",
+    "category": "traffic",
+    "placementContext": [
+      "dirt_road",
+      "gate_zone",
+      "market_entry"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "ground_decals.png",
+    "cellIndex": 1,
+    "row": 0,
+    "column": 0,
+    "description": "Straight cart wheel tracks",
+    "surfaceContext": [
+      "dirt_road",
+      "gate_zone",
+      "market_entry"
+    ],
+    "blocksMovement": false
+  },
+  {
+    "id": "decalCartTracksTurn",
+    "assetType": "ground_decal",
+    "category": "traffic",
+    "placementContext": [
+      "intersection",
+      "dirt_road"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 2
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "ground_decals.png",
+    "cellIndex": 2,
+    "row": 0,
+    "column": 1,
+    "description": "Curved cart wheel tracks",
+    "surfaceContext": [
+      "intersection",
+      "dirt_road"
+    ],
+    "blocksMovement": false
+  },
+  {
+    "id": "decalBootFootprintsMud",
+    "assetType": "ground_decal",
+    "category": "traffic",
+    "placementContext": [
+      "alley",
+      "door_approach",
+      "dirt_road"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "ground_decals.png",
+    "cellIndex": 3,
+    "row": 0,
+    "column": 2,
+    "description": "Muddy boot footprints",
+    "surfaceContext": [
+      "alley",
+      "door_approach",
+      "dirt_road"
+    ],
+    "blocksMovement": false
+  },
+  {
+    "id": "decalHoofprints",
+    "assetType": "ground_decal",
+    "category": "traffic",
+    "placementContext": [
+      "dirt_road",
+      "stable_yard",
+      "gate_zone"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "ground_decals.png",
+    "cellIndex": 4,
+    "row": 0,
+    "column": 3,
+    "description": "Horse hoofprints",
+    "surfaceContext": [
+      "dirt_road",
+      "stable_yard",
+      "gate_zone"
+    ],
+    "blocksMovement": false
+  },
+  {
+    "id": "decalTrampledGrass",
+    "assetType": "ground_decal",
+    "category": "residential",
+    "placementContext": [
+      "courtyard",
+      "outskirts_path"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 2
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "ground_decals.png",
+    "cellIndex": 5,
+    "row": 1,
+    "column": 0,
+    "description": "Flattened grass from repeated walking",
+    "surfaceContext": [
+      "courtyard",
+      "outskirts_path"
+    ],
+    "blocksMovement": false
+  },
+  {
+    "id": "decalMudSplashes",
+    "assetType": "ground_decal",
+    "category": "litter",
+    "placementContext": [
+      "alley",
+      "roadside",
+      "market_unload"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "ground_decals.png",
+    "cellIndex": 6,
+    "row": 1,
+    "column": 1,
+    "description": "Irregular mud splashes",
+    "surfaceContext": [
+      "alley",
+      "roadside",
+      "market_unload"
+    ],
+    "blocksMovement": false
+  },
+  {
+    "id": "decalWoodChips",
+    "assetType": "ground_decal",
+    "category": "workshop",
+    "placementContext": [
+      "workshop_yard",
+      "carpenter_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "ground_decals.png",
+    "cellIndex": 7,
+    "row": 1,
+    "column": 2,
+    "description": "Scattered wood shavings",
+    "surfaceContext": [
+      "workshop_yard",
+      "carpenter_front"
+    ],
+    "blocksMovement": false
+  },
+  {
+    "id": "decalStraw",
+    "assetType": "ground_decal",
+    "category": "market",
+    "placementContext": [
+      "stable_yard",
+      "market_unload",
+      "farm_yard"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "ground_decals.png",
+    "cellIndex": 8,
+    "row": 1,
+    "column": 3,
+    "description": "Scattered straw and hay",
+    "surfaceContext": [
+      "stable_yard",
+      "market_unload",
+      "farm_yard"
+    ],
+    "blocksMovement": false
+  },
+  {
+    "id": "decalCobbleCracks",
+    "assetType": "ground_decal",
+    "category": "traffic",
+    "placementContext": [
+      "cobble_street",
+      "plaza"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "ground_decals.png",
+    "cellIndex": 9,
+    "row": 2,
+    "column": 0,
+    "description": "Cracked cobblestone surface",
+    "surfaceContext": [
+      "cobble_street",
+      "plaza"
+    ],
+    "blocksMovement": false
+  },
+  {
+    "id": "decalMissingCobble",
+    "assetType": "ground_decal",
+    "category": "traffic",
+    "placementContext": [
+      "cobble_street",
+      "old_plaza"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "ground_decals.png",
+    "cellIndex": 10,
+    "row": 2,
+    "column": 1,
+    "description": "Missing paving stones",
+    "surfaceContext": [
+      "cobble_street",
+      "old_plaza"
+    ],
+    "blocksMovement": false
+  },
+  {
+    "id": "decalSootStain",
+    "assetType": "ground_decal",
+    "category": "workshop",
+    "placementContext": [
+      "smithy_front",
+      "forge_yard",
+      "ruin"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "ground_decals.png",
+    "cellIndex": 11,
+    "row": 2,
+    "column": 2,
+    "description": "Irregular soot stain",
+    "surfaceContext": [
+      "smithy_front",
+      "forge_yard",
+      "ruin"
+    ],
+    "blocksMovement": false
+  },
+  {
+    "id": "decalWetPatch",
+    "assetType": "ground_decal",
+    "category": "traffic",
+    "placementContext": [
+      "well_surround",
+      "quayside",
+      "wash_area"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "ground_decals.png",
+    "cellIndex": 12,
+    "row": 2,
+    "column": 3,
+    "description": "Damp ground patch",
+    "surfaceContext": [
+      "well_surround",
+      "quayside",
+      "wash_area"
+    ],
+    "blocksMovement": false
+  },
+  {
+    "id": "decalManure",
+    "assetType": "ground_decal",
+    "category": "litter",
+    "placementContext": [
+      "stable_yard",
+      "gate_zone",
+      "dirt_road"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "ground_decals.png",
+    "cellIndex": 13,
+    "row": 3,
+    "column": 0,
+    "description": "Small animal manure patch",
+    "surfaceContext": [
+      "stable_yard",
+      "gate_zone",
+      "dirt_road"
+    ],
+    "blocksMovement": false
+  },
+  {
+    "id": "decalBrokenPottery",
+    "assetType": "ground_decal",
+    "category": "litter",
+    "placementContext": [
+      "alley_back",
+      "market_edge",
+      "potter_yard"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "ground_decals.png",
+    "cellIndex": 14,
+    "row": 3,
+    "column": 1,
+    "description": "Broken pottery fragments",
+    "surfaceContext": [
+      "alley_back",
+      "market_edge",
+      "potter_yard"
+    ],
+    "blocksMovement": false
+  },
+  {
+    "id": "decalWeedsInCracks",
+    "assetType": "ground_decal",
+    "category": "residential",
+    "placementContext": [
+      "old_plaza",
+      "alley",
+      "abandoned_street"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "ground_decals.png",
+    "cellIndex": 15,
+    "row": 3,
+    "column": 2,
+    "description": "Small weeds in paving cracks",
+    "surfaceContext": [
+      "old_plaza",
+      "alley",
+      "abandoned_street"
+    ],
+    "blocksMovement": false
+  },
+  {
+    "id": "decalRopeDrag",
+    "assetType": "ground_decal",
+    "category": "workshop",
+    "placementContext": [
+      "quayside",
+      "warehouse_entry"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "ground_decals.png",
+    "cellIndex": 16,
+    "row": 3,
+    "column": 3,
+    "description": "Curved rope dragging mark",
+    "surfaceContext": [
+      "quayside",
+      "warehouse_entry"
+    ],
+    "blocksMovement": false
+  },
+  {
+    "id": "greenStonePlanterRound",
+    "assetType": "civic_object",
+    "category": "green",
+    "placementContext": [
+      "plaza_edge",
+      "noble_courtyard",
+      "facade_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_greenery.png",
+    "cellIndex": 1,
+    "row": 0,
+    "column": 0,
+    "description": "Round stone flower planter"
+  },
+  {
+    "id": "greenStonePlanterRect",
+    "assetType": "civic_object",
+    "category": "green",
+    "placementContext": [
+      "plaza_edge",
+      "facade_front",
+      "temple_court"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_greenery.png",
+    "cellIndex": 2,
+    "row": 0,
+    "column": 1,
+    "description": "Rectangular stone planter"
+  },
+  {
+    "id": "greenFlowerUrn",
+    "assetType": "civic_object",
+    "category": "decoration",
+    "placementContext": [
+      "noble_courtyard",
+      "facade_front",
+      "plaza_edge"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_greenery.png",
+    "cellIndex": 3,
+    "row": 0,
+    "column": 2,
+    "description": "Ornate ceramic flower urn"
+  },
+  {
+    "id": "greenHerbPot",
+    "assetType": "civic_object",
+    "category": "residential",
+    "placementContext": [
+      "courtyard",
+      "facade_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_greenery.png",
+    "cellIndex": 4,
+    "row": 0,
+    "column": 3,
+    "description": "Medicinal herb pot"
+  },
+  {
+    "id": "greenTopiaryCone",
+    "assetType": "civic_object",
+    "category": "green",
+    "placementContext": [
+      "noble_courtyard",
+      "temple_court",
+      "plaza_edge"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_greenery.png",
+    "cellIndex": 5,
+    "row": 1,
+    "column": 0,
+    "description": "Trimmed conical shrub"
+  },
+  {
+    "id": "greenTopiaryBall",
+    "assetType": "civic_object",
+    "category": "green",
+    "placementContext": [
+      "noble_courtyard",
+      "plaza_edge"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_greenery.png",
+    "cellIndex": 6,
+    "row": 1,
+    "column": 1,
+    "description": "Rounded decorative topiary"
+  },
+  {
+    "id": "greenHedgeBox",
+    "assetType": "civic_object",
+    "category": "green",
+    "placementContext": [
+      "noble_courtyard",
+      "private_garden"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_greenery.png",
+    "cellIndex": 7,
+    "row": 1,
+    "column": 2,
+    "description": "Rectangular clipped hedge"
+  },
+  {
+    "id": "greenPottedCypress",
+    "assetType": "civic_object",
+    "category": "green",
+    "placementContext": [
+      "temple_court",
+      "noble_courtyard",
+      "facade_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_greenery.png",
+    "cellIndex": 8,
+    "row": 1,
+    "column": 3,
+    "description": "Miniature ornamental cypress"
+  },
+  {
+    "id": "greenRoseTrellis",
+    "assetType": "civic_object",
+    "category": "green",
+    "placementContext": [
+      "private_garden",
+      "facade_side"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_greenery.png",
+    "cellIndex": 9,
+    "row": 2,
+    "column": 0,
+    "description": "Wooden trellis with climbing roses"
+  },
+  {
+    "id": "greenGrapeTrellis",
+    "assetType": "civic_object",
+    "category": "green",
+    "placementContext": [
+      "garden_yard",
+      "inn_yard"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_greenery.png",
+    "cellIndex": 10,
+    "row": 2,
+    "column": 1,
+    "description": "Grape vine support"
+  },
+  {
+    "id": "greenFlowerBed",
+    "assetType": "civic_object",
+    "category": "green",
+    "placementContext": [
+      "private_garden",
+      "plaza_edge"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 2
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_greenery.png",
+    "cellIndex": 11,
+    "row": 2,
+    "column": 2,
+    "description": "Arranged flower bed"
+  },
+  {
+    "id": "greenVegetableHerbBox",
+    "assetType": "civic_object",
+    "category": "residential",
+    "placementContext": [
+      "courtyard",
+      "garden_yard"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_greenery.png",
+    "cellIndex": 12,
+    "row": 2,
+    "column": 3,
+    "description": "Culinary herb planter"
+  },
+  {
+    "id": "greenHangingPlanter",
+    "assetType": "building_attachment",
+    "category": "green",
+    "placementContext": [
+      "building_eave",
+      "building_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "urban_greenery.png",
+    "cellIndex": 13,
+    "row": 3,
+    "column": 0,
+    "description": "Hanging flower basket",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    }
+  },
+  {
+    "id": "greenWindowBox",
+    "assetType": "building_attachment",
+    "category": "green",
+    "placementContext": [
+      "building_window",
+      "building_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "sheet": "urban_greenery.png",
+    "cellIndex": 14,
+    "row": 3,
+    "column": 1,
+    "description": "Building window flower box",
+    "mountingAnchor": {
+      "x": 0.5,
+      "y": 0.1,
+      "edge": "top_center",
+      "facadeRelative": true
+    }
+  },
+  {
+    "id": "greenOrnamentalShrubPot",
+    "assetType": "civic_object",
+    "category": "decoration",
+    "placementContext": [
+      "facade_front",
+      "noble_courtyard"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_greenery.png",
+    "cellIndex": 15,
+    "row": 3,
+    "column": 2,
+    "description": "Decorative shrub in clay pot"
+  },
+  {
+    "id": "greenSmallGardenStatue",
+    "assetType": "civic_object",
+    "category": "decoration",
+    "placementContext": [
+      "noble_courtyard",
+      "temple_court",
+      "private_garden"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "urban_greenery.png",
+    "cellIndex": 16,
+    "row": 3,
+    "column": 3,
+    "description": "Small stone garden statue"
+  },
+  {
+    "id": "wearStoneChips",
+    "assetType": "building_damage_overlay",
+    "category": "decoration",
+    "placementContext": [
+      "building_wall",
+      "foundation"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_damage.png",
+    "cellIndex": 1,
+    "row": 0,
+    "column": 0,
+    "description": "Chipped stone masonry",
+    "compatibleMaterials": [
+      "matLimestone",
+      "matGranite",
+      "matCutStone",
+      "matWeatheredSandstone"
+    ]
+  },
+  {
+    "id": "wearStoneCrackShort",
+    "assetType": "building_damage_overlay",
+    "category": "decoration",
+    "placementContext": [
+      "building_wall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_damage.png",
+    "cellIndex": 2,
+    "row": 0,
+    "column": 1,
+    "description": "Short branching stone cracks",
+    "compatibleMaterials": [
+      "matLimestone",
+      "matGranite",
+      "matCutStone",
+      "matFieldstone"
+    ]
+  },
+  {
+    "id": "wearStoneCrackLong",
+    "assetType": "building_damage_overlay",
+    "category": "decoration",
+    "placementContext": [
+      "building_wall",
+      "tower_wall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 2
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_damage.png",
+    "cellIndex": 3,
+    "row": 0,
+    "column": 2,
+    "description": "Long structural crack",
+    "compatibleMaterials": [
+      "matLimestone",
+      "matGranite",
+      "matCutStone",
+      "matFoundationStone"
+    ]
+  },
+  {
+    "id": "wearMissingMortar",
+    "assetType": "building_damage_overlay",
+    "category": "decoration",
+    "placementContext": [
+      "building_wall",
+      "foundation"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_damage.png",
+    "cellIndex": 4,
+    "row": 0,
+    "column": 3,
+    "description": "Eroded masonry joints",
+    "compatibleMaterials": [
+      "matFieldstone",
+      "matBrick",
+      "matRubbleStone",
+      "matCutStone"
+    ]
+  },
+  {
+    "id": "wearPlasterPeelingSmall",
+    "assetType": "building_damage_overlay",
+    "category": "residential",
+    "placementContext": [
+      "building_wall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_damage.png",
+    "cellIndex": 5,
+    "row": 1,
+    "column": 0,
+    "description": "Small peeling plaster patch",
+    "compatibleMaterials": [
+      "matCreamPlaster",
+      "matOchrePlaster",
+      "matRosePlaster",
+      "matHalfTimber"
+    ]
+  },
+  {
+    "id": "wearPlasterPeelingLarge",
+    "assetType": "building_damage_overlay",
+    "category": "residential",
+    "placementContext": [
+      "building_wall"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_damage.png",
+    "cellIndex": 6,
+    "row": 1,
+    "column": 1,
+    "description": "Large plaster loss",
+    "compatibleMaterials": [
+      "matCreamPlaster",
+      "matOchrePlaster",
+      "matRosePlaster",
+      "matAdobe"
+    ]
+  },
+  {
+    "id": "wearExposedBrick",
+    "assetType": "building_damage_overlay",
+    "category": "residential",
+    "placementContext": [
+      "building_wall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_damage.png",
+    "cellIndex": 7,
+    "row": 1,
+    "column": 2,
+    "description": "Exposed underlying brick",
+    "compatibleMaterials": [
+      "matCreamPlaster",
+      "matOchrePlaster",
+      "matRosePlaster",
+      "matBrick"
+    ]
+  },
+  {
+    "id": "wearPatchedPlaster",
+    "assetType": "building_damage_overlay",
+    "category": "residential",
+    "placementContext": [
+      "building_wall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_damage.png",
+    "cellIndex": 8,
+    "row": 1,
+    "column": 3,
+    "description": "Poorly repaired plaster",
+    "compatibleMaterials": [
+      "matCreamPlaster",
+      "matOchrePlaster",
+      "matAdobe",
+      "matHalfTimber"
+    ]
+  },
+  {
+    "id": "wearMossFooting",
+    "assetType": "building_damage_overlay",
+    "category": "decoration",
+    "placementContext": [
+      "foundation",
+      "north_wall"
+    ],
+    "footprint": {
+      "width": 2,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_damage.png",
+    "cellIndex": 9,
+    "row": 2,
+    "column": 0,
+    "description": "Moss on building foundation",
+    "compatibleMaterials": [
+      "matLimestone",
+      "matFieldstone",
+      "matFoundationStone",
+      "matMossyStone"
+    ]
+  },
+  {
+    "id": "wearDampStain",
+    "assetType": "building_damage_overlay",
+    "category": "residential",
+    "placementContext": [
+      "foundation",
+      "building_wall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_damage.png",
+    "cellIndex": 10,
+    "row": 2,
+    "column": 1,
+    "description": "Moisture stain",
+    "compatibleMaterials": [
+      "matCreamPlaster",
+      "matOchrePlaster",
+      "matLimestone",
+      "matAdobe"
+    ]
+  },
+  {
+    "id": "wearSootStreak",
+    "assetType": "building_damage_overlay",
+    "category": "decoration",
+    "placementContext": [
+      "chimney_wall",
+      "smithy_wall",
+      "ruin_wall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_damage.png",
+    "cellIndex": 11,
+    "row": 2,
+    "column": 2,
+    "description": "Dark soot marks",
+    "compatibleMaterials": [
+      "matBrick",
+      "matLimestone",
+      "matCreamPlaster",
+      "matCharredTimber"
+    ]
+  },
+  {
+    "id": "wearLichenStone",
+    "assetType": "building_damage_overlay",
+    "category": "decoration",
+    "placementContext": [
+      "ancient_wall",
+      "foundation"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_damage.png",
+    "cellIndex": 12,
+    "row": 2,
+    "column": 3,
+    "description": "Lichen on masonry",
+    "compatibleMaterials": [
+      "matGranite",
+      "matFieldstone",
+      "matLimestone",
+      "matFoundationStone"
+    ]
+  },
+  {
+    "id": "wearTimberRot",
+    "assetType": "building_damage_overlay",
+    "category": "residential",
+    "placementContext": [
+      "timber_wall",
+      "eave"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_damage.png",
+    "cellIndex": 13,
+    "row": 3,
+    "column": 0,
+    "description": "Decayed timber surface",
+    "compatibleMaterials": [
+      "matTimberPlanks",
+      "matHalfTimber"
+    ]
+  },
+  {
+    "id": "wearBrokenBoard",
+    "assetType": "building_damage_overlay",
+    "category": "residential",
+    "placementContext": [
+      "timber_wall",
+      "shed_wall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_damage.png",
+    "cellIndex": 14,
+    "row": 3,
+    "column": 1,
+    "description": "Broken wooden plank",
+    "compatibleMaterials": [
+      "matTimberPlanks",
+      "matHalfTimber",
+      "matCharredTimber"
+    ]
+  },
+  {
+    "id": "wearFoundationCrack",
+    "assetType": "building_damage_overlay",
+    "category": "decoration",
+    "placementContext": [
+      "foundation_corner"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_damage.png",
+    "cellIndex": 15,
+    "row": 3,
+    "column": 2,
+    "description": "Damaged foundation corner",
+    "compatibleMaterials": [
+      "matFoundationStone",
+      "matRubbleStone",
+      "matGranite",
+      "matLimestone"
+    ]
+  },
+  {
+    "id": "wearMissingShingles",
+    "assetType": "building_damage_overlay",
+    "category": "residential",
+    "placementContext": [
+      "building_roof"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_damage.png",
+    "cellIndex": 16,
+    "row": 3,
+    "column": 3,
+    "description": "Missing roof shingles",
+    "compatibleMaterials": [
+      "roof_shingles",
+      "roof_slate",
+      "roof_tile"
+    ]
+  },
+  {
+    "id": "matLimestone",
+    "assetType": "material_texture",
+    "category": "architecture",
+    "placementContext": [
+      "wall_surface",
+      "civic_masonry"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_materials.png",
+    "cellIndex": 1,
+    "row": 0,
+    "column": 0,
+    "description": "Warm aged limestone",
+    "tileSeamless": true,
+    "swatchBounds": {
+      "x": 48,
+      "y": 48,
+      "width": 416,
+      "height": 416
+    }
+  },
+  {
+    "id": "matGranite",
+    "assetType": "material_texture",
+    "category": "architecture",
+    "placementContext": [
+      "fortification_wall",
+      "foundation"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_materials.png",
+    "cellIndex": 2,
+    "row": 0,
+    "column": 1,
+    "description": "Coarse dark granite",
+    "tileSeamless": true,
+    "swatchBounds": {
+      "x": 48,
+      "y": 48,
+      "width": 416,
+      "height": 416
+    }
+  },
+  {
+    "id": "matFieldstone",
+    "assetType": "material_texture",
+    "category": "architecture",
+    "placementContext": [
+      "village_wall",
+      "boundary_wall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_materials.png",
+    "cellIndex": 3,
+    "row": 0,
+    "column": 2,
+    "description": "Irregular fieldstone masonry",
+    "tileSeamless": true,
+    "swatchBounds": {
+      "x": 48,
+      "y": 48,
+      "width": 416,
+      "height": 416
+    }
+  },
+  {
+    "id": "matRubbleStone",
+    "assetType": "material_texture",
+    "category": "architecture",
+    "placementContext": [
+      "foundation",
+      "outbuilding_wall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_materials.png",
+    "cellIndex": 4,
+    "row": 0,
+    "column": 3,
+    "description": "Rough rubble foundation",
+    "tileSeamless": true,
+    "swatchBounds": {
+      "x": 48,
+      "y": 48,
+      "width": 416,
+      "height": 416
+    }
+  },
+  {
+    "id": "matWeatheredSandstone",
+    "assetType": "material_texture",
+    "category": "architecture",
+    "placementContext": [
+      "wall_surface",
+      "temple_masonry"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_materials.png",
+    "cellIndex": 5,
+    "row": 1,
+    "column": 0,
+    "description": "Weathered sandstone",
+    "tileSeamless": true,
+    "swatchBounds": {
+      "x": 48,
+      "y": 48,
+      "width": 416,
+      "height": 416
+    }
+  },
+  {
+    "id": "matCutStone",
+    "assetType": "material_texture",
+    "category": "architecture",
+    "placementContext": [
+      "noble_wall",
+      "town_hall_wall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_materials.png",
+    "cellIndex": 6,
+    "row": 1,
+    "column": 1,
+    "description": "Refined cut stone",
+    "tileSeamless": true,
+    "swatchBounds": {
+      "x": 48,
+      "y": 48,
+      "width": 416,
+      "height": 416
+    }
+  },
+  {
+    "id": "matBrick",
+    "assetType": "material_texture",
+    "category": "architecture",
+    "placementContext": [
+      "townhouse_wall",
+      "workshop_wall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_materials.png",
+    "cellIndex": 7,
+    "row": 1,
+    "column": 2,
+    "description": "Medieval clay brick",
+    "tileSeamless": true,
+    "swatchBounds": {
+      "x": 48,
+      "y": 48,
+      "width": 416,
+      "height": 416
+    }
+  },
+  {
+    "id": "matMossyStone",
+    "assetType": "material_texture",
+    "category": "architecture",
+    "placementContext": [
+      "ancient_wall",
+      "damp_foundation"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_materials.png",
+    "cellIndex": 8,
+    "row": 1,
+    "column": 3,
+    "description": "Mossy stone masonry",
+    "tileSeamless": true,
+    "swatchBounds": {
+      "x": 48,
+      "y": 48,
+      "width": 416,
+      "height": 416
+    }
+  },
+  {
+    "id": "matCreamPlaster",
+    "assetType": "material_texture",
+    "category": "architecture",
+    "placementContext": [
+      "townhouse_wall",
+      "upper_storey"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_materials.png",
+    "cellIndex": 9,
+    "row": 2,
+    "column": 0,
+    "description": "Aged cream plaster",
+    "tileSeamless": true,
+    "swatchBounds": {
+      "x": 48,
+      "y": 48,
+      "width": 416,
+      "height": 416
+    }
+  },
+  {
+    "id": "matOchrePlaster",
+    "assetType": "material_texture",
+    "category": "architecture",
+    "placementContext": [
+      "market_facade",
+      "townhouse_wall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_materials.png",
+    "cellIndex": 10,
+    "row": 2,
+    "column": 1,
+    "description": "Ochre plaster",
+    "tileSeamless": true,
+    "swatchBounds": {
+      "x": 48,
+      "y": 48,
+      "width": 416,
+      "height": 416
+    }
+  },
+  {
+    "id": "matRosePlaster",
+    "assetType": "material_texture",
+    "category": "architecture",
+    "placementContext": [
+      "noble_facade",
+      "guild_wall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_materials.png",
+    "cellIndex": 11,
+    "row": 2,
+    "column": 2,
+    "description": "Muted rose plaster",
+    "tileSeamless": true,
+    "swatchBounds": {
+      "x": 48,
+      "y": 48,
+      "width": 416,
+      "height": 416
+    }
+  },
+  {
+    "id": "matAdobe",
+    "assetType": "material_texture",
+    "category": "architecture",
+    "placementContext": [
+      "arid_wall",
+      "vernacular_wall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_materials.png",
+    "cellIndex": 12,
+    "row": 2,
+    "column": 3,
+    "description": "Adobe construction",
+    "tileSeamless": true,
+    "swatchBounds": {
+      "x": 48,
+      "y": 48,
+      "width": 416,
+      "height": 416
+    }
+  },
+  {
+    "id": "matTimberPlanks",
+    "assetType": "material_texture",
+    "category": "architecture",
+    "placementContext": [
+      "cottage_wall",
+      "warehouse_wall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_materials.png",
+    "cellIndex": 13,
+    "row": 3,
+    "column": 0,
+    "description": "Weathered wooden planks",
+    "tileSeamless": true,
+    "swatchBounds": {
+      "x": 48,
+      "y": 48,
+      "width": 416,
+      "height": 416
+    }
+  },
+  {
+    "id": "matHalfTimber",
+    "assetType": "material_texture",
+    "category": "architecture",
+    "placementContext": [
+      "medieval_facade",
+      "inn_wall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_materials.png",
+    "cellIndex": 14,
+    "row": 3,
+    "column": 1,
+    "description": "Timber frame and plaster infill",
+    "tileSeamless": true,
+    "swatchBounds": {
+      "x": 48,
+      "y": 48,
+      "width": 416,
+      "height": 416
+    }
+  },
+  {
+    "id": "matCharredTimber",
+    "assetType": "material_texture",
+    "category": "architecture",
+    "placementContext": [
+      "damaged_wall",
+      "smithy_wall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_materials.png",
+    "cellIndex": 15,
+    "row": 3,
+    "column": 2,
+    "description": "Smoke-darkened timber",
+    "tileSeamless": true,
+    "swatchBounds": {
+      "x": 48,
+      "y": 48,
+      "width": 416,
+      "height": 416
+    }
+  },
+  {
+    "id": "matFoundationStone",
+    "assetType": "material_texture",
+    "category": "architecture",
+    "placementContext": [
+      "foundation_course",
+      "retaining_wall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "building_materials.png",
+    "cellIndex": 16,
+    "row": 3,
+    "column": 3,
+    "description": "Rough foundation masonry",
+    "tileSeamless": true,
+    "swatchBounds": {
+      "x": 48,
+      "y": 48,
+      "width": 416,
+      "height": 416
+    }
+  },
+  {
+    "id": "marketScale",
+    "assetType": "civic_object",
+    "category": "market",
+    "placementContext": [
+      "stall_counter",
+      "table_top"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "market_goods.png",
+    "cellIndex": 1,
+    "row": 0,
+    "column": 0,
+    "description": "Small brass merchant balance scale"
+  },
+  {
+    "id": "marketWeights",
+    "assetType": "civic_object",
+    "category": "market",
+    "placementContext": [
+      "stall_counter",
+      "table_top"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "market_goods.png",
+    "cellIndex": 2,
+    "row": 0,
+    "column": 1,
+    "description": "Medieval trade measuring weights"
+  },
+  {
+    "id": "marketCoins",
+    "assetType": "civic_object",
+    "category": "market",
+    "placementContext": [
+      "stall_counter",
+      "guild_desk"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "market_goods.png",
+    "cellIndex": 3,
+    "row": 0,
+    "column": 2,
+    "description": "Coin tray with gold and silver coins"
+  },
+  {
+    "id": "marketLedger",
+    "assetType": "civic_object",
+    "category": "market",
+    "placementContext": [
+      "stall_counter",
+      "warehouse_desk"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "market_goods.png",
+    "cellIndex": 4,
+    "row": 0,
+    "column": 3,
+    "description": "Merchant ledger, quill and ink"
+  },
+  {
+    "id": "marketSpiceBowls",
+    "assetType": "civic_object",
+    "category": "market",
+    "placementContext": [
+      "stall_counter",
+      "bazaar_display"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "market_goods.png",
+    "cellIndex": 5,
+    "row": 1,
+    "column": 0,
+    "description": "Ceramic bowls of spices"
+  },
+  {
+    "id": "marketSpiceRack",
+    "assetType": "civic_object",
+    "category": "market",
+    "placementContext": [
+      "stall_counter",
+      "bazaar_display"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "market_goods.png",
+    "cellIndex": 6,
+    "row": 1,
+    "column": 1,
+    "description": "Small wooden spice rack"
+  },
+  {
+    "id": "marketHerbBundles",
+    "assetType": "civic_object",
+    "category": "market",
+    "placementContext": [
+      "stall_counter",
+      "apothecary_front"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "market_goods.png",
+    "cellIndex": 7,
+    "row": 1,
+    "column": 2,
+    "description": "Bundles of dried medicinal herbs"
+  },
+  {
+    "id": "marketHoneyJars",
+    "assetType": "civic_object",
+    "category": "market",
+    "placementContext": [
+      "stall_counter",
+      "village_stall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "market_goods.png",
+    "cellIndex": 8,
+    "row": 1,
+    "column": 3,
+    "description": "Small sealed honey pots"
+  },
+  {
+    "id": "marketSmokedFishRack",
+    "assetType": "civic_object",
+    "category": "market",
+    "placementContext": [
+      "port_stall",
+      "quayside_market"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "market_goods.png",
+    "cellIndex": 9,
+    "row": 2,
+    "column": 0,
+    "description": "Compact rack of preserved fish"
+  },
+  {
+    "id": "marketMeatHooks",
+    "assetType": "civic_object",
+    "category": "market",
+    "placementContext": [
+      "butcher_stall",
+      "market_row"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "market_goods.png",
+    "cellIndex": 10,
+    "row": 2,
+    "column": 1,
+    "description": "Small cured meat display"
+  },
+  {
+    "id": "marketCheeseWheels",
+    "assetType": "civic_object",
+    "category": "market",
+    "placementContext": [
+      "stall_counter",
+      "dairy_stall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "market_goods.png",
+    "cellIndex": 11,
+    "row": 2,
+    "column": 2,
+    "description": "Group of rustic cheese wheels"
+  },
+  {
+    "id": "marketSaltMeasure",
+    "assetType": "civic_object",
+    "category": "market",
+    "placementContext": [
+      "stall_counter",
+      "caravan_stall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "market_goods.png",
+    "cellIndex": 12,
+    "row": 2,
+    "column": 3,
+    "description": "Salt blocks and measuring scoop"
+  },
+  {
+    "id": "marketGlassVials",
+    "assetType": "civic_object",
+    "category": "market",
+    "placementContext": [
+      "stall_counter",
+      "apothecary_stall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "market_goods.png",
+    "cellIndex": 13,
+    "row": 3,
+    "column": 0,
+    "description": "Glass potion vials on a narrow tray"
+  },
+  {
+    "id": "marketCandleBundles",
+    "assetType": "civic_object",
+    "category": "market",
+    "placementContext": [
+      "stall_counter",
+      "craft_stall"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "market_goods.png",
+    "cellIndex": 14,
+    "row": 3,
+    "column": 1,
+    "description": "Bundle of handcrafted candles"
+  },
+  {
+    "id": "marketFabricBolts",
+    "assetType": "civic_object",
+    "category": "market",
+    "placementContext": [
+      "clothier_stall",
+      "bazaar_display"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "market_goods.png",
+    "cellIndex": 15,
+    "row": 3,
+    "column": 2,
+    "description": "Folded and rolled dyed fabrics"
+  },
+  {
+    "id": "marketFlowerBundles",
+    "assetType": "civic_object",
+    "category": "market",
+    "placementContext": [
+      "market_basket",
+      "plaza_vendor"
+    ],
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    },
+    "sheet": "market_goods.png",
+    "cellIndex": 16,
+    "row": 3,
+    "column": 3,
+    "description": "Merchant flower bouquets"
+  }
+]
