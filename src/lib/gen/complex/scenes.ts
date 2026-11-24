@@ -152,3 +152,62 @@ export const SCENES: Partial<Record<ComplexPurpose, SceneVariant[]>> = {
     v('shore', 'берег', [p('stalagmites', 'any', 2), p('fishNet', 'corner', 1, true), p('glowingMushroom', 'corner', 2, true)]),
   ],
 };
+
+/** Geometry-aware priority only; final placement is always checked against the real mask. */
+export interface SceneRoomContext {
+  area: number;
+  free: number;
+  wallCells: number;
+  width: number;
+  height: number;
+  doors: number;
+  shape: string;
+  depth: number;
+  style: string;
+  condition: string;
+}
+
+/** Compact variants are preferable in cramped or highly connected rooms; long rows
+ * need a real wall. The deterministic tie-break keeps same-context variety. */
+export function rankSceneVariants(variants: readonly SceneVariant[], context: SceneRoomContext,
+  footprint: (kind: SceneKind) => { w: number; h: number }, seed: number): SceneVariant[] {
+  const jitter = (id: string) => {
+    let h = seed >>> 0;
+    for (const c of `${id}:${context.style}:${context.condition}:${context.depth}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+    return (h % 1000) / 1000;
+  };
+  const score = (v: SceneVariant) => {
+    let area = 0, wall = 0, row = 0, flank = 0;
+    for (const p of v.parts) {
+      if (p.optional) continue;
+      const spec = footprint(p.kind), n = p.count ?? 1;
+      if (p.slot !== 'face') area += spec.w * spec.h * n;
+      if (p.slot === 'wall' || p.slot === 'face' || p.slot === 'row') wall += n;
+      if (p.slot === 'row') row = Math.max(row, n * 2 + 1);
+      if (p.slot === 'flank') flank = Math.max(flank, 5);
+    }
+    const available = Math.max(1, context.free - context.doors * 2);
+    const crowd = area / available;
+    const wallDemand = wall / Math.max(1, context.wallCells);
+    const longSide = Math.max(context.width, context.height);
+    const narrow = Math.min(context.width, context.height);
+    const geometryPenalty = Math.max(0, row - longSide) * 2 + Math.max(0, flank - narrow) * 2;
+    // Irregular shapes have less useful straight wall than their bounding box.
+    const irregular = context.shape === 'rect' || context.shape === 'rectangle' ? 0 : row * .015;
+    return crowd * 3 + wallDemand + geometryPenalty + irregular + jitter(v.id) * .35;
+  };
+  return [...variants].sort((a, b) => score(a) - score(b) || a.id.localeCompare(b.id));
+}
+
+export function scenePartRole(part: ScenePart, firstRequired: boolean): string {
+  if (firstRequired) return 'anchor';
+  switch (part.slot) {
+    case 'flank': return 'flank';
+    case 'row': return 'row';
+    case 'face': return 'wall-display';
+    case 'front': return 'approach';
+    case 'wall': return 'wall-furnishing';
+    case 'corner': return 'corner-furnishing';
+    default: return part.optional ? 'accent' : 'support';
+  }
+}

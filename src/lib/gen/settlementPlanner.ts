@@ -57,6 +57,7 @@ import { buildDistrictsAndBlocks } from './urban/districts';
 import { subdivideIntoPlots } from './urban/plots';
 import { placeBuildingsLandmarksAndDetails, type UrbanDressingSettings } from './urban/landmarks';
 import { coversCell, doorStepCells } from './urban/dressing';
+import { reconcileFunctionalScenes } from './urban/sceneLifecycle';
 import { validateAndRepairUrbanPlan } from './urban/validate';
 import { buildSettlementDebugData } from './urban/debug';
 import {
@@ -140,6 +141,12 @@ export interface SettlementReport {
     treesPlaced: number;
     fencesPlaced?: number;
     scenesPlaced?: number;
+    sceneAttempts?: number;
+    scenePlotsAttempted?: number;
+    scenePlotsRejected?: number;
+    sceneRemovedAfterRepair?: number;
+    sceneRejections?: Record<import('./urban/scenePlacement').SceneRejection, number>;
+    sceneVariants?: Record<string, number>;
     bedsPlaced?: number;
     doorClearance?: number;
     anchorsEvaluated?: number;
@@ -179,6 +186,8 @@ export interface TypedSettlementPlan {
   plotDistrict: number[];
   /** Привязка каждой постройки к её земельному участку (для покрытия дворов по активной плотности). */
   placedPlots: (UrbanPlot | undefined)[];
+  /** Признак вторичной постройки для диагностического аудита. */
+  secondaryFlags: boolean[];
   /** Зона плотности каждой клетки карты (0=old_core..5=wilderness). */
   urbanZoneAt: Uint8Array;
   /** Расстояние до открытой воды (для безопасной покраски дворов в 'dirt'). */
@@ -186,6 +195,7 @@ export interface TypedSettlementPlan {
   civic: CivicObject[];
   /** Ранжированные объекты дворов/улиц для монотонной плотности. */
   rankedCivic: RankedCivic[];
+  functionalScenes: import('./urban/landmarks').BuildingsAndLandmarksResult['functionalScenes'];
   urbanTrees: Tree[];
   urbanRocks: Rock[];
   road: Point[];
@@ -213,12 +223,12 @@ export function resolveSettlementLayout(type: SettlementTypeDef, requested: stri
   return isSettlementLayout(requested) ? requested : type.layouts[0];
 }
 
-export function buildTypedPlan(s: GenSettings, style: SettlementStyle): TypedSettlementPlan {
+export function buildTypedPlan(s: GenSettings, style: SettlementStyle, diagnostics = false): TypedSettlementPlan {
   const type = getSettlementType(s.settlementType)!;
   const layout = resolveSettlementLayout(type, s.settlementLayout);
   const character = getUrbanCharacter(s.settlementCharacter, type);
   const { width: w, height: h, seed } = s;
-  const key = `${type.id}:${layout}:${character.id}:${style}:${seed}:${w}:${h}:${s.road}:${s.river}:${s.publicSpaces}:${s.marketRichness}:${s.marketStyle}:${s.marketArchetype}:${s.urbanDressing ?? 0.6}:${s.cityCondition ?? 'lived_in'}`;
+  const key = `${type.id}:${layout}:${character.id}:${style}:${seed}:${w}:${h}:${s.road}:${s.river}:${s.publicSpaces}:${s.marketRichness}:${s.marketStyle}:${s.marketArchetype}:${s.urbanDressing ?? 0.6}:${s.cityCondition ?? 'lived_in'}:${diagnostics ? 1 : 0}`;
   if (cached?.key === key) return cached.value;
 
   const town = type.style === 'town';
@@ -487,6 +497,7 @@ export function buildTypedPlan(s: GenSettings, style: SettlementStyle): TypedSet
     market,
     marketPiers,
     dressing,
+    diagnostics,
   );
 
   // ---- Шаги 17–18: Пост-валидация, локальная починка и Quality Score -------
@@ -518,6 +529,31 @@ export function buildTypedPlan(s: GenSettings, style: SettlementStyle): TypedSet
         built.rankedCivic = kept;
         if (built.dressing) built.dressing.doorClearance = (built.dressing.doorClearance ?? 0) + removed;
       }
+    }
+  }
+
+  // Repair может удалить предмет или переориентировать дверь. Группа живёт
+  // только если сохранились все её детали и рабочая зона осталась свободной.
+  {
+    const keptItems = new Set(built.rankedCivic.map((rc) => rc.item));
+    const steps = doorStepCells(built.buildings, w, h);
+    const overlaps = (a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    const attemptedGroups = built.functionalScenes.length;
+    const { surviving, discarded } = reconcileFunctionalScenes(built.functionalScenes, keptItems, (group) =>
+      group.placement.access.every((area) => !coversCell(area, steps, w) && !built.buildings.some((b) => overlaps(area, b)) && !built.rankedCivic.some((rc) => rc.item.kind !== 'square' && overlaps(area, rc.item))),
+    );
+    if (discarded.size) {
+      built.rankedCivic = built.rankedCivic.filter((rc) => !discarded.has(rc.item));
+      // Источник света от удалённого горна не должен оставаться сиротой.
+      if (built.lights) built.lights = built.lights.filter((light) => ![...discarded].some((item) => item.kind === 'urbanForge' && light.kind === 'brazier' && light.x === item.x + item.w * .5 && light.y === item.y + item.h * .5));
+    }
+    for (const group of built.functionalScenes) if (!surviving.includes(group)) built.sceneFailures.push({ plotId: group.placement.plotId, zone: group.placement.bounds, reason: 'repair', trace: group.trace });
+    built.functionalScenes = surviving;
+    if (built.dressing) {
+      built.dressing.sceneRemovedAfterRepair = attemptedGroups - surviving.length;
+      built.dressing.propsPlaced = Math.max(0, built.dressing.propsPlaced - discarded.size);
+      built.dressing.scenesPlaced = surviving.length;
+      built.dressing.sceneVariants = surviving.reduce<Record<string, number>>((acc, group) => { const key = `${group.placement.sceneId}/${group.placement.variantId}`; acc[key] = (acc[key] ?? 0) + 1; return acc; }, {});
     }
   }
 
@@ -566,6 +602,8 @@ export function buildTypedPlan(s: GenSettings, style: SettlementStyle): TypedSet
     activityIntensity: built.activityField?.intensity,
     intersections: built.activityField?.intersections,
     anchors: built.anchors,
+    scenes: built.functionalScenes.map((group) => group.placement),
+    sceneFailures: built.sceneFailures,
   });
   const originNode = skel.nodes.find((n) => n.kind === 'origin');
 
@@ -653,6 +691,8 @@ export function buildTypedPlan(s: GenSettings, style: SettlementStyle): TypedSet
     waterDist: geo.waterDist,
     civic: allCivic,
     rankedCivic: built.rankedCivic,
+    functionalScenes: built.functionalScenes,
+    secondaryFlags: built.secondaryFlags,
     urbanTrees: urbanCtx.trees,
     urbanRocks: urbanCtx.rocks,
     road: roadNet.lanes[0]?.points ?? [],

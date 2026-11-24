@@ -34,6 +34,7 @@ export const DEFAULT_SETTLEMENT_DEBUG: Required<SettlementDebugLayers> = {
   activity: false,
   anchors: false,
   lighting: false,
+  scenes: false,
 };
 
 const DISTRICT_COLORS: Record<DistrictKind, string> = {
@@ -101,6 +102,8 @@ export function buildSettlementDebugData(
     activityIntensity?: Float32Array;
     intersections?: Point[];
     anchors?: readonly { x: number; y: number; kind: string }[];
+    scenes?: readonly import('./scenePlacement').FunctionalPlacement[];
+    sceneFailures?: readonly import('./sceneLifecycle').FunctionalSceneFailure[];
   },
 ): SettlementDebugData {
   const { width: w, height: h, geo } = ctx;
@@ -180,6 +183,8 @@ export function buildSettlementDebugData(
     ...(activityGrid ? { activityGrid } : {}),
     ...(extra?.intersections ? { intersections: extra.intersections.slice(0, 240) } : {}),
     ...(extra?.anchors ? { anchors: extra.anchors.slice(0, 480).map((a) => ({ x: a.x, y: a.y, kind: a.kind })) } : {}),
+    ...(extra?.scenes ? { scenes: [...extra.scenes] } : {}),
+    ...(extra?.sceneFailures ? { sceneFailures: [...extra.sceneFailures] } : {}),
   };
 }
 
@@ -499,6 +504,33 @@ export function drawSettlementDebugOverlay(
       ctx.stroke();
 
       drawPillLabel(ctx, lm.label, cx, cy - r - 5, 'rgba(24, 18, 12, 0.82)', '#ffe8a3');
+    }
+  }
+
+  // Отдельный слой микросцен: граница, якорь, детали, рабочие зоны и отказы.
+  if (cfg.scenes) {
+    const rect = (r: { x: number; y: number; w: number; h: number }) => ctx.strokeRect(r.x * tile, r.y * tile, r.w * tile, r.h * tile);
+    for (const scene of dbg.scenes ?? []) {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#ffcf50';
+      ctx.setLineDash([5, 3]);
+      rect(scene.bounds);
+      ctx.setLineDash([]);
+      ctx.strokeStyle = '#ff774f';
+      rect(scene.anchor);
+      ctx.strokeStyle = '#83e3ff';
+      for (const part of scene.parts) rect(part);
+      ctx.fillStyle = 'rgba(60, 235, 150, 0.35)';
+      for (const area of scene.access) ctx.fillRect(area.x * tile, area.y * tile, area.w * tile, area.h * tile);
+      drawPillLabel(ctx, `${scene.sceneId}/${scene.variantId} #${scene.plotId}`, scene.bounds.x * tile, scene.bounds.y * tile - 4, 'rgba(28, 22, 12, 0.88)', '#fff1bc', true);
+    }
+    for (const failure of dbg.sceneFailures ?? []) {
+      ctx.strokeStyle = 'rgba(255, 76, 104, 0.85)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 3]);
+      rect(failure.zone);
+      ctx.setLineDash([]);
+      drawPillLabel(ctx, `#${failure.plotId}: ${failure.reason}`, failure.zone.x * tile, (failure.zone.y + failure.zone.h) * tile, 'rgba(55, 15, 24, 0.8)', '#ffd4dc', true);
     }
   }
 

@@ -10,7 +10,7 @@
  *   6. «хребет» проходов — по нему ничего не ставится, связность гарантирована;
  *   7. архитектура (колонны, ниши, лестницы), сцены по назначению,
  *      свет по стилю, механизмы, следы состояния;
- *   8. прежний декоратор склепа добирает мелочи по темам залов;
+ *   8. метаданные тем склепа, план композиции и коридорные ловушки;
  *   9. проверка связности и отчёт.
  *
  * Потоки случайности разделены (структура, геометрия, коридоры, декор, свет,
@@ -20,7 +20,7 @@ import { Perlin } from '../../noise';
 import { hash2, mulberry32, type Rng } from '../../random';
 import { CRYPT } from '../../cryptKit';
 import { canPlaceCrypt, cryptStamp, cryptWalkable, decorateCrypt, dungeonLevelSeed, wallOffBlockedDoors } from '../../cryptLayout';
-import { cryptCompositionPlan, furnishByPurpose, placeCorridorTraps } from '../cryptplan';
+import { cryptCompositionPlan, placeCorridorTraps } from '../cryptplan';
 import { effectiveLevels, levelLinks, stairFootprint } from '../dungeonArchitect';
 import type { Cell, ChestRotation, CryptKind, CryptObject, CryptTheme, DoorKind, DoorMark, FloorOrnament, GenSettings, MapData, Point, Rock, Structure, Tree } from '../../types';
 import type { DungeonLayoutReport, DungeonRoom, GenerationPlan, RoadGraphEdge, RoomShape } from '../plan';
@@ -31,7 +31,8 @@ import {
   COMPLEX_GENERATOR_VERSION, CORRIDOR_LABELS, PURPOSES, TIER_LABELS, TOPOLOGIES, getComplexArchetype,
   type ComplexArchetype, type ComplexPurpose, type CorridorKind, type GeometryMode, type NodeTier, type Topology,
 } from './registry';
-import { SCENES, type SceneKind, type ScenePart } from './scenes';
+import { clusterRule } from './clusters';
+import { SCENES, rankSceneVariants, scenePartRole, type SceneKind, type ScenePart } from './scenes';
 import { FLOOR_CODES, floorFor, getCondition, getStyle, type DungeonCondition, type DungeonStyle } from './styles';
 
 const DIRS: readonly [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -222,9 +223,12 @@ function freePockets(map: MapData, start: number | undefined, blocked: Set<numbe
     // За раунд — по одному предмету на карман: самый мелкий, при равенстве первый по порядку.
     const drop = [...candidates.entries()].sort((a, b) => a[1] - b[1] || a[0] - b[0])[0][0];
     const gone = crypt[drop];
-    crypt = crypt.filter((_, k) => k !== drop);
-    refresh(gone.x, gone.y, gone.x + gone.w, gone.y + gone.h);
-    removed += 1;
+    // Never leave a half-functional scene after connectivity repair.
+    const group = gone.dungeonScene?.required ? gone.dungeonScene.groupId : undefined;
+    const removedItems = crypt.filter((item, k) => k === drop || (group !== undefined && item.dungeonScene?.groupId === group));
+    crypt = crypt.filter((item) => !removedItems.includes(item));
+    for (const item of removedItems) refresh(item.x, item.y, item.x + item.w, item.y + item.h);
+    removed += removedItems.length;
   }
   return { crypt, removed };
 }
@@ -650,26 +654,28 @@ function buildComplex(s: GenSettings, budget: number, requested: number, final: 
   let probe: MapData = { ...walled, crypt: placed };
   const nearDoor = (x: number, y: number) => DIRS.some(([dx, dy]) => { const t = cells[y + dy]?.[x + dx]?.terrain; return t === 'door'; }) || DIRS.some(([dx, dy]) => openings.has(id(x + dx, y + dy)));
   const decor = stream(0xdec);
-  const lightRng = stream(0x119);
   let lit = 0, unlit = 0;
   const mechanisms: string[] = [];
-  const sceneLog: string[] = [];
+  const sceneLog: { group: string; label: string }[] = [];
+  const rejected: Array<Point & { kind: string; reason: string; variant: string }> = [];
+  let currentScene: string | undefined;
   const LIGHTS = new Set<CryptKind>(['wallTorch', 'magicLamp', 'chandelier', 'brazier', 'brazierStand', 'candleStand', 'candles', 'candleHolder', 'candleWheel', 'oilLamp', 'pyre']);
   /** Ставит предмет: проверка клеток, хребта и дверей. Светильники гаснут по состоянию. */
   const put = (kind: CryptKind, at: Point, rotation: ChestRotation = 0, opts: { room?: number; free?: boolean } = {}): CryptObject | undefined => {
     const spec = CRYPT[kind];
     const item: CryptObject = { ...cryptStamp(at, kind, rotation, false, Math.floor(hash2(at.x, at.y, levelSeed + 0x7a) * 4)), source: 'layout' };
-    if (!canPlaceCrypt(probe, item)) return undefined;
+    const reject = (reason: string) => { if (currentScene && rejected.length < 250) rejected.push({ ...at, kind, reason, variant: currentScene }); return undefined; };
+    if (!canPlaceCrypt(probe, item)) return reject('terrain, bounds or object collision');
     for (let y = item.y; y < item.y + item.h; y += 1) for (let x = item.x; x < item.x + item.w; x += 1) {
       const cell = id(x, y);
-      if (spec.placement === 'wallFace') { if (nearDoor(x, y)) return undefined; continue; }
-      if (opts.room !== undefined && owner[cell] !== opts.room) return undefined;
-      if (pillarCells.has(cell) && kind !== style.column && kind !== 'stalagmites' && kind !== 'rubble') return undefined;
-      if (!opts.free && !spec.flat && (spine.has(cell) || nearDoor(x, y))) return undefined;
-      if (!opts.free && spec.blocks && ornamentCells.has(cell)) return undefined;
+      if (spec.placement === 'wallFace') { if (nearDoor(x, y)) return reject('door clearance'); continue; }
+      if (opts.room !== undefined && owner[cell] !== opts.room) return reject('outside room');
+      if (pillarCells.has(cell) && kind !== style.column && kind !== 'stalagmites' && kind !== 'rubble') return reject('pillar');
+      if (!opts.free && (spec.blocks || !spec.flat) && (spine.has(cell) || nearDoor(x, y))) return reject('spine or door clearance');
+      if (!opts.free && spec.blocks && ornamentCells.has(cell)) return reject('reserved ornament');
     }
     if (LIGHTS.has(kind)) {
-      if (lightRng() > condition.lit) { item.unlit = true; unlit += 1; } else lit += 1;
+      if (hash2(at.x, at.y, levelSeed + 0x119) > condition.lit) { item.unlit = true; unlit += 1; } else lit += 1;
     }
     placed.push(item);
     probe = { ...walled, crypt: placed };
@@ -747,7 +753,7 @@ function buildComplex(s: GenSettings, budget: number, requested: number, final: 
     }
     return [...out].sort((a, b) => hash2(a, index, levelSeed + 0xfa) - hash2(b, index, levelSeed + 0xfa) || a - b);
   };
-  const placePart = (part: ScenePart, index: number, salt: number): number => {
+  const placePart = (part: ScenePart, index: number, salt: number, anchor?: Point): number => {
     const room = rooms[index];
     const rect = room.rect;
     const focus = { x: rect.x + room.geometry.focus.x, y: rect.y + room.geometry.focus.y };
@@ -776,10 +782,10 @@ function buildComplex(s: GenSettings, budget: number, requested: number, final: 
     if (part.slot === 'flank') {
       const side = { x: axis.y, y: axis.x };
       for (const d of [2, 3, 1]) {
-        if (made >= 2) break;
+        if (made >= wanted) break;
         const pair = [{ x: focus.x + side.x * d + axis.x, y: focus.y + side.y * d + axis.y }, { x: focus.x - side.x * d + axis.x, y: focus.y - side.y * d + axis.y }];
         if (pair.every((p) => owner[id(p.x, p.y)] === index && !spine.has(id(p.x, p.y)))) {
-          for (const p of pair) if (put(kindAt(made), p, 0, { room: index })) made += 1;
+          for (const p of pair) if (made < wanted && put(kindAt(made), p, 0, { room: index })) made += 1;
         }
       }
       return made;
@@ -811,22 +817,103 @@ function buildComplex(s: GenSettings, budget: number, requested: number, final: 
       else if (part.slot === 'center') list = byDistance(c).slice(0, 14);
       else if (part.slot === 'corner') list = pts(roomCellsList[index].filter((cell) => wallFloor(cell, index) >= 2)).sort((p, q) => hash2(p.x, p.y, salt + k) - hash2(q.x, q.y, salt + k));
       else if (part.slot === 'wall') list = pts(roomCellsList[index].filter((cell) => wallFloor(cell, index) >= 1)).sort((p, q) => hash2(p.x, p.y, salt + k * 7) - hash2(q.x, q.y, salt + k * 7));
-      else list = pts(roomCellsList[index]).sort((p, q) => hash2(p.x, p.y, salt + k * 13) - hash2(q.x, q.y, salt + k * 13));
+      else list = anchor ? byDistance(anchor).filter((p) => Math.max(Math.abs(p.x - anchor.x), Math.abs(p.y - anchor.y)) <= 4) : pts(roomCellsList[index]).sort((p, q) => hash2(p.x, p.y, salt + k * 13) - hash2(q.x, q.y, salt + k * 13));
       if (tryCells(list, kind)) made += 1;
     }
     return made;
+  };
+  // Compare reachable floor before and after a proposed scene. A scene may
+  // occupy floor, but must not cut off any previously accessible floor.
+  const reachScene = (objects: readonly CryptObject[]): Uint8Array => {
+    const blocked = new Uint8Array(W * H);
+    for (const item of objects) if (CRYPT[item.kind].blocks) {
+      for (let y = item.y; y < item.y + item.h; y++) for (let x = item.x; x < item.x + item.w; x++) {
+        if (x >= 0 && y >= 0 && x < W && y < H) blocked[id(x, y)] = 1;
+      }
+    }
+    const seen = new Uint8Array(W * H);
+    const openAt = (cell: number) => { const t = walled.cells[Math.floor(cell / W)]?.[cell % W]?.terrain; return t === 'floor' || t === 'door' || t === 'water'; };
+    const start = anchors.find((cell) => cell !== undefined && !blocked[cell] && openAt(cell));
+    if (start === undefined) return seen;
+    const queue = [start]; seen[start] = 1;
+    for (let q = 0; q < queue.length; q++) {
+      const x = queue[q] % W, y = Math.floor(queue[q] / W);
+      for (const [dx, dy] of DIRS) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const cell = id(nx, ny), terrain = walled.cells[ny][nx].terrain;
+        if (seen[cell] || blocked[cell] || (terrain !== 'floor' && terrain !== 'door' && terrain !== 'water')) continue;
+        seen[cell] = 1; queue.push(cell);
+      }
+    }
+    return seen;
   };
   rooms.forEach((room, index) => {
     const node = nodeOf(index);
     const variants = SCENES[node.purpose];
     if (!variants?.length) return;
-    const variant = variants[Math.floor(hash2(node.id, room.rect.x * 31 + room.rect.y, levelSeed + 0x5ce) * variants.length)];
-    let total = 0;
-    variant.parts.forEach((part, k) => {
-      if (part.optional && decor() > .55 + (s.cryptDetail ?? .67) * .3) return;
-      total += placePart(part, index, mix(index, k, 0x5c));
-    });
-    if (total > 0) sceneLog.push(`${PURPOSES[node.purpose].label}: ${variant.label}`);
+    const context = { area: floorCells[index].size,
+      free: roomCellsList[index].filter((cell) => !spine.has(cell) && !nearDoor(cell % W, Math.floor(cell / W))).length,
+      wallCells: roomCellsList[index].filter((cell) => wallFloor(cell, index) > 0).length,
+      width: room.rect.w, height: room.rect.h, doors: doorsOf[index].length,
+      shape: room.shape, depth: node.depth,
+      style: style.id, condition: condition.id };
+    const ordered = rankSceneVariants(variants, context, (kind) => CRYPT[resolve(kind, index)], mix(levelSeed, node.id, 0x5ce));
+    const beforeReach = reachScene(placed);
+    for (const variant of ordered) {
+      const required = variant.parts.filter((part) => !part.optional);
+      if (!required.length) continue; // decorative-only variants are not functional scenes
+      currentScene = variant.id;
+      const mark = placed.length, oldLit = lit, oldUnlit = unlit;
+      const center = { x: room.rect.x + room.geometry.focus.x, y: room.rect.y + room.geometry.focus.y };
+      const groupId = `scene-${index}`;
+      let ok = true;
+      let anchor: Point | undefined;
+      const place = (part: ScenePart, k: number) => {
+        const partStart = placed.length;
+        const count = placePart(part, index, mix(index, k, 0x5c), anchor);
+        if (!anchor && !part.optional && placed.length > partStart) {
+          const root = placed[partStart]; anchor = { x: root.x + root.w / 2, y: root.y + root.h / 2 };
+          center.x = anchor.x; center.y = anchor.y;
+        }
+        for (const item of placed.slice(partStart)) item.dungeonScene = {
+          groupId, variant: variant.id, purpose: node.purpose,
+          role: `${groupId}:${k}`, semanticRole: scenePartRole(part, k === variant.parts.findIndex((candidate) => !candidate.optional)), slot: part.slot, required: !part.optional, center,
+          ...(k !== variant.parts.findIndex((candidate) => !candidate.optional) ? { attachTo: `${groupId}:${variant.parts.findIndex((candidate) => !candidate.optional)}` } : {}),
+        };
+        return count;
+      };
+      variant.parts.forEach((part, k) => {
+        if (!part.optional && place(part, k) < (part.count ?? 1)) ok = false;
+      });
+      if (ok) {
+        const afterReach = reachScene(placed);
+        const newBlockers = placed.slice(mark).filter((item) => CRYPT[item.kind].blocks);
+        for (let cell = 0; cell < beforeReach.length; cell++) {
+          if (!beforeReach[cell] || afterReach[cell]) continue;
+          const x = cell % W, y = Math.floor(cell / W);
+          if (!newBlockers.some((item) => x >= item.x && x < item.x + item.w && y >= item.y && y < item.y + item.h)) { ok = false; break; }
+        }
+      }
+      if (!ok) {
+        placed.splice(mark); probe = { ...walled, crypt: placed }; lit = oldLit; unlit = oldUnlit; currentScene = undefined;
+        continue;
+      }
+      variant.parts.forEach((part, k) => {
+        if (part.optional && decor() <= .55 + (s.cryptDetail ?? .67) * .3) {
+          const optionalStart = placed.length, oldOptionalLit = lit, oldOptionalUnlit = unlit;
+          place(part, k);
+          const after = reachScene(placed);
+          const newBlockers = placed.slice(optionalStart).filter((item) => CRYPT[item.kind].blocks);
+          if (beforeReach.some((seen, cell) => seen && !after[cell] && !placed.slice(mark, optionalStart).concat(newBlockers).some((item) => CRYPT[item.kind].blocks && cell % W >= item.x && cell % W < item.x + item.w && Math.floor(cell / W) >= item.y && Math.floor(cell / W) < item.y + item.h))) {
+            placed.splice(optionalStart); probe = { ...walled, crypt: placed }; lit = oldOptionalLit; unlit = oldOptionalUnlit;
+          }
+        }
+      });
+      currentScene = undefined;
+      sceneLog.push({ group: groupId, label: `${PURPOSES[node.purpose].label}: ${variant.label}` });
+      break;
+    }
   });
 
   // Свет по стилю: настенные светильники по периметру (шаг ~7 клеток стены),
@@ -1033,6 +1120,45 @@ function buildComplex(s: GenSettings, budget: number, requested: number, final: 
       if (hash2(cell, 0x1f, levelSeed) < condition.growth * .25 && put('ivyWall', { x: cell % W, y: Math.floor(cell / W) }, 0)) ivy += 1;
     }
   }
+  // Small local accents around justified sources. Crack/moss background scatter
+  // remains diffuse; only source-based details form clusters.
+  const clusterSources = placed.filter((item) => clusterRule(item.kind, condition))
+    .sort((a, b) => hash2(a.x + a.y * W, 0x7c1, levelSeed) - hash2(b.x + b.y * W, 0x7c1, levelSeed));
+  const roomClusterCounts = new Map<number, number>();
+  for (const source of clusterSources) {
+    const host = owner[id(source.x, source.y)], rule = clusterRule(source.kind, condition);
+    if (host < 0 || !rule || floorCells[host].size < 12) continue;
+    const budget = Math.min(2, Math.floor(floorCells[host].size / 22));
+    if ((roomClusterCounts.get(host) ?? 0) >= budget) continue;
+    if (hash2(source.x, source.y, levelSeed + 0x7c2) > rule.strength) continue;
+    const candidates = roomCellsList[host].filter((cell) => {
+      const x = cell % W, y = Math.floor(cell / W);
+      const dx = x - source.x, dy = y - source.y;
+      return Math.max(Math.abs(dx), Math.abs(dy)) <= 3 && Math.max(Math.abs(dx), Math.abs(dy)) >= 1
+        && !spine.has(cell) && !nearDoor(x, y)
+        && !placed.some((p) => p.dungeonScene && x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h);
+    }).sort((a, b) => hash2(a, source.x + source.y * W, levelSeed + 0x7c3) - hash2(b, source.x + source.y * W, levelSeed + 0x7c3));
+    let count = 0;
+    const usedKinds = new Set<CryptKind>();
+    const clusterId = `cluster-${host}-${source.x}-${source.y}-${source.kind}`;
+    for (const cell of candidates) {
+      if (count >= Math.min(2, Math.floor(floorCells[host].size / 16))) break;
+      const kind = rule.kinds[Math.floor(hash2(cell, 0x7c4, levelSeed) * rule.kinds.length)];
+      if (usedKinds.has(kind) || CRYPT[kind].blocks) continue;
+      const prospective = cryptStamp({ x: cell % W, y: Math.floor(cell / W) }, kind, 0, false);
+      let clear = true;
+      for (let y = prospective.y; y < prospective.y + prospective.h; y++) for (let x = prospective.x; x < prospective.x + prospective.w; x++) {
+        if (Math.max(Math.abs(x - source.x), Math.abs(y - source.y)) > 3 || spine.has(id(x, y)) || nearDoor(x, y)
+          || placed.some((p) => p.dungeonScene && x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h)) clear = false;
+      }
+      if (!clear) continue;
+      const item = put(kind, { x: cell % W, y: Math.floor(cell / W) }, 0, { room: host });
+      if (!item) continue;
+      item.dungeonCluster = { id: clusterId, type: rule.type, source: { x: source.x, y: source.y, kind: source.kind }, radius: 3 };
+      usedKinds.add(kind); count++;
+    }
+    if (count) roomClusterCounts.set(host, (roomClusterCounts.get(host) ?? 0) + 1);
+  }
   // Природные залы и тоннели: сталагмиты, камни, грибы — не по хребту.
   const rocks: Rock[] = [];
   const trees: Tree[] = [];
@@ -1079,12 +1205,13 @@ function buildComplex(s: GenSettings, budget: number, requested: number, final: 
   const artRooms = sortedArt.map((i, k) => planRoom(i, k));
   const artBase: MapData = { ...walled, structures: sortedArt.map((i) => rooms[i].rect), rocks, trees };
   const basePlan: GenerationPlan = { version: 1, engine: 'structured', zones: [], poi: [], groups: [], rooms: artRooms, graph: [] };
-  const furnished = furnishByPurpose({ ...artBase, crypt: placed }, basePlan);
-  const detail = Math.max(0, Math.min(1, (s.cryptDetail ?? .67) * .55));
-  const decorSettings: GenSettings = { ...s, seed: levelSeed, cryptDetail: detail, cryptChasms: condition.debris >= .5 && (s.cryptChasms ?? true) };
-  const decorated = artRooms.length ? decorateCrypt(artBase, decorSettings, furnished.map.crypt ?? placed, themes, new Set([...spine, ...ornamentCells])) : { ...artBase, crypt: furnished.map.crypt ?? placed, cryptRooms: [] };
-  const composed = cryptCompositionPlan(decorated, furnished.plan);
-  const trapped = mech.has('trapCorridor') ? placeCorridorTraps({ ...decorated, plan: composed }, composed) : { map: decorated, plan: composed };
+  const decorSettings: GenSettings = { ...s, seed: levelSeed };
+  const decorated = artRooms.length ? decorateCrypt(artBase, decorSettings, placed, themes, undefined, 'roomsOnly') : { ...artBase, crypt: placed, cryptRooms: [] };
+  const composed = cryptCompositionPlan(decorated, basePlan);
+  // Prefer the purpose-built linked corridor mechanism. The legacy pass is a
+  // fallback only when that mechanism could not place any plates.
+  const hasCorridorMechanism = mechanisms.some((message) => message.startsWith('ловушечный коридор:'));
+  const trapped = mech.has('trapCorridor') && !hasCorridorMechanism ? placeCorridorTraps({ ...decorated, plan: composed }, composed) : { map: decorated, plan: composed };
   const onBlocked = (item: CryptObject) => doorMarks.some((d) => d.kind === 'blocked' && d.x >= item.x && d.x < item.x + item.w && d.y >= item.y && d.y < item.y + item.h);
   // Погасшие светильники декоратора: та же доля, что и у расставленных выше.
   const crypt = (trapped.map.crypt ?? []).filter((item) => !onBlocked(item)).map((item) => {
@@ -1094,7 +1221,10 @@ function buildComplex(s: GenSettings, budget: number, requested: number, final: 
     return item;
   });
   const freed = freePockets({ ...decorated, cells, structures, crypt }, anchors[entryIndex], new Set(doorMarks.filter((d) => d.kind === 'blocked').map((d) => id(d.x, d.y))));
-  const finalMap: MapData = { ...decorated, cells, structures, crypt: freed.crypt, floorLayer: { codes: codes.join(''), ornaments } };
+  // A removed source cannot keep orphaned cluster accents.
+  const survivingCrypt = freed.crypt.filter((item) => !item.dungeonCluster || freed.crypt.some((source) =>
+    !source.dungeonCluster && source.kind === item.dungeonCluster!.source.kind && source.x === item.dungeonCluster!.source.x && source.y === item.dungeonCluster!.source.y));
+  const finalMap: MapData = { ...decorated, cells, structures, crypt: survivingCrypt, floorLayer: { codes: codes.join(''), ornaments } };
 
   // ---- 9. Проверка связности и отчёт ----------------------------------------
   const blocked = new Set(doorMarks.filter((d) => d.kind === 'blocked').map((d) => id(d.x, d.y)));
@@ -1136,7 +1266,7 @@ function buildComplex(s: GenSettings, budget: number, requested: number, final: 
     naturalShare: floorList.length ? Math.round((naturalCount / floorList.length) * 100) / 100 : 0,
     breaches: breachCells.length,
     composite: rooms.filter((room) => room.shape === 'composite').length,
-    scenes: sceneLog,
+    scenes: sceneLog.filter((scene) => survivingCrypt.some((item) => item.dungeonScene?.groupId === scene.group && item.dungeonScene.required)).map((scene) => scene.label),
     lights: { lit, unlit },
     mechanisms,
     links: linkReport,
@@ -1167,7 +1297,7 @@ function buildComplex(s: GenSettings, budget: number, requested: number, final: 
   const spawn = stairsUp ? { x: stairsUp.x, y: stairsUp.y + 2 <= H - 1 && cryptWalkable(finalMap, stairsUp.x, stairsUp.y + 2) ? stairsUp.y + 2 : stairsUp.y } : { x: start % W, y: Math.floor(start / W) };
   const actions = [...(trapped.plan.actions ?? [])];
   if (dropped.length || budget < requested) actions.push(`не поместилось залов: ${dropped.length + requested - budget} из ${requested}`);
-  return { ...finalMap, plan: { ...trapped.plan, rooms: planRooms, graph: roadGraph, spawn, dungeon: report, actions } };
+  return { ...finalMap, plan: { ...trapped.plan, rooms: planRooms, graph: roadGraph, spawn, dungeon: report, actions, dungeonDressingDebug: { spine: [...spine].map((cell) => ({ x: cell % W, y: Math.floor(cell / W) })), rejected } } };
 }
 
 /** Подписи для отчёта UI. */

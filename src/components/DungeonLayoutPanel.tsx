@@ -39,6 +39,7 @@ export function DungeonLayoutOptions({ gen, map, onGen }: Props) {
     else onGen({ dungeonArchetype: undefined, dungeonLayout: 'classic' });
   };
   const cx = report?.complex;
+  const quality = map.plan?.report?.dungeonDressing;
   return <>
     <label className="field-label">Планировка<select aria-label="Планировка подземелья" value={layout} onChange={(e) => switchLayout(e.target.value as Layout)}>
       <option value="classic">Классическая — прямоугольные залы</option>
@@ -84,11 +85,11 @@ export function DungeonLayoutOptions({ gen, map, onGen }: Props) {
         {Array.from({ length: levels }, (_, index) => <button key={index} type="button" aria-pressed={index === level}
           onClick={() => index !== level && onGen({ dungeonLevel: index })}>Уровень {index + 1}</button>)}
       </div>}
-      {levels > 1 && <p className="tool-hint">Связи соседних уровней (лестницы, шахты, обвалы) стоят на одних и тех же клетках. Ручные правки уровня сохраняются при переходе на другой уровень, пока не изменены настройки генерации.</p>}
+      {levels > 1 && <p className="tool-hint">{gen.dungeonWallsOnly ? "В режиме «Только стены» лестницы и другие связи не расставляются автоматически. " : "Связи соседних уровней (лестницы, шахты, обвалы) стоят на одних и тех же клетках. "}Ручные правки уровня сохраняются при переходе на другой уровень, пока не изменены настройки генерации.</p>}
       {report && !cx && <p className="scene-report">
         Залов {report.placed} из {report.requested} · колец {report.loops} · тупиков {report.deadEnds}{report.secretRooms ? ` · тайных ${report.secretRooms}` : ''}<br />
         Формы: {Object.entries(report.shapes).map(([shape, count]) => `${SHAPE_LABELS[shape as keyof typeof SHAPE_LABELS].toLowerCase()} ${count}`).join(', ')}<br />
-        Двери: {Object.entries(report.doors).map(([kind, count]) => `${DOOR_KIND_LABELS[kind as keyof typeof DOOR_KIND_LABELS].toLowerCase()} ${count}`).join(', ')}
+        {gen.dungeonWallsOnly ? "Двери не расставлены" : <>Двери: {Object.entries(report.doors).map(([kind, count]) => `${DOOR_KIND_LABELS[kind as keyof typeof DOOR_KIND_LABELS].toLowerCase()} ${count}`).join(', ')}</>}
         {!report.connected && <><br />Внимание: не все залы достижимы от входа.</>}
       </p>}
       {report && cx && <p className="scene-report">
@@ -103,6 +104,11 @@ export function DungeonLayoutOptions({ gen, map, onGen }: Props) {
         {cx.mechanisms.length > 0 && <><br />Механизмы: {[...new Set(cx.mechanisms)].join('; ')}</>}
         {!report.connected && <><br />Внимание: не все залы достижимы от входа.</>}
       </p>}
+      {quality && <details className="scene-report"><summary>Качество оформления: ошибок {quality.errors.length}, предупреждений {quality.warnings.length}</summary>
+        {quality.rooms.map((room) => <div key={room.roomId}>{room.roomId} · {room.purpose}: сцен {room.scenes}, кластеров {room.clusters}{room.errors.length ? ` · ошибок ${room.errors.length}` : ''}{room.warnings.length ? ` · замечаний ${room.warnings.length}` : ''}</div>)}
+        {[...quality.errors, ...quality.warnings].map((message, i) => <div key={i}>{message}</div>)}
+      </details>}
+
     </>}
   </>;
 }

@@ -1,3 +1,5 @@
+import { validateDungeonDressing, type DungeonDressingQuality } from './complex/quality';
+export { validateDungeonDressing } from './complex/quality';
 import type { MapData, Point, Terrain } from '../types';
 import { CRYPT } from '../cryptKit';
 
@@ -55,6 +57,7 @@ export interface MapReport {
   /** Некритичные замечания: карта играбельна, но композиция недоделана. */
   warnings: string[];
   stats: MapStats;
+  dungeonDressing?: DungeonDressingQuality;
 }
 
 const ADJACENT: ReadonlyArray<readonly [number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -198,7 +201,7 @@ export function validateMap(map: MapData, options: { strictConnectivity?: boolea
   }
 
   // Каждый зал склепа должен быть обставлен: пустой зал — это провал композиции.
-  if (map.biome === 'dungeon' && map.plan?.rooms?.length) {
+  if (map.biome === 'dungeon' && !map.dungeonWallsOnly && map.plan?.rooms?.length && !map.plan.dungeon?.complex) {
     for (const room of map.plan.rooms) {
       if (room.bounds.w * room.bounds.h < 12) continue;
       const inside = (map.crypt ?? []).some((item) =>
@@ -280,5 +283,6 @@ export function validateMap(map: MapData, options: { strictConnectivity?: boolea
     }
   }
 
-  return { ok: problems.length === 0, problems, warnings, stats };
+  const dungeonDressing = map.biome === 'dungeon' && !map.dungeonWallsOnly && map.plan?.dungeon?.complex ? validateDungeonDressing(map) : undefined;
+  return { ok: problems.length === 0, problems, warnings, stats, ...(dungeonDressing ? { dungeonDressing } : {}) };
 }

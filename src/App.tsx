@@ -316,7 +316,7 @@ export default function App() {
   }
 
   function applyCrypt(settings: CryptSettings) {
-    if (lockedLayers.includes('crypt') || gen.biome !== 'dungeon') return;
+    if (lockedLayers.includes('crypt') || gen.biome !== 'dungeon' || gen.dungeonWallsOnly) return;
     const next = { ...gen, ...settings };
     keepSnapshot({ gen: next, edit: redecorateCrypt(map, next) });
     setSelection(null); setMobileSidebar(false); setToast('Обстановка склепа обновлена');

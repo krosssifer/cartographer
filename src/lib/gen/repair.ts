@@ -96,7 +96,7 @@ export function repairMap(map: MapData): RepairResult {
   }
 
   // 3. Предметы склепа: убираем те, что перекрывают дверь или стоят не на полу.
-  const crypt = (map.crypt ?? []).filter((item) => {
+  let crypt = (map.crypt ?? []).filter((item) => {
     const spec = CRYPT[item.kind];
     if (!spec?.blocks) return true;
     for (let y = item.y; y < item.y + item.h; y += 1) {
@@ -114,6 +114,21 @@ export function repairMap(map: MapData): RepairResult {
     }
     return true;
   });
+
+  // If repair removes a required dungeon-scene part, remove the whole scene;
+  // never leave a partial composition behind. Legacy objects have no metadata.
+  const survivors = new Set(crypt);
+  const brokenScenes = new Set((map.crypt ?? []).filter((item) => item.dungeonScene?.required && !survivors.has(item)).map((item) => item.dungeonScene!.groupId));
+  if (brokenScenes.size) {
+    const previousLength = crypt.length;
+    crypt = crypt.filter((item) => !item.dungeonScene || !brokenScenes.has(item.dungeonScene.groupId));
+    if (crypt.length !== previousLength) actions.push(`удалены неполные сцены: ${brokenScenes.size}`);
+  }
+
+  // Cluster provenance is meaningful only while its source survives repair.
+  crypt = crypt.filter((item) => !item.dungeonCluster || crypt.some((source) =>
+    !source.dungeonCluster && source.kind === item.dungeonCluster!.source.kind
+    && source.x === item.dungeonCluster!.source.x && source.y === item.dungeonCluster!.source.y));
 
   // 4. Осиротевшие клетки дороги (без соседей-дорог) превращаем в утоптанную
   //    землю: одиночная полоска асфальта посреди луга выглядит как баг.

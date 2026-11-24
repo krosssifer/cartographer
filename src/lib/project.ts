@@ -67,6 +67,7 @@ export function validateProject(v: unknown): v is ImportProject {
   if (g.cityCondition !== undefined && g.cityCondition !== 'pristine' && g.cityCondition !== 'lived_in' && g.cityCondition !== 'worn') return false;
   if (g.cryptDetail !== undefined && !finite(g.cryptDetail, 0, 1)) return false;
   if (g.cryptArchetype !== undefined && !['tomb', 'catacombs', 'temple', 'archive', 'prison'].includes(String(g.cryptArchetype))) return false;
+  if (g.dungeonWallsOnly !== undefined && !bool(g.dungeonWallsOnly)) return false;
   if (![g.cryptTraps, g.cryptChasms].every((v) => v === undefined || bool(v))) return false;
   if (g.dungeonLayout !== undefined && g.dungeonLayout !== 'classic' && g.dungeonLayout !== 'varied') return false;
   if (g.dungeonLevels !== undefined && !integer(g.dungeonLevels, 1, MAX_DUNGEON_LEVELS)) return false;
@@ -85,14 +86,14 @@ export function validateProject(v: unknown): v is ImportProject {
   if (!integer(r.cellSize, 16, 72) || !finite(r.gridOpacity, 0, 1) || typeof r.gridColor !== 'string' || !/^#[0-9a-f]{6}$/i.test(r.gridColor)) return false;
   if (!['square', 'hex'].includes(String(r.gridType))) return false;
   if (![r.showGrid, r.shading, r.texture, r.showTrees, r.showRocks, r.showStructures, r.vignette].every(bool)) return false;
-  if (![r.showChests, r.showCivic, r.showRoofs, r.showCrypt, r.showSecrets, r.showDebug, r.showDecor].every((value) => value === undefined || bool(value))) return false;
+  if (![r.showChests, r.showCivic, r.showRoofs, r.showCrypt, r.showSecrets, r.showDebug, r.showDecor, r.showDungeonDressingDebug].every((value) => value === undefined || bool(value))) return false;
   if (r.timeOfDay !== undefined && !['day', 'dusk', 'night'].includes(String(r.timeOfDay))) return false;
   if (r.settlementDebug !== undefined && (!record(r.settlementDebug) || !Object.entries(r.settlementDebug).every(([k, v]) =>
     [
       'footprint', 'density', 'districts', 'blocks', 'plots', 'roadHierarchy',
       'frontage', 'courtyards', 'emptyAreas', 'accessibility', 'riverInfluence',
       'terrainInfluence', 'districtLabels', 'primaryRoads', 'secondaryRoads',
-      'footprints', 'landmarks', 'urbanAge', 'market', 'activity', 'anchors', 'lighting',
+      'footprints', 'landmarks', 'urbanAge', 'market', 'activity', 'anchors', 'lighting', 'scenes',
     ].includes(k)
     && (v === undefined || bool(v))))) return false;
   if (r.wallThickness !== undefined && !finite(r.wallThickness, 0.15, 1.2)) return false;
@@ -101,6 +102,7 @@ export function validateProject(v: unknown): v is ImportProject {
   if (v.map !== null) {
     const m = v.map;
     if (!record(m) || m.width !== g.width || m.height !== g.height || m.biome !== g.biome) return false;
+    if (m.dungeonWallsOnly !== undefined && !bool(m.dungeonWallsOnly)) return false;
     if (!Array.isArray(m.cells) || m.cells.length !== m.height || !m.cells.every((row) => Array.isArray(row) && row.length === m.width && row.every((c: unknown) => record(c) && typeof c.terrain === 'string' && Object.prototype.hasOwnProperty.call(TERRAIN_LABELS, c.terrain) && finite(c.height, -2, 2) && finite(c.moisture, -2, 2)))) return false;
     if (!Array.isArray(m.trees) || m.trees.length > 32000 || !m.trees.every((t: unknown) => record(t) && optionalSize(t) && finite(t.x, -2, m.width as number + 2) && finite(t.y, -2, m.height as number + 2) && finite(t.r, 0.01, 5) && finite(t.v, 0, 1) && ['oak', 'pine', 'bush', 'dead', 'cactus', 'mushroom', 'reed'].includes(String(t.kind)))) return false;
     if (!Array.isArray(m.rocks) || m.rocks.length > 32000 || !m.rocks.every((r: unknown) => record(r) && optionalSize(r) && finite(r.x, -2, m.width as number + 2) && finite(r.y, -2, m.height as number + 2) && finite(r.r, 0.01, 5) && finite(r.v, 0, 1) && Array.isArray(r.pts) && r.pts.length >= 3 && r.pts.length <= 20 && r.pts.every((p: unknown) => Array.isArray(p) && p.length === 2 && p.every((n) => finite(n, -5, 5))))) return false;
@@ -157,11 +159,25 @@ export function validateProject(v: unknown): v is ImportProject {
       && finite(p.w, .15, Number(g.width) - Number(p.x)) && finite(p.h, .15, Number(g.height) - Number(p.y));
     if (m.cryptRooms !== undefined && (!Array.isArray(m.cryptRooms) || m.cryptRooms.length > 100 || !m.cryptRooms.every((p: unknown) => record(p) && rectangle(p)
       && typeof p.theme === 'string' && Object.prototype.hasOwnProperty.call(CRYPT_THEMES, p.theme)))) return false;
+    const shortText = (v: unknown) => typeof v === 'string' && v.length > 0 && v.length <= 160;
+    const point = (v: unknown) => record(v) && finite(v.x, -20, Number(g.width) + 20) && finite(v.y, -20, Number(g.height) + 20);
+    const sceneMeta = (v: unknown) => record(v) && shortText(v.groupId) && shortText(v.variant) && shortText(v.purpose) && shortText(v.role)
+      && bool(v.required) && point(v.center) && (v.attachTo === undefined || shortText(v.attachTo))
+      && (v.semanticRole === undefined || shortText(v.semanticRole)) && (v.slot === undefined || shortText(v.slot));
+    const clusterMeta = (v: unknown) => record(v) && shortText(v.id) && ['burial', 'collapse', 'water', 'web', 'activity'].includes(String(v.type))
+      && record(v.source) && point(v.source) && CRYPT_KINDS.includes(v.source.kind as EditorSettings['cryptKind']) && finite(v.radius, 1, 10);
     if (m.crypt !== undefined && (!Array.isArray(m.crypt) || m.crypt.length > Math.min(Number(g.width) * Number(g.height) * 2, 4000) || !m.crypt.every((p: unknown) => record(p) && rectangle(p)
       && CRYPT_KINDS.includes(p.kind as EditorSettings['cryptKind']) && finite(p.w, .15, 20) && finite(p.h, .15, 20) && CHEST_ROTATIONS.includes(p.rotation as ChestRotation)
       && integer(p.variant, 0, 3) && (p.source === 'layout' || p.source === 'manual')
       && (p.hidden === undefined || bool(p.hidden) && (!p.hidden || p.kind === 'chest' || CRYPT[p.kind as EditorSettings['cryptKind']].secret))
-      && (p.unlit === undefined || bool(p.unlit))))) return false;
+      && (p.unlit === undefined || bool(p.unlit))
+      && (p.dungeonScene === undefined || sceneMeta(p.dungeonScene))
+      && (p.dungeonCluster === undefined || clusterMeta(p.dungeonCluster))))) return false;
+    if (record(m.plan) && m.plan.dungeonDressingDebug !== undefined) {
+      const d = m.plan.dungeonDressingDebug;
+      if (!record(d) || !Array.isArray(d.spine) || d.spine.length > Number(g.width) * Number(g.height) || !d.spine.every(point)
+        || !Array.isArray(d.rejected) || d.rejected.length > 250 || !d.rejected.every((r: unknown) => record(r) && point(r) && shortText(r.kind) && shortText(r.reason) && shortText(r.variant))) return false;
+    }
     // Покрытие пола комплекса: по букве на клетку, орнаменты внутри карты.
     if (m.floorLayer !== undefined) {
       const f = m.floorLayer;

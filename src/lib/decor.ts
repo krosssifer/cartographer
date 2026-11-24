@@ -254,7 +254,7 @@ function paintSettlementGroundDecals(ctx: CanvasRenderingContext2D, map: MapData
 }
 
 export function paintDecor(ctx: CanvasRenderingContext2D, map: MapData, rs: RenderSettings) {
-  if (rs.showDecor === false) return;
+  if (rs.showDecor === false || (map.biome === 'dungeon' && map.dungeonWallsOnly)) return;
   const cs = rs.cellSize;
   const art = getAssets().art;
 

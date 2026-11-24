@@ -540,7 +540,7 @@ const HALL_BY_SIZE: Record<CryptArchetype, boolean> = {
  * планировка назначает темы сама (по смыслу зала); без них темы раздаются
  * прежним способом — по глубине и архетипу.
  */
-export function decorateCrypt(base: MapData, settings: GenSettings, preserved: CryptObject[] = [], themes?: readonly CryptTheme[], lanes?: ReadonlySet<number>): MapData {
+export function decorateCrypt(base: MapData, settings: GenSettings, preserved: CryptObject[] = [], themes?: readonly CryptTheme[], lanes?: ReadonlySet<number>, mode: 'full' | 'roomsOnly' = 'full'): MapData {
   const seed = settings.seed;
   const detail = Math.min(1, Math.max(0, settings.cryptDetail ?? .67));
   const { width, height } = base;
@@ -596,6 +596,9 @@ export function decorateCrypt(base: MapData, settings: GenSettings, preserved: C
   const rooms: CryptRoom[] = plan.map((room, index) => ({ x: room.x, y: room.y, w: room.w, h: room.h,
     theme: given ? given[base.structures.indexOf(room)] : assigned.get(index) ?? 'burial' }));
   map.cryptRooms = rooms;
+  // Complex generators already have their own functional, light and ambient passes.
+  // Retain room metadata for composition planning without adding a second set.
+  if (mode === 'roomsOnly') return map;
 
   // The reserved aisle network connects every doorway and room centre through the existing floor.
   // Проходы прокладываются в обход уже стоящих блокирующих предметов
@@ -779,10 +782,7 @@ export function decorateCrypt(base: MapData, settings: GenSettings, preserved: C
           ? tryPlaceOnWall(kind, room, 200 + index)
           : tryPlace(kind, room, 200 + index);
         if (placed) return;
-        const spare = slots.find((slot) => slot.kind !== kind && slot.weight > 0);
-        if (!spare) return;
-        if (CRYPT[spare.kind].placement === 'wallFace') tryPlaceOnWall(spare.kind, room, 900 + index);
-        else tryPlace(spare.kind, room, 900 + index);
+        // No role-compatible substitute is guaranteed; leave the slot empty.
       });
     }
   }

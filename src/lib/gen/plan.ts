@@ -211,6 +211,8 @@ export interface GenerationPlan {
   roadGraph?: RoadGraphEdge[];
   /** Сцена-архетип, по которой собрана карта (optional — только для сцен). */
   archetype?: ArchetypeReport;
+  /** Debug data is optional for legacy projects. */
+  dungeonDressingDebug?: { spine: Point[]; rejected: Array<Point & { kind: string; reason: string; variant: string }> };
   /** Разнообразная планировка подземелья (optional). */
   dungeon?: DungeonLayoutReport;
   /** Поселение по типу и планировке (settlementType): кварталы, стены, улицы. */

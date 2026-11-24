@@ -1,5 +1,6 @@
 import { ART_SCALE, getAssets, TILE_ART, type Material } from './assets';
 import { Perlin } from './noise';
+import { isDungeonExteriorWall } from './dungeonWallBackground';
 import { TERRAIN_COLORS, type RGB } from './palette';
 import { ROAD_MATERIAL_IDS, selectCellRoadMaterial, type RoadMaterialId } from './roadMaterials';
 import type { MapData, RenderSettings, Terrain } from './types';
@@ -148,37 +149,24 @@ function downsample(art: { width: number; height: number; data: Uint8ClampedArra
   return { width: w, height: h, data: out };
 }
 
-let last: { cells: MapData['cells']; key: string; image: ImageData } | undefined;
-
 export function paintTerrain(map: MapData, settings: RenderSettings, seed: number): ImageData {
   const { width, height } = map;
   const samples = Math.max(14, Math.min(settings.cellSize, Math.floor(Math.sqrt(22_000_000 / (width * height)))));
   const sMeta = map.plan?.settlement;
-  const key = [
-    seed,
-    samples,
-    settings.texture,
-    settings.shading,
-    settings.showStructures,
-    settings.roadMaterial ?? 'auto',
-    getAssets().ready,
-    sMeta?.fortification ? 1 : 0,
-    sMeta?.type ?? '',
-    sMeta?.character ?? '',
-    sMeta?.districts?.length ?? 0,
-  ].join(':');
-  if (last?.cells === map.cells && last.key === key) return last.image;
-
   const w = width * samples, h = height * samples;
   const raster = new ImageData(w, h), pixels = raster.data;
   const paint = buildPaint(samples, settings.texture, seed, map.biome);
   const tiles = new Uint8Array(width * height);
   const light = new Float32Array(width * height);
+  // Keep the original material indices for neighbouring blends so only wall
+  // pixels change, not adjacent floor/water pixels.
+  const exteriorWalls = new Uint8Array(width * height);
   const fallbackLand = index[map.biome === 'cave' ? 'caveFloor' : map.biome === 'dungeon' ? 'floor' : map.biome === 'snow' ? 'snow' : map.biome === 'swamp' ? 'mud' : map.biome === 'village' || map.biome === 'town' ? 'plaza' : 'sand'];
   const fortified = sMeta?.fortification !== undefined;
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     const at = y * width + x;
     const { terrain, height: elevation } = map.cells[y][x];
+    if (settings.showStructures && isDungeonExteriorWall(map, x, y)) exteriorWalls[at] = 1;
     const underground = map.biome === 'dungeon' || map.biome === 'cave';
     const shown = terrain === 'wall' && fortified ? 'grass'
       : !settings.showStructures && (terrain === 'wall' || terrain === 'door')
@@ -298,9 +286,15 @@ export function paintTerrain(map: MapData, settings: RenderSettings, seed: numbe
         g = g * (1 - alpha) + alpha * (wetG * ripple * (1 - shelf) + 143 * shelf + 56 * sheen);
         b = b * (1 - alpha) + alpha * (wetB * ripple * (1 - shelf) + 120 * shelf + 53 * sheen);
       }
+      if (exteriorWalls[at]) {
+        // Match a void cell at the same world position, including its texture
+        // modulation. The separate masonry/rock edge is painted afterwards.
+        const voidLight = 1 + (settings.texture ? wash * 0.11 : 0);
+        const [vr, vg, vb] = TERRAIN_COLORS.void;
+        r = vr * voidLight; g = vg * voidLight; b = vb * voidLight;
+      }
       pixels[out] = r; pixels[out + 1] = g; pixels[out + 2] = b; pixels[out + 3] = 255;
     }
   }
-  last = { cells: map.cells, key, image: raster };
   return raster;
 }

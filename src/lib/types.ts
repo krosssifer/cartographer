@@ -259,6 +259,10 @@ export interface CryptObject extends Selection {
   hidden?: boolean;
   /** Светильник погашен (заброшенный комплекс): рисуется без свечения. */
   unlit?: boolean;
+  /** Source and local extent of an ambient dungeon cluster. */
+  dungeonCluster?: { id: string; type: import('./gen/complex/clusters').DungeonClusterType; source: Point & { kind: CryptKind }; radius: number };
+  /** Optional provenance for an architectural dungeon scene. */
+  dungeonScene?: { groupId: string; variant: string; purpose: string; role: string; semanticRole?: string; slot?: string; required: boolean; center: Point; attachTo?: string };
 }
 
 export interface CryptRoom extends Selection { theme: CryptTheme }
@@ -290,6 +294,8 @@ export interface MapData {
   width: number;
   height: number;
   biome: Biome;
+  /** Generated architectural shell: no automatic dressing or decorative floor details. */
+  dungeonWallsOnly?: boolean;
   cells: Cell[][];
   trees: Tree[];
   rocks: Rock[];
@@ -354,6 +360,8 @@ export interface GenSettings {
    * генерация). Значение — id из реестра gen/archetypes.ts.
    */
   sceneArchetype?: string;
+  /** Generate an undecorated dungeon shell for manual placement. */
+  dungeonWallsOnly?: boolean;
   /** Планировка подземелья ('classic' или отсутствие — прежние прямоугольные залы). */
   dungeonLayout?: DungeonLayout;
   /** Число связанных уровней подземелья (1–4, только для 'varied'). */
@@ -452,6 +460,8 @@ export interface SettlementDebugLayers {
   activity?: boolean;
   anchors?: boolean;
   lighting?: boolean;
+  /** Границы, детали, рабочие зоны и отказы функциональных сцен. */
+  scenes?: boolean;
 }
 
 export interface RenderSettings {
@@ -478,6 +488,8 @@ export interface RenderSettings {
   showDebug?: boolean;
   /** Индивидуальные слои debug-режима поселения. */
   settlementDebug?: SettlementDebugLayers;
+  /** Independent dungeon scene/cluster diagnostics overlay. */
+  showDungeonDressingDebug?: boolean;
   /** Мелкий декор (трава, цветы, камешки, мох) — слой поверх земли. */
   showDecor?: boolean;
   /** Материал дорожного покрытия ('auto' — контекстный выбор по биомам и кварталам). */

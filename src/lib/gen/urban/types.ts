@@ -325,6 +325,8 @@ export interface SettlementDebugData {
   activityGrid?: number[];
   intersections?: Point[];
   anchors?: { x: number; y: number; kind: string }[];
+  scenes?: import('./scenePlacement').FunctionalPlacement[];
+  sceneFailures?: import('./sceneLifecycle').FunctionalSceneFailure[];
 }
 
 export interface GeographyContext {

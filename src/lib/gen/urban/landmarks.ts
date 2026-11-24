@@ -22,6 +22,9 @@ import type { UrbanSkeleton } from './nodes';
 import type { PlotSubdivisionResult } from './plots';
 import type { UrbanRoadResult } from './roads';
 import { SpatialHash } from './spatialHash';
+import { FUNCTIONAL_SCENES } from './scenes';
+import { findFunctionalPlacement, type SceneRejection } from './scenePlacement';
+import type { FunctionalSceneFailure, FunctionalSceneGroup } from './sceneLifecycle';
 import { computeUrbanActivityField, type UrbanActivityField } from './activity';
 import {
   FACING_ROTATION as MARKET_FACING_ROT,
@@ -73,6 +76,9 @@ export interface BuildingsAndLandmarksResult {
   chains: AdventureChain[];
   piers: number;
   courtyardCount: number;
+  /** Временные группы нужны для атомарной очистки после repair; не сохраняются в CivicObject. */
+  functionalScenes: FunctionalSceneGroup[];
+  sceneFailures: FunctionalSceneFailure[];
   /** Статистика Urban Dressing (для отчёта и отладки). */
   dressing?: {
     materialCells: number;
@@ -81,6 +87,12 @@ export interface BuildingsAndLandmarksResult {
     treesPlaced: number;
     fencesPlaced?: number;
     scenesPlaced?: number;
+    sceneAttempts?: number;
+    scenePlotsAttempted?: number;
+    scenePlotsRejected?: number;
+    sceneRemovedAfterRepair?: number;
+    sceneRejections?: Record<SceneRejection, number>;
+    sceneVariants?: Record<string, number>;
     bedsPlaced?: number;
     doorClearance?: number;
     anchorsEvaluated?: number;
@@ -105,20 +117,6 @@ export interface UrbanDressingSettings {
   condition: CityCondition;
 }
 
-function pickWeightedPropDeep(
-  list: readonly [CivicKind, number][],
-  roll: number,
-): { kind: CivicKind; w: number; h: number } {
-  const total = list.reduce((sum, [, weight]) => sum + weight, 0);
-  let target = roll * total;
-  for (const [kind, weight] of list) {
-    target -= weight;
-    if (target <= 0) return { kind, w: CIVIC_KIT[kind].w, h: CIVIC_KIT[kind].h };
-  }
-  const last = list[list.length - 1][0];
-  return { kind: last, w: CIVIC_KIT[last].w, h: CIVIC_KIT[last].h };
-}
-
 export function placeBuildingsLandmarksAndDetails(
   ctx: UrbanContext,
   skel: UrbanSkeleton,
@@ -130,6 +128,7 @@ export function placeBuildingsLandmarksAndDetails(
   market?: MarketOutcome,
   marketPiers = 0,
   dressing?: UrbanDressingSettings,
+  diagnostics = false,
 ): BuildingsAndLandmarksResult {
   const { width: w, height: h, seed, type, character, town, geo } = ctx;
   const { cells, waterDist, geography, length, span, at } = geo;
@@ -1102,6 +1101,61 @@ export function placeBuildingsLandmarksAndDetails(
     return true;
   };
 
+  const functionalScenes: BuildingsAndLandmarksResult['functionalScenes'] = [];
+  const scenePlotIds = new Set<number>();
+  const sceneFailures: FunctionalSceneFailure[] = [];
+  const sceneRejections: Record<SceneRejection, number> = { collision: 0, bounds: 0, doorAccess: 0, insufficientSpace: 0, districtMismatch: 0 };
+  let sceneAttempts = 0;
+  let scenePlotsAttempted = 0;
+  let scenePlotsRejected = 0;
+  const sceneDensity = dressing ? between(dressing.density, 0, 1) : 0.6;
+  // Сначала размещаем сцены во всех дворах, затем одиночный декор. Вторичные
+  // здания уже построены и присутствуют в builtCellMask.
+  if (sceneDensity > 0.02) for (let rank = 0; rank < placed.length; rank++) {
+    const plot = placedPlots[rank];
+    if (secondaryFlags[rank] || !plot?.yardRect || scenePlotIds.has(plot.id)) continue;
+    if (hash2(plot.id, 0x51ce, seed + 0x46a1) >= sceneDensity) continue;
+    scenePlotsAttempted++;
+    const result = findFunctionalPlacement({
+      seed: seed + 0x46a2, plot, building: placed[rank], condition: dressing?.condition, zone: plot.yardRect, scenes: FUNCTIONAL_SCENES, trace: diagnostics,
+      previous: functionalScenes.filter((group) => placedPlots.some((p) => p?.id === group.placement.plotId && p.districtIndex === plot.districtIndex)).map((group) => group.placement),
+      check: (rect) => {
+        if (!notNearAnyDoor(rect.x, rect.y, rect.w, rect.h)) return { reason: 'doorAccess', obstacle: 'door' };
+        for (let yy = rect.y; yy < rect.y + rect.h; yy++) for (let xx = rect.x; xx < rect.x + rect.w; xx++) {
+          if (!inside(xx, yy)) return 'bounds';
+          const c = id(xx, yy), tr = terrain(xx, yy);
+          if (builtCellMask[c]) return { reason: 'collision', obstacle: 'building' };
+          if (passageMask[c]) return { reason: 'collision', obstacle: 'passage' };
+          if (streets[c]) return { reason: 'collision', obstacle: 'street' };
+          if (reserved[c]) return { reason: 'collision', obstacle: 'reservation' };
+          if (waterDist[c] < 2) return { reason: 'collision', obstacle: 'water' };
+          if (!(isDressableGround(tr) || tr === 'floor')) return { reason: 'collision', obstacle: 'terrain' };
+        }
+        return civicHash.hasOverlap(rect, 0) ? { reason: 'collision', obstacle: 'civic' } : null;
+      },
+    });
+    sceneAttempts += result.attempted;
+    for (const reason of Object.keys(sceneRejections) as SceneRejection[]) sceneRejections[reason] += result.rejected[reason];
+    const placement = result.placement;
+    if (!placement) {
+      scenePlotsRejected++;
+      const causes: SceneRejection[] = ['collision', 'doorAccess', 'bounds'];
+      const reason = causes.reduce((best, cause) => result.rejected[cause] > result.rejected[best] ? cause : best, causes[0]);
+      sceneFailures.push({ plotId: plot.id, zone: { ...plot.yardRect }, reason: result.rejected[reason] ? reason : result.rejected.insufficientSpace ? 'insufficientSpace' : 'districtMismatch', rejections: result.rejected, trace: result.trace });
+      continue;
+    }
+    const items: CivicObject[] = [];
+    // Поиск проверил все детали и все взаимные пересечения; никаких мутаций
+    // между проверкой и фиксацией нет. Все части получают ранг основного дома.
+    for (const part of [placement.anchor, ...placement.parts]) {
+      if (!addRankedCivic(rank, part.kind, part.x, part.y, part.w, part.h, plot.id, part.rotation)) throw new Error('Functional scene commit diverged from validation');
+      items.push(rankedCivic[rankedCivic.length - 1].item);
+    }
+    for (const rect of placement.access) for (let yy = rect.y; yy < rect.y + rect.h; yy++) for (let xx = rect.x; xx < rect.x + rect.w; xx++) reserved[id(xx, yy)] = 1;
+    functionalScenes.push({ placement, items, trace: result.trace });
+    scenePlotIds.add(plot.id);
+  }
+
   let courtyardCount = 0;
   const dressedPlotIds = new Set<number>();
 
@@ -1129,6 +1183,7 @@ export function placeBuildingsLandmarksAndDetails(
     if (!freeSpot) continue;
 
     courtyardCount++;
+    if (plot && scenePlotIds.has(plot.id)) continue;
     const cKind = plot?.courtyardKind ?? 'enclosed_courtyard';
     const roll = hash2(yard.x, yard.y, seed + 0x8801 + idx);
 
@@ -1267,11 +1322,11 @@ export function placeBuildingsLandmarksAndDetails(
   if (dressingDensity > 0.02) {
     const plotRankOf = new Map<number, number>();
     placedPlots.forEach((p, i) => {
-      if (p) plotRankOf.set(p.id, i);
+      if (p && !secondaryFlags[i] && !plotRankOf.has(p.id)) plotRankOf.set(p.id, i);
     });
     const dressedCells = new Uint8Array(w * h);
     let materialCells = 0;
-    let propsPlaced = 0;
+    let propsPlaced = functionalScenes.reduce((sum, group) => sum + group.items.length, 0);
     let litterPlaced = 0;
     let treesPlaced = 0;
 
@@ -1363,7 +1418,7 @@ export function placeBuildingsLandmarksAndDetails(
     // (б) Микросцены во дворах: бочки, ящики, мешки, сено, телеги, столы по типу двора.
     for (const plot of urbanPlots) {
       const rank = rankOf(plot);
-      if (rank < 0 || !plot.bounds) continue;
+      if (rank < 0 || !plot.bounds || scenePlotIds.has(plot.id)) continue;
       const profile = profileOf(plot);
       const courtyard = plot.courtyardKind ?? 'enclosed_courtyard';
       const recipe = YARD_RECIPES[courtyard] ?? YARD_RECIPES.enclosed_courtyard;
@@ -1542,47 +1597,8 @@ export function placeBuildingsLandmarksAndDetails(
       }
     }
 
-    // (з) Микросцены по назначению участка: мастерская, лавка, таверна, склад, конюшня.
-    const FUNCTION_SCENES: Record<string, readonly [CivicKind, number][]> = {
-      workshop: [['urbanAnvil', 3], ['urbanForge', 2], ['urbanCoal', 2], ['urbanWorkbench', 2], ['urbanPlanks', 2], ['urbanWoodpile', 2]],
-      shop: [['marketCrates', 3], ['marketBarrels', 3], ['urbanSign', 2], ['urbanTrough', 1], ['marketBaskets', 2]],
-      tavern: [['marketBarrels', 3], ['marketBench', 2], ['urbanSign', 2], ['marketTable', 1], ['urbanTrough', 1]],
-      warehouse: [['marketCrates', 4], ['marketSacks', 3], ['urbanPlanks', 3], ['urbanHides', 2], ['marketRope', 2]],
-      stable: [['marketHayLarge', 3], ['urbanTrough', 2], ['cart', 1], ['marketBarrels', 2]],
-      temple: [['marketBench', 2], ['urbanPots', 2], ['urbanLamp', 1]],
-      noble_villa: [['urbanPots', 2], ['urbanLamp', 2], ['garden', 1]],
-      farm: [['marketHay', 3], ['marketSacks', 2], ['urbanPots', 1]],
-      garrison: [['marketBarrels', 2], ['urbanTrough', 1], ['marketCrates', 1]],
-      courtyard: [['marketBench', 1], ['garden', 1]],
-    };
-    let scenesPlaced = 0;
-    for (const plot of urbanPlots) {
-      if (!plot.bounds) continue;
-      const scene = FUNCTION_SCENES[plot.fn];
-      if (!scene) continue;
-      const profile = profileOf(plot);
-      const budget = Math.max(0, Math.min(5, Math.round(3 * dressingDensity * (0.7 + profile.objectDensity * 0.6))));
-      if (budget === 0) continue;
-      const bounds = plot.bounds;
-      const rank = rankOf(plot);
-      for (let n = 0; n < budget; n += 1) {
-        const item = pickWeightedPropDeep(scene, hash2(bounds.x + n * 7, bounds.y + n * 13, seed + 0x7770));
-        if (item.w > bounds.w || item.h > bounds.h) continue;
-        for (let attempt = 0; attempt < 28; attempt += 1) {
-          const rollX = hash2(bounds.x + attempt * 19 + n * 3, bounds.y + attempt * 5, seed + 0x7771);
-          const rollY = hash2(bounds.y + attempt * 23 + n * 5, bounds.x + attempt * 11, seed + 0x7772);
-          const px = bounds.x + Math.floor(rollX * Math.max(1, bounds.w - item.w));
-          const py = bounds.y + Math.floor(rollY * Math.max(1, bounds.h - item.h));
-          if (!freeBox(px, py, item.w, item.h)) continue;
-          if (!notNearAnyDoor(px - 1, py - 1, item.w + 2, item.h + 2)) continue;
-          if (addRankedCivic(rank, item.kind, px, py, item.w, item.h, n)) {
-            propsPlaced += 1;
-            scenesPlaced += 1;
-            break;
-          }
-        }
-      }
-    }
+    // Функциональные сцены уже размещены до одиночного декора.
+    const scenesPlaced = functionalScenes.length;
 
     // (и) Огороды и сады: грядки утоптанной земли внутри двора.
     let bedsPlaced = 0;
@@ -1792,6 +1808,11 @@ export function placeBuildingsLandmarksAndDetails(
       treesPlaced,
       fencesPlaced,
       scenesPlaced,
+      sceneAttempts,
+      scenePlotsAttempted,
+      scenePlotsRejected,
+      sceneRejections,
+      sceneVariants: functionalScenes.reduce<Record<string, number>>((acc, group) => { const key = `${group.placement.sceneId}/${group.placement.variantId}`; acc[key] = (acc[key] ?? 0) + 1; return acc; }, {}),
       bedsPlaced,
       anchorsEvaluated: anchors.length,
       anchorPropsPlaced,
@@ -1800,7 +1821,7 @@ export function placeBuildingsLandmarksAndDetails(
   }
 
   for (const plot of urbanPlots) {
-    if (plot.fn !== 'garden' || !plot.yardRect) continue;
+    if (plot.fn !== 'garden' || !plot.yardRect || scenePlotIds.has(plot.id)) continue;
     const yr = plot.yardRect;
     if (yr.w >= 3 && yr.h >= 2 && notInsideAnyHouse(yr.x, yr.y, 3, 2) && notNearAnyDoor(yr.x, yr.y, 3, 2)) {
       addRankedCivic(-1, 'garden', yr.x, yr.y, 3, 2, plot.id);
@@ -2076,6 +2097,8 @@ export function placeBuildingsLandmarksAndDetails(
     chains,
     piers,
     courtyardCount,
+    functionalScenes,
+    sceneFailures,
     dressing: dressingStats,
     activityField,
     anchors,

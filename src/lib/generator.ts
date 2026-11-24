@@ -1,6 +1,7 @@
 import { Perlin } from './noise';
 import { clampMapDimensions, isValidMapDimensions } from './mapDimensions';
 import { cryptBlueprint, decorateCrypt } from './cryptLayout';
+import { dungeonWallsOnly } from './dungeonWallsOnly';
 import { repairMap } from './gen/repair';
 import { normalizeTerrain } from './gen/normalize';
 import { smoothTerrain } from './gen/morphology';
@@ -80,7 +81,9 @@ export function generateMap(inputSettings: GenSettings): MapData {
       }
     }
   }
-  const repaired = repairMap(smoothed);
+  // Strip only the newly generated map; manual edits made afterwards remain intact.
+  const generated = s.biome === 'dungeon' && s.dungeonWallsOnly ? dungeonWallsOnly(smoothed) : smoothed;
+  const repaired = repairMap(generated);
   if (!repaired.map.plan) return repaired.map;
   return { ...repaired.map, plan: { ...repaired.map.plan, report: repaired.report, actions: [...(repaired.map.plan.actions ?? []), ...repaired.actions] } };
 }

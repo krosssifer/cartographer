@@ -28,9 +28,9 @@ function CryptPlan({ gen, locked, onApply }: { gen: GenSettings; locked: boolean
   const [draft, setDraft] = useState<CryptSettings>({ cryptDetail: gen.cryptDetail, cryptTraps: gen.cryptTraps, cryptChasms: gen.cryptChasms });
   return <details className="sidebar-section generation-fields crypt-plan">
     <summary className="section-heading"><h2>Авторасстановка</h2><Icon name="chevron" size={15} /></summary>
-    <CryptOptions settings={draft} onChange={(patch) => setDraft((old) => ({ ...old, ...patch }))} />
-    <button type="button" className="action-btn plan-apply" disabled={locked} onClick={() => onApply(draft)}><Icon name="sparkles" size={15} /> Обставить склеп заново</button>
-    <p className="tool-hint">{locked ? 'Разблокируйте слой объектов склепа.' : 'Стены и объекты, поставленные вручную, сохранятся.'}</p>
+    {!gen.dungeonWallsOnly && <CryptOptions settings={draft} onChange={(patch) => setDraft((old) => ({ ...old, ...patch }))} />}
+    <button type="button" className="action-btn plan-apply" disabled={locked || gen.dungeonWallsOnly} onClick={() => onApply(draft)}><Icon name="sparkles" size={15} /> Обставить склеп заново</button>
+    <p className="tool-hint">{gen.dungeonWallsOnly ? 'В режиме «Только стены» предметы добавляются вручную.' : locked ? 'Разблокируйте слой объектов склепа.' : 'Стены и объекты, поставленные вручную, сохранятся.'}</p>
   </details>;
 }
 

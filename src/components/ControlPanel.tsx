@@ -150,7 +150,9 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
     </details>}
     {isDungeon && <details open className="sidebar-section generation-fields">
       <summary className="section-heading"><h2>Наполнение склепа</h2><Icon name="crypt" size={17} /></summary>
-      <CryptOptions settings={gen} onChange={onGen} />
+      <Toggle label="Только стены (без объектов)" checked={gen.dungeonWallsOnly === true} onChange={(dungeonWallsOnly) => onGen({ dungeonWallsOnly })} />
+      {gen.dungeonWallsOnly ? <p className="tool-hint">Стены, пол и открытые проходы без дверей и автообстановки. Предметы и лестницы можно добавить вручную в редакторе; вода и мелкий декор не генерируются.</p>
+        : <CryptOptions settings={gen} onChange={onGen} />}
     </details>}
     {isSettlement && <div className="sidebar-section generation-fields">
       <div className="section-heading"><h2>Планировка</h2><Icon name="structure" size={17} className="section-symbol" /></div>
@@ -189,7 +191,7 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
     {!isSettlement && <details className="sidebar-section generation-fields" open>
       <summary className="section-heading"><h2>Ландшафт</h2><Icon name="chevron" size={15} className="section-symbol" /></summary>
       {!isDungeon && <Slider label={isCave ? 'Сглаживание стен' : 'Изрезанность рельефа'} value={gen.roughness} min={0} max={1} step={0.05} format={pct} onChange={(roughness) => onGen({ roughness })} />}
-      <Slider label={isDungeon ? 'Затопленность' : 'Уровень воды'} value={gen.waterLevel} min={0} max={0.7} step={0.01} format={pct} onChange={(waterLevel) => onGen({ waterLevel })} />
+      {!(isDungeon && gen.dungeonWallsOnly) && <Slider label={isDungeon ? 'Затопленность' : 'Уровень воды'} value={gen.waterLevel} min={0} max={0.7} step={0.01} format={pct} onChange={(waterLevel) => onGen({ waterLevel })} />}
       {isCave && <Slider label="Открытость пещеры" value={gen.caveOpenness} min={0} max={1} step={0.05} format={pct} onChange={(caveOpenness) => onGen({ caveOpenness })} />}
       {isDungeon && <>
         {/* В комплексе число залов задают кнопки «Размер», тип — архетип комплекса. */}
@@ -208,7 +210,7 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
       </>}
       {scene?.road === 'optional' && <Toggle label="Дорога к месту сцены" checked={gen.road} onChange={(road) => onGen({ road })} />}
     </details>}
-    <details className="sidebar-section generation-fields">
+    {!(isDungeon && gen.dungeonWallsOnly) && <details className="sidebar-section generation-fields">
       <summary className="section-heading"><h2>Объекты</h2><Icon name="chevron" size={15} className="section-symbol" /></summary>
       <Slider label={isDungeon || isCave ? 'Грибы' : 'Растительность'} value={gen.vegetation} min={0} max={1} step={0.05} format={pct} onChange={(vegetation) => onGen({ vegetation })} />
       <Slider label={isDungeon ? 'Обломки' : 'Камни и валуны'} value={gen.rocks} min={0} max={1} step={0.05} format={pct} onChange={(rocks) => onGen({ rocks })} />
@@ -223,7 +225,7 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
           onChange={(value) => onGen({ generationEngine: value ? 'structured' : 'legacy' })}
         />
       </>}
-    </details>
+    </details>}
     <details className="sidebar-section generation-fields">
       <summary className="section-heading"><h2>Сетка и вид</h2><Icon name="chevron" size={15} className="section-symbol" /></summary>
       <Slider label="Разрешение клетки (px)" value={render.cellSize} min={16} max={72} step={2} onChange={(cellSize) => onRender({ cellSize })} />
@@ -273,6 +275,7 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
       <Toggle label="Растительность" checked={render.showTrees} onChange={(showTrees) => onRender({ showTrees })} />
       <Toggle label="Камни" checked={render.showRocks} onChange={(showRocks) => onRender({ showRocks })} />
       <Toggle label="Мелкий декор" checked={render.showDecor !== false} onChange={(showDecor) => onRender({ showDecor })} />
+      {map.biome === 'dungeon' && <Toggle label="Dungeon Dressing Debug" checked={render.showDungeonDressingDebug === true} onChange={(showDungeonDressingDebug) => onRender({ showDungeonDressingDebug })} />}
       <Toggle label="Разметка генерации (debug)" checked={render.showDebug === true} onChange={(showDebug) => onRender({ showDebug })} />
       {render.showDebug === true && isSettlement && map.plan?.settlement && (() => {
         const dbg: Required<SettlementDebugLayers> = { ...DEFAULT_SETTLEMENT_DEBUG, ...(render.settlementDebug ?? {}) };
@@ -295,6 +298,7 @@ export default function ControlPanel({ gen, map, render, onGen, onRender, onRand
           <Toggle label="Debug: Рынок и диагностика (Market)" checked={dbg.market} onChange={(v) => patch('market', v)} />
           <Toggle label="Debug: Граф активности (Activity)" checked={dbg.activity} onChange={(v) => patch('activity', v)} />
           <Toggle label="Debug: Якоря декора и фасады (Anchors)" checked={dbg.anchors} onChange={(v) => patch('anchors', v)} />
+          <Toggle label="Debug: Функциональные сцены" checked={dbg.scenes} onChange={(v) => patch('scenes', v)} />
           <Toggle label="Debug: Городское освещение (Lighting)" checked={dbg.lighting} onChange={(v) => patch('lighting', v)} />
         </>;
       })()}

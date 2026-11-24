@@ -1,6 +1,7 @@
 import { artPick, getAssets } from './assets';
 import { CRYPT, coversHazard, cryptArt, hazard, isSecret } from './cryptKit';
 import { hash2 } from './random';
+import { isDungeonExteriorWall } from './dungeonWallBackground';
 import { spriteLook } from './spriteLook';
 import { tinted } from './tintCache';
 import type { CryptObject, MapData, RenderSettings } from './types';
@@ -30,14 +31,14 @@ export function cryptPainter(ctx: CanvasRenderingContext2D, map: MapData, settin
     ctx.save(); ctx.scale(grid, grid);
     ctx.fillStyle = '#12141a'; ctx.globalAlpha = .25;
     for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
-      if (map.cells[y][x].terrain === 'void') ctx.fillRect(x, y, 1, 1);
+      if (map.cells[y][x].terrain === 'void' || (settings.showStructures && isDungeonExteriorWall(map, x, y))) ctx.fillRect(x, y, 1, 1);
     }
     ctx.fillStyle = '#201c22'; ctx.globalAlpha = .16;
     for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
       if (map.cells[y][x].terrain === 'floor') ctx.fillRect(x, y, 1, 1);
     }
     ctx.globalAlpha = 1;
-    for (const room of map.cryptRooms ?? []) {
+    for (const room of map.dungeonWallsOnly ? [] : map.cryptRooms ?? []) {
       if (room.theme === 'archive' || room.theme === 'reliquary') {
         ctx.fillStyle = room.theme === 'archive' ? '#794d2623' : '#28595527';
         ctx.fillRect(room.x, room.y, room.w, room.h);
