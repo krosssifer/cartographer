@@ -23,10 +23,15 @@ describe('reproducible scene placement problems', () => {
     const failure = plan.report.debug?.sceneFailures?.find((item) => item.plotId === c.plotId)!;
     expect(failure.reason).toBe(c.reason);
     const rows = failure.trace?.rotations.filter((rotation) => rotation.sceneId === c.scene) ?? [];
-    expect(rows).toHaveLength(c.variants.length * 4);
-    expect(rows.reduce((sum, row) => sum + row.positions, 0)).toBe(c.attemptedPositions);
-    expect(rows.reduce((sum, row) => sum + row.geometricallyValid, 0)).toBe(0);
-    expect(rows.every((row) => Object.values(row.reasons).reduce((sum, n) => sum + n, 0) === (row.positions || 1))).toBe(true);
+    if (c.reason === 'districtMismatch') {
+      expect(rows).toHaveLength(0);
+      expect(failure.trace?.inapplicable).toContain(c.scene);
+    } else {
+      expect(rows).toHaveLength(c.variants.length * 4);
+      expect(rows.reduce((sum, row) => sum + row.positions, 0)).toBe(c.attemptedPositions);
+      expect(rows.reduce((sum, row) => sum + row.geometricallyValid, 0)).toBe(0);
+      expect(rows.every((row) => Object.values(row.reasons).reduce((sum, n) => sum + n, 0) === (row.positions || 1))).toBe(true);
+    }
     const withoutDecor = buildTypedPlan({ ...settings, urbanDressing: 0 }, style);
     expect(withoutDecor.functionalScenes).toHaveLength(0);
     const geometry = (p: typeof plan) => p.plots.map(({ x, y, w, h, door, role }) => ({ x, y, w, h, door, role }));

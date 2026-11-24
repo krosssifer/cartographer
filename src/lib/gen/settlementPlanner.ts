@@ -228,7 +228,7 @@ export function buildTypedPlan(s: GenSettings, style: SettlementStyle, diagnosti
   const layout = resolveSettlementLayout(type, s.settlementLayout);
   const character = getUrbanCharacter(s.settlementCharacter, type);
   const { width: w, height: h, seed } = s;
-  const key = `${type.id}:${layout}:${character.id}:${style}:${seed}:${w}:${h}:${s.road}:${s.river}:${s.publicSpaces}:${s.marketRichness}:${s.marketStyle}:${s.marketArchetype}:${s.urbanDressing ?? 0.6}:${s.cityCondition ?? 'lived_in'}`;
+  const key = `${type.id}:${layout}:${character.id}:${style}:${seed}:${w}:${h}:${s.road}:${s.river}:${s.publicSpaces}:${s.marketRichness}:${s.marketStyle}:${s.marketArchetype}:${s.urbanDressing ?? 0.6}:${s.cityCondition ?? 'lived_in'}:${diagnostics ? 1 : 0}`;
   if (cached?.key === key) return cached.value;
 
   const town = type.style === 'town';

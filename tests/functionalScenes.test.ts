@@ -187,9 +187,9 @@ describe('optional components and malformed templates', () => {
 describe('scene applicability for landmark overrides', () => {
   const building = { x: 0, y: 0, w: 3, h: 3, style: 'town' as const, kind: 'tavern' as const, roof: 0 as const, door: { x: 1, y: 2 }, facing: 0 as const, role: 'tavern' as const };
   it('uses the real building role rather than a parcel classified as a workshop', () => {
-    const result = findFunctionalPlacement({ seed: 4, plot: workshopPlot, building, zone: workshopPlot.yardRect!, scenes: FUNCTIONAL_SCENES, check: () => null });
+    const result = findFunctionalPlacement({ seed: 4, plot: { ...workshopPlot, districtType: 'residential', courtyardKind: 'inn_yard' }, building, zone: workshopPlot.yardRect!, scenes: FUNCTIONAL_SCENES, check: () => null });
     expect(result.placement?.sceneId).toBe('inn');
-    const smith = findFunctionalPlacement({ seed: 4, plot: { ...workshopPlot, fn: 'shop', courtyardKind: 'trade_courtyard' }, building: { ...building, kind: 'shop', role: 'smithy' }, zone: workshopPlot.yardRect!, scenes: FUNCTIONAL_SCENES, check: () => null });
+    const smith = findFunctionalPlacement({ seed: 4, plot: { ...workshopPlot, fn: 'shop', courtyardKind: 'workshop_yard' }, building: { ...building, kind: 'shop', role: 'smithy' }, zone: workshopPlot.yardRect!, scenes: FUNCTIONAL_SCENES, check: () => null });
     expect(smith.placement?.sceneId).toBe('blacksmith');
     const hall = findFunctionalPlacement({ seed: 4, plot: workshopPlot, building: { ...building, kind: 'hall', role: 'town_hall' }, zone: workshopPlot.yardRect!, scenes: FUNCTIONAL_SCENES, check: () => null });
     expect(hall.placement).toBeNull();

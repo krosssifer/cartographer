@@ -116,7 +116,9 @@ export function functionalSceneApplies(plot: UrbanPlot, building: Building | und
   const incompatibleLandmark = role && ['town_hall', 'guildhall', 'citadel', 'barracks', 'prison', 'mill', 'baths'].includes(role);
   {
     if (incompatibleLandmark) return false;
-    if (explicitScene) return scene.id === explicitScene;
+    if (explicitScene) return scene.id === explicitScene
+      && !!plot.courtyardKind && scene.courtyardKinds.includes(plot.courtyardKind)
+      && scene.districts.includes(plot.districtType);
     return scene.plotFunctions.includes(plot.fn)
       && !!plot.courtyardKind && scene.courtyardKinds.includes(plot.courtyardKind)
       && scene.districts.includes(plot.districtType);
@@ -170,9 +172,11 @@ export function findFunctionalPlacement(input: FunctionalPlacementInput): Functi
           if (outcome) break;
           checkedObjects.push(rect);
         }
+        const checkedZones: Selection[] = [];
         if (!outcome) for (const rect of zones) {
-          outcome = checkedObjects.some((other) => intersects(rect, other)) ? { reason: 'collision', obstacle: 'scene' } : !insidePlot(rect, plot) ? { reason: 'bounds', obstacle: 'plot' } : input.check(rect, 'access');
+          outcome = [...checkedObjects, ...checkedZones].some((other) => intersects(rect, other)) ? { reason: 'collision', obstacle: 'scene' } : !insidePlot(rect, plot) ? { reason: 'bounds', obstacle: 'plot' } : input.check(rect, 'access');
           if (outcome) break;
+          checkedZones.push(rect);
         }
         if (outcome) {
           const reason = typeof outcome === 'string' ? outcome : outcome.reason;

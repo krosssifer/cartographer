@@ -3,8 +3,8 @@
   "settings": {"width":100,"height":80,"density":0.42,"urbanDressing":1,"river":true,"publicSpaces":true,"cityCondition":"lived_in"},
   "cases": [
     {"id":"village-smith-too-small","settlementType":"large_village","style":"village","seed":42,"preset":"DEFAULT_GEN + overrides","plotId":18,"buildingRole":"smithy","plotFunction":"workshop","yard":{"x":49,"y":39,"w":5,"h":3},"scene":"blacksmith","variants":["compact","side_store","wide"],"reason":"insufficientSpace","attemptedPositions":0},
-    {"id":"city-warehouse-too-small","settlementType":"large_city","style":"town","seed":42,"preset":"DEFAULT_GEN + overrides","plotId":4,"buildingRole":"warehouse","plotFunction":"warehouse","yard":{"x":49,"y":39,"w":4,"h":3},"scene":"warehouse","variants":["compact","loading","dispatch"],"reason":"insufficientSpace","attemptedPositions":0},
-    {"id":"port-smith-too-small","settlementType":"port","style":"town","seed":11,"preset":"DEFAULT_GEN + overrides","plotId":26,"buildingRole":"smithy","plotFunction":"shop","yard":{"x":78,"y":50,"w":4,"h":3},"scene":"blacksmith","variants":["compact","side_store","wide"],"reason":"insufficientSpace","attemptedPositions":0},
+    {"id":"city-warehouse-too-small","settlementType":"large_city","style":"town","seed":42,"preset":"DEFAULT_GEN + overrides","plotId":4,"buildingRole":"warehouse","plotFunction":"warehouse","yard":{"x":49,"y":39,"w":4,"h":3},"scene":"warehouse","variants":["compact","loading","dispatch"],"reason":"districtMismatch","attemptedPositions":0},
+    {"id":"port-smith-too-small","settlementType":"port","style":"town","seed":11,"preset":"DEFAULT_GEN + overrides","plotId":26,"buildingRole":"smithy","plotFunction":"shop","yard":{"x":78,"y":50,"w":4,"h":3},"scene":"blacksmith","variants":["compact","side_store","wide"],"reason":"districtMismatch","attemptedPositions":0},
     {"id":"trade-shop-door-clearance","settlementType":"trade_town","style":"town","seed":11,"preset":"DEFAULT_GEN + overrides","plotId":4,"buildingRole":"shop","plotFunction":"shop","yard":{"x":46,"y":31,"w":5,"h":4},"scene":"shop_store","variants":["goods","restock","back_store"],"reason":"doorAccess","attemptedPositions":42}
   ]
 }

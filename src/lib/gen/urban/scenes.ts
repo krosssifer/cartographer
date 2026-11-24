@@ -187,6 +187,9 @@ export function validateFunctionalScenes(scenes: readonly FunctionalSceneDefinit
         for (let j = 0; j < i; j++) if (intersects(rects[i], rects[j])) errors.push(`${tag}: overlapping parts`);
         if (v.access.some((zone) => intersects(rects[i], zone))) errors.push(`${tag}: blocked access area`);
       }
+      for (let i = 0; i < v.access.length; i++) for (let j = 0; j < i; j++) {
+        if (intersects(v.access[i], v.access[j])) errors.push(`${tag}: overlapping access areas`);
+      }
       const bounds = functionalVariantBounds(v);
       if (bounds.w > 12 || bounds.h > 12 || bounds.w < 1 || bounds.h < 1) errors.push(`${tag}: unreasonable bounds`);
     }
